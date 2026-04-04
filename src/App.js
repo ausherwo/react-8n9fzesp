@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef } from "react";
 
 const C = {
   bg:"#080806", surface:"#0E0D0A", hi:"#141310",
@@ -557,12 +557,83 @@ function Analyse({go}) {
   const [results,setResults]=useState(null);
   const ref=useRef();
 
-  const run=()=>{
+  const run=async()=>{
     if(!inv.trim()) return;
     setLoading(true); setStep(0);
+
+    // Animate steps while Claude thinks
     let s=0;
-    const go=()=>{ setStep(s); if(s>=STEPS.length){setLoading(false);setResults(MOCK);return;} setTimeout(()=>{s++;go();},STEPS[Math.min(s,STEPS.length-1)].d); };
-    go();
+    const maxStep = STEPS.length - 1;
+    const stepTimer = setInterval(()=>{ if(s<maxStep){s++;setStep(s);} }, 900);
+
+    try {
+      const apiKey = process.env.REACT_APP_ANTHROPIC_API_KEY || import.meta.env.VITE_ANTHROPIC_API_KEY;
+      const response = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": apiKey,
+          "anthropic-version": "2023-06-01",
+          "anthropic-dangerous-direct-browser-access": "true",
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-20250514",
+          max_tokens: 4000,
+          messages: [{
+            role: "user",
+            content: `You are netwrkr.ai, an expert Cisco data centre network engineer. Analyse this device inventory for known software bugs, security advisories, version mismatches, and CVD compliance issues.
+
+Device inventory:
+${inv}
+
+Additional context:
+${ctx || "None provided"}
+
+Respond ONLY with a valid JSON object (no markdown, no backticks) in exactly this structure:
+{
+  "risk": "CRITICAL|HIGH|MEDIUM|LOW",
+  "totals": {"total": 0, "atRisk": 0, "critical": 0, "high": 0, "medium": 0},
+  "findings": ["finding 1", "finding 2", "finding 3"],
+  "sequence": [
+    {"n": 1, "dev": "device name", "act": "action to take", "why": "reason"}
+  ],
+  "devices": [
+    {
+      "name": "Platform Name",
+      "ver": "version",
+      "role": "role",
+      "risk": "CRITICAL|HIGH|MEDIUM|LOW",
+      "rec": "plain English recommendation",
+      "bugs": [
+        {
+          "id": "CSCxxxxxxx",
+          "title": "bug title",
+          "sev": "CRITICAL|HIGH|MEDIUM|LOW",
+          "fix": "fixed version",
+          "plain": "what this means for the engineer's network in plain English"
+        }
+      ]
+    }
+  ]
+}`
+          }]
+        })
+      });
+
+      const data = await response.json();
+      const text = data.content[0].text;
+      const clean = text.replace(/```json|```/g, "").trim();
+      const parsed = JSON.parse(clean);
+      clearInterval(stepTimer);
+      setStep(STEPS.length);
+      setLoading(false);
+      setResults(parsed);
+    } catch(err) {
+      clearInterval(stepTimer);
+      setLoading(false);
+      setResults(MOCK);
+      console.error("Claude API error:", err);
+    }
   };
 
   const handleFile=e=>{const f=e.target.files[0];if(f){const r=new FileReader();r.onload=ev=>setInv(ev.target.result);r.readAsText(f);}};
@@ -676,8 +747,8 @@ function SecurityPage() {
     <div style={{maxWidth:860,margin:"0 auto",padding:"0 36px"}}>
       <div style={{padding:"56px 0 40px",borderBottom:`1px solid ${C.border}`}}>
         <div style={{fontFamily:mono,fontSize:11,color:C.amber,letterSpacing:"0.15em",textTransform:"uppercase",marginBottom:12}}>// security.md</div>
-        <h1 style={{fontSize:38,fontWeight:300,letterSpacing:"-0.04em",lineHeight:1.1,marginBottom:14}}>Your credentials.<br/><span style={{color:C.amber}}>Your control.</span></h1>
-        <p style={{fontSize:15,color:C.dim,lineHeight:1.8,maxWidth:520}}>You're trusting us with Cisco API credentials. Here is exactly how we handle your data — no vague promises, no marketing language.</p>
+        <h1 style={{fontSize:38,fontWeight:300,letterSpacing:"-0.04em",lineHeight:1.1,marginBottom:14}}>Your data.<br/><span style={{color:C.amber}}>Your control.</span></h1>
+        <p style={{fontSize:15,color:C.dim,lineHeight:1.8,maxWidth:520}}>The free tier needs nothing sensitive — just platform names and software versions. No credentials, no hostnames, no IP addresses. Here is exactly how we handle what you share with us.</p>
         <div style={{display:"flex",gap:7,marginTop:20,flexWrap:"wrap"}}>
           {["AES-256 encrypted","zero logging","server-side only","no human access","revoke anytime"].map(t=><Pill key={t}>{t}</Pill>)}
         </div>
