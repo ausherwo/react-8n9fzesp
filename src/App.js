@@ -581,20 +581,40 @@ function Analyse({go}) {
           max_tokens: 4000,
           messages: [{
             role: "user",
-            content: `You are netwrkr.ai, an expert Cisco data centre network engineer. Analyse the device inventory below.
+            content: `You are netwrkr.ai, an expert Cisco data centre network engineer.
 
-CRITICAL RULES — read carefully before analysing:
+ABSOLUTE RULES — these override everything else:
 
-1. ONLY report findings based on data explicitly present in the inventory.
-2. If software version is NOT provided for a device, do NOT assume or invent a version. Set "ver" to "unknown" and do not report any bugs or CVEs for that device.
-3. If a field is missing (version, role, etc), say so clearly — never fabricate it.
-4. Every finding must be tagged with its evidence source:
-   - "observed" = directly from the inventory data
-   - "inferred" = reasonable conclusion from observed data
-   - "assumed" = no direct evidence, clearly flagged as assumption
-5. Never report a CRITICAL or HIGH risk finding based on assumed data. Only observed or inferred data can drive high severity ratings.
-6. If the inventory lacks version data entirely, overall risk must be LOW or UNKNOWN — never CRITICAL or HIGH.
-7. Version mismatches can only be reported if multiple devices of the same type show different versions explicitly in the data.
+RULE 1: SOFTWARE VERSION
+- If a software version is explicitly present in the uploaded data, you may analyse bugs and vulnerabilities for that version.
+- If NO software version is present in the data, you MUST set "ver" to "not provided" and "bugs" to an empty array []. You MUST NOT guess, assume, or infer any version from the device name, platform type, or role. Not even as an example.
+
+RULE 2: BUG IDS
+- You MUST NOT cite any CSC bug ID unless you have an explicit software version to cross-reference it against.
+- If version is not provided, bugs must be [].
+
+RULE 3: SEVERITY
+- CRITICAL or HIGH risk is only permitted when explicitly supported by version data present in the uploaded inventory.
+- If no version data exists, maximum overall risk is MEDIUM — and only if there are observed topology or configuration issues.
+- If no version data and no topology issues exist, overall risk is LOW.
+
+RULE 4: CONFIDENCE TAGGING
+- Every finding must end with [observed], [inferred], or [assumed].
+- [observed] = directly readable from the uploaded data.
+- [inferred] = logical conclusion from observed data, clearly reasoned.
+- [assumed] = no direct evidence — must be clearly flagged and cannot drive HIGH or CRITICAL severity.
+
+RULE 5: WHAT YOU CAN ALWAYS ANALYSE
+Even without version data, you may analyse:
+- Topology consistency (observed device roles and relationships)
+- Version mismatches (only if multiple explicit versions are present)
+- Platform end-of-life status (based on platform name alone, tagged [inferred])
+- Configuration inconsistencies visible in the data
+
+RULE 6: HONEST GAPS
+If critical information is missing, say so explicitly in findings:
+- "Software version not provided — bug and CVE analysis unavailable [observed]"
+- "Upgrade path cannot be recommended without software version data [observed]"
 
 Device inventory:
 ${inv}
@@ -602,31 +622,24 @@ ${inv}
 Additional context:
 ${ctx || "None provided"}
 
-Respond ONLY with a valid JSON object (no markdown, no backticks) in exactly this structure:
+First, scan the inventory and determine: does it contain explicit software version fields? Answer this internally before proceeding.
+
+Respond ONLY with a valid JSON object (no markdown, no backticks):
 {
   "risk": "CRITICAL|HIGH|MEDIUM|LOW|UNKNOWN",
   "totals": {"total": 0, "atRisk": 0, "critical": 0, "high": 0, "medium": 0},
-  "findings": ["finding 1 [observed]", "finding 2 [inferred]", "finding 3 [assumed]"],
+  "findings": ["finding [observed|inferred|assumed]"],
   "sequence": [
-    {"n": 1, "dev": "device name", "act": "action to take", "why": "reason", "confidence": "observed|inferred|assumed"}
+    {"n": 1, "dev": "device name", "act": "action", "why": "reason", "confidence": "observed|inferred|assumed"}
   ],
   "devices": [
     {
       "name": "Platform Name",
-      "ver": "version or unknown",
+      "ver": "explicit version from data or not provided",
       "role": "role or unknown",
       "risk": "CRITICAL|HIGH|MEDIUM|LOW|UNKNOWN",
-      "rec": "plain English recommendation — only based on available data",
-      "bugs": [
-        {
-          "id": "CSCxxxxxxx",
-          "title": "bug title",
-          "sev": "CRITICAL|HIGH|MEDIUM|LOW",
-          "fix": "fixed version",
-          "plain": "what this means for the engineer's network in plain English",
-          "confidence": "observed|inferred|assumed"
-        }
-      ]
+      "rec": "recommendation based only on available data",
+      "bugs": []
     }
   ]
 }`
