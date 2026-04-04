@@ -581,7 +581,20 @@ function Analyse({go}) {
           max_tokens: 4000,
           messages: [{
             role: "user",
-            content: `You are netwrkr.ai, an expert Cisco data centre network engineer. Analyse this device inventory for known software bugs, security advisories, version mismatches, and CVD compliance issues.
+            content: `You are netwrkr.ai, an expert Cisco data centre network engineer. Analyse the device inventory below.
+
+CRITICAL RULES — read carefully before analysing:
+
+1. ONLY report findings based on data explicitly present in the inventory.
+2. If software version is NOT provided for a device, do NOT assume or invent a version. Set "ver" to "unknown" and do not report any bugs or CVEs for that device.
+3. If a field is missing (version, role, etc), say so clearly — never fabricate it.
+4. Every finding must be tagged with its evidence source:
+   - "observed" = directly from the inventory data
+   - "inferred" = reasonable conclusion from observed data
+   - "assumed" = no direct evidence, clearly flagged as assumption
+5. Never report a CRITICAL or HIGH risk finding based on assumed data. Only observed or inferred data can drive high severity ratings.
+6. If the inventory lacks version data entirely, overall risk must be LOW or UNKNOWN — never CRITICAL or HIGH.
+7. Version mismatches can only be reported if multiple devices of the same type show different versions explicitly in the data.
 
 Device inventory:
 ${inv}
@@ -591,26 +604,27 @@ ${ctx || "None provided"}
 
 Respond ONLY with a valid JSON object (no markdown, no backticks) in exactly this structure:
 {
-  "risk": "CRITICAL|HIGH|MEDIUM|LOW",
+  "risk": "CRITICAL|HIGH|MEDIUM|LOW|UNKNOWN",
   "totals": {"total": 0, "atRisk": 0, "critical": 0, "high": 0, "medium": 0},
-  "findings": ["finding 1", "finding 2", "finding 3"],
+  "findings": ["finding 1 [observed]", "finding 2 [inferred]", "finding 3 [assumed]"],
   "sequence": [
-    {"n": 1, "dev": "device name", "act": "action to take", "why": "reason"}
+    {"n": 1, "dev": "device name", "act": "action to take", "why": "reason", "confidence": "observed|inferred|assumed"}
   ],
   "devices": [
     {
       "name": "Platform Name",
-      "ver": "version",
-      "role": "role",
-      "risk": "CRITICAL|HIGH|MEDIUM|LOW",
-      "rec": "plain English recommendation",
+      "ver": "version or unknown",
+      "role": "role or unknown",
+      "risk": "CRITICAL|HIGH|MEDIUM|LOW|UNKNOWN",
+      "rec": "plain English recommendation — only based on available data",
       "bugs": [
         {
           "id": "CSCxxxxxxx",
           "title": "bug title",
           "sev": "CRITICAL|HIGH|MEDIUM|LOW",
           "fix": "fixed version",
-          "plain": "what this means for the engineer's network in plain English"
+          "plain": "what this means for the engineer's network in plain English",
+          "confidence": "observed|inferred|assumed"
         }
       ]
     }
