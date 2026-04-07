@@ -550,201 +550,256 @@ function Results({data,reset}) {
 }
 
 function Analyse({go}) {
-  const [inv,setInv]=useState("");
-  const [ctx,setCtx]=useState("");
-  const [loading,setLoading]=useState(false);
-  const [step,setStep]=useState(0);
-  const [results,setResults]=useState(null);
-  const ref=useRef();
+  // screen: "paste" | "review" | "analysing" | "results"
+  const [screen,setScreen]       = useState("paste");
+  const [rawInput,setRawInput]   = useState("");
+  const [ctx,setCtx]             = useState("");
+  const [parsing,setParsing]     = useState(false);
+  const [devices,setDevices]     = useState([]); // [{name,ver,role,verMissing}]
+  const [step,setStep]           = useState(0);
+  const [results,setResults]     = useState(null);
+  const ref                      = useRef();
 
-  const run=async()=>{
-    if(!inv.trim()) return;
-    setLoading(true); setStep(0);
+const apiKey = () => import.meta.env.VITE_ANTHROPIC_API_KEY || "";
 
-    // Animate steps while Claude thinks
+  const callClaude = async (prompt, maxTokens=1000) => {
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method:"POST",
+      headers:{"Content-Type":"application/json","x-api-key":apiKey(),"anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},
+      body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:maxTokens,messages:[{role:"user",content:prompt}]})
+    });
+    const data = await res.json();
+    return data.content[0].text;
+  };
+
+  // ── STEP 1: Parse whatever the engineer pasted ──────────────────────────────
+  const parseInput = async () => {
+    if(!rawInput.trim()) return;
+    setParsing(true);
+    try {
+      const text = await callClaude(`You are a data extraction engine for a Cisco network analysis tool.
+
+Extract all network devices from the text below. For each device return:
+- name: the Cisco platform name (e.g. "Nexus 9336C-FX2", "Catalyst 9500")
+- ver: the exact software version string if explicitly present (e.g. "9.3(9)", "17.9.4") — if NOT present in the text set to ""
+- role: the device role if present (e.g. "Spine", "Leaf", "Distribution") — if not present set to ""
+
+IMPORTANT: Only extract versions that are explicitly written in the text. Do not guess or infer versions from platform names.
+
+Return ONLY a JSON array, no markdown, no explanation:
+[{"name":"...","ver":"...","role":"..."}]
+
+Text to parse:
+${rawInput}`);
+
+      const clean = text.replace(/```json|```/g,"").trim();
+      const parsed = JSON.parse(clean);
+      const withFlags = parsed.map(d=>({...d, verMissing:!d.ver.trim()}));
+      setDevices(withFlags);
+      setScreen("review");
+    } catch(e) {
+      console.error(e);
+    }
+    setParsing(false);
+  };
+
+  // ── STEP 2: Engineer edits the review table ──────────────────────────────────
+  const updateDevice = (i, field, val) => {
+    setDevices(prev => prev.map((d,idx) => idx===i ? {...d,[field]:val, verMissing:field==="ver"?!val.trim():d.verMissing} : d));
+  };
+  const removeDevice = (i) => setDevices(prev=>prev.filter((_,idx)=>idx!==i));
+
+  const missingVersions = devices.filter(d=>d.verMissing).length;
+  const canAnalyse = devices.length > 0;
+
+  // ── STEP 3: Run the real analysis ───────────────────────────────────────────
+  const runAnalysis = async () => {
+    setScreen("analysing"); setStep(0);
     let s=0;
-    const maxStep = STEPS.length - 1;
-    const stepTimer = setInterval(()=>{ if(s<maxStep){s++;setStep(s);} }, 900);
+    const timer = setInterval(()=>{ if(s<STEPS.length-1){s++;setStep(s);} },900);
+
+    const inventoryCsv = "Platform, Version, Role\n" + devices.map(d=>`${d.name}, ${d.ver||"not provided"}, ${d.role||"unknown"}`).join("\n");
 
     try {
-      const apiKey = process.env.REACT_APP_ANTHROPIC_API_KEY || import.meta.env.VITE_ANTHROPIC_API_KEY;
-      const response = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": apiKey,
-          "anthropic-version": "2023-06-01",
-          "anthropic-dangerous-direct-browser-access": "true",
-        },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-20250514",
-          max_tokens: 4000,
-          messages: [{
-            role: "user",
-            content: `You are netwrkr.ai, an expert Cisco data centre network engineer.
+      const text = await callClaude(`You are netwrkr.ai, an expert Cisco data centre network engineer.
 
-ABSOLUTE RULES — these override everything else:
+ABSOLUTE RULES:
+1. ONLY report bug findings for devices where a version is EXPLICITLY provided. If ver is "not provided" set bugs to [].
+2. NEVER infer or guess software versions from platform names or roles.
+3. Version mismatches can ONLY be reported when multiple devices of the same type show DIFFERENT explicit versions.
+4. Every finding must end with [observed], [inferred], or [assumed].
+5. [observed] = directly from the data. [inferred] = logical conclusion. [assumed] = no evidence, low confidence only.
+6. CRITICAL or HIGH severity requires explicit version evidence. No version = maximum MEDIUM risk.
+7. If any device has ver="not provided", include this finding: "Software version not provided for X device(s) — bug and CVE analysis unavailable for those devices [observed]"
 
-RULE 1: SOFTWARE VERSION
-- If a software version is explicitly present in the uploaded data, you may analyse bugs and vulnerabilities for that version.
-- If NO software version is present in the data, you MUST set "ver" to "not provided" and "bugs" to an empty array []. You MUST NOT guess, assume, or infer any version from the device name, platform type, or role. Not even as an example.
+Validated device inventory (engineer-confirmed):
+${inventoryCsv}
 
-RULE 2: BUG IDS
-- You MUST NOT cite any CSC bug ID unless you have an explicit software version to cross-reference it against.
-- If version is not provided, bugs must be [].
+Additional context: ${ctx||"None provided"}
 
-RULE 3: SEVERITY
-- CRITICAL or HIGH risk is only permitted when explicitly supported by version data present in the uploaded inventory.
-- If no version data exists, maximum overall risk is MEDIUM — and only if there are observed topology or configuration issues.
-- If no version data and no topology issues exist, overall risk is LOW.
-
-RULE 4: CONFIDENCE TAGGING
-- Every finding must end with [observed], [inferred], or [assumed].
-- [observed] = directly readable from the uploaded data.
-- [inferred] = logical conclusion from observed data, clearly reasoned.
-- [assumed] = no direct evidence — must be clearly flagged and cannot drive HIGH or CRITICAL severity.
-
-RULE 5: WHAT YOU CAN ALWAYS ANALYSE
-Even without version data, you may analyse:
-- Topology consistency (observed device roles and relationships)
-- Version mismatches (only if multiple explicit versions are present)
-- Platform end-of-life status (based on platform name alone, tagged [inferred])
-- Configuration inconsistencies visible in the data
-
-RULE 6: HONEST GAPS
-If critical information is missing, say so explicitly in findings:
-- "Software version not provided — bug and CVE analysis unavailable [observed]"
-- "Upgrade path cannot be recommended without software version data [observed]"
-
-Device inventory:
-${inv}
-
-Additional context:
-${ctx || "None provided"}
-
-First, scan the inventory and determine: does it contain explicit software version fields? Answer this internally before proceeding.
-
-Respond ONLY with a valid JSON object (no markdown, no backticks):
+Respond ONLY with valid JSON (no markdown):
 {
-  "risk": "CRITICAL|HIGH|MEDIUM|LOW|UNKNOWN",
-  "totals": {"total": 0, "atRisk": 0, "critical": 0, "high": 0, "medium": 0},
-  "findings": ["finding [observed|inferred|assumed]"],
-  "sequence": [
-    {"n": 1, "dev": "device name", "act": "action", "why": "reason", "confidence": "observed|inferred|assumed"}
-  ],
-  "devices": [
-    {
-      "name": "Platform Name",
-      "ver": "explicit version from data or not provided",
-      "role": "role or unknown",
-      "risk": "CRITICAL|HIGH|MEDIUM|LOW|UNKNOWN",
-      "rec": "recommendation based only on available data",
-      "bugs": []
-    }
-  ]
-}`
-          }]
-        })
-      });
+  "risk":"CRITICAL|HIGH|MEDIUM|LOW|UNKNOWN",
+  "totals":{"total":0,"atRisk":0,"critical":0,"high":0,"medium":0},
+  "findings":["finding [observed|inferred|assumed]"],
+  "sequence":[{"n":1,"dev":"device","act":"action","why":"reason","confidence":"observed|inferred|assumed"}],
+  "devices":[{"name":"Platform","ver":"version or not provided","role":"role","risk":"HIGH","rec":"recommendation","bugs":[{"id":"CSCxxxxxx","title":"title","sev":"HIGH","fix":"version","plain":"plain english explanation","confidence":"observed"}]}]
+}`, 4000);
 
-      const data = await response.json();
-      const text = data.content[0].text;
-      const clean = text.replace(/```json|```/g, "").trim();
+      const clean = text.replace(/```json|```/g,"").trim();
       const parsed = JSON.parse(clean);
-      clearInterval(stepTimer);
+      clearInterval(timer);
       setStep(STEPS.length);
-      setLoading(false);
       setResults(parsed);
-    } catch(err) {
-      clearInterval(stepTimer);
-      setLoading(false);
+      setScreen("results");
+    } catch(e) {
+      clearInterval(timer);
       setResults(MOCK);
-      console.error("Claude API error:", err);
+      setScreen("results");
+      console.error(e);
     }
   };
 
-  const handleFile=e=>{const f=e.target.files[0];if(f){const r=new FileReader();r.onload=ev=>setInv(ev.target.result);r.readAsText(f);}};
+  const reset = () => { setScreen("paste"); setRawInput(""); setDevices([]); setCtx(""); setResults(null); setStep(0); };
 
-  const input_style={fontFamily:mono,fontSize:13,background:C.hi,border:`1px solid ${C.border}`,color:C.text,borderRadius:8,padding:"11px 13px",width:"100%",resize:"vertical",outline:"none",lineHeight:1.7};
+  const inp = {fontFamily:mono,fontSize:13,background:C.hi,border:`1px solid ${C.border}`,color:C.text,borderRadius:8,padding:"11px 13px",width:"100%",outline:"none",lineHeight:1.7};
 
   return (
     <div style={{maxWidth:1100,margin:"0 auto",padding:"34px 36px"}}>
-      {loading&&<Overlay step={step}/>}
-      {!results ? (
+      {screen==="analysing" && <Overlay step={step}/>}
+
+      {/* ── STEP 1: PASTE ─────────────────────────────────────────────────── */}
+      {screen==="paste" && (
         <div style={{display:"grid",gridTemplateColumns:"1fr 290px",gap:20,alignItems:"start"}}>
           <div>
             <div style={{marginBottom:20}}>
-              <div style={{fontFamily:mono,fontSize:11,color:C.amber,letterSpacing:"0.12em",textTransform:"uppercase",marginBottom:5}}>// analyze.sh</div>
-              <h1 style={{fontSize:24,fontWeight:300,letterSpacing:"-0.03em",marginBottom:4}}>Analyze your fabric</h1>
-              <p style={{fontSize:13,color:C.dim}}>Upload or paste your device inventory. Platform name and version is all we need.</p>
+              <div style={{fontFamily:mono,fontSize:11,color:C.amber,letterSpacing:"0.12em",textTransform:"uppercase",marginBottom:5}}>// step 1 of 3</div>
+              <h1 style={{fontSize:24,fontWeight:300,letterSpacing:"-0.03em",marginBottom:4}}>Paste your inventory</h1>
+              <p style={{fontSize:13,color:C.dim,lineHeight:1.7}}>Paste anything — a CSV, a spreadsheet column, show version output, or just type your devices. We'll extract what we need and ask you to confirm before running.</p>
             </div>
 
-            <div onDragOver={e=>e.preventDefault()} onDrop={e=>{e.preventDefault();const f=e.dataTransfer.files[0];if(f){const r=new FileReader();r.onload=ev=>setInv(ev.target.result);r.readAsText(f);}}}
-              onClick={()=>!inv&&ref.current?.click()}
-              style={{border:`1px dashed ${C.border}`,borderRadius:10,padding:inv?0:"26px",marginBottom:11,cursor:inv?"default":"pointer"}}>
-              {inv ? (
+            {/* Drop zone */}
+            <div onDragOver={e=>e.preventDefault()} onDrop={e=>{e.preventDefault();const f=e.dataTransfer.files[0];if(f){const r=new FileReader();r.onload=ev=>setRawInput(ev.target.result);r.readAsText(f);}}}
+              onClick={()=>!rawInput&&ref.current?.click()}
+              style={{border:`1px dashed ${rawInput?C.amber:C.border}`,borderRadius:10,padding:rawInput?0:"26px",marginBottom:11,cursor:rawInput?"default":"pointer",transition:"border-color 0.2s"}}>
+              {rawInput ? (
                 <div style={{position:"relative"}}>
-                  <textarea value={inv} onChange={e=>setInv(e.target.value)} rows={11} style={input_style}/>
-                  <button onClick={()=>setInv("")} style={{position:"absolute",top:9,right:9,background:C.surface,border:`1px solid ${C.border}`,color:C.muted,fontFamily:mono,fontSize:11,padding:"3px 9px",borderRadius:4,cursor:"pointer"}}>clear</button>
+                  <textarea value={rawInput} onChange={e=>setRawInput(e.target.value)} rows={12} style={{...inp,borderRadius:10,resize:"vertical"}}/>
+                  <button onClick={()=>setRawInput("")} style={{position:"absolute",top:9,right:9,background:C.surface,border:`1px solid ${C.border}`,color:C.muted,fontFamily:mono,fontSize:11,padding:"3px 9px",borderRadius:4,cursor:"pointer"}}>clear</button>
                 </div>
               ) : (
                 <div style={{textAlign:"center"}}>
-                  <div style={{fontSize:26,marginBottom:7}}>📋</div>
-                  <div style={{fontFamily:mono,fontSize:13,color:C.dim,marginBottom:3}}>drop_csv_here() or click to upload</div>
-                  <div style={{fontFamily:mono,fontSize:11,color:C.muted}}>// platform, version, role — no hostnames, no IPs</div>
+                  <div style={{fontSize:32,marginBottom:10}}>📋</div>
+                  <div style={{fontFamily:mono,fontSize:14,color:C.dim,marginBottom:6}}>paste_anything()</div>
+                  <div style={{fontFamily:mono,fontSize:11,color:C.muted,marginBottom:4}}>// CSV · spreadsheet · show version · free text</div>
+                  <div style={{fontFamily:mono,fontSize:11,color:C.muted}}>// or drop a file here</div>
                 </div>
               )}
-              <input ref={ref} type="file" accept=".csv,.txt" onChange={handleFile} style={{display:"none"}}/>
+              <input ref={ref} type="file" accept=".csv,.txt,.log" onChange={e=>{const f=e.target.files[0];if(f){const r=new FileReader();r.onload=ev=>setRawInput(ev.target.result);r.readAsText(f);}}} style={{display:"none"}}/>
             </div>
 
             <div style={{display:"flex",gap:9,marginBottom:11}}>
-              <button onClick={()=>setInv(SAMPLE)} style={{flex:1,background:"none",border:`1px solid ${C.border}`,color:C.dim,fontFamily:mono,fontSize:12,padding:"8px",borderRadius:6,cursor:"pointer"}}>load_sample()</button>
+              <button onClick={()=>setRawInput(SAMPLE)} style={{flex:1,background:"none",border:`1px solid ${C.border}`,color:C.dim,fontFamily:mono,fontSize:12,padding:"8px",borderRadius:6,cursor:"pointer"}}>load_sample()</button>
               <button onClick={()=>ref.current?.click()} style={{flex:1,background:"none",border:`1px solid ${C.border}`,color:C.dim,fontFamily:mono,fontSize:12,padding:"8px",borderRadius:6,cursor:"pointer"}}>upload_file()</button>
             </div>
 
-            <div style={{marginBottom:13}}>
+            <div style={{marginBottom:14}}>
               <label style={{fontFamily:mono,fontSize:11,color:C.muted,display:"block",marginBottom:6,letterSpacing:"0.08em"}}>CONTEXT <span style={{color:C.faint}}> // optional — improves accuracy</span></label>
-              <textarea value={ctx} onChange={e=>setCtx(e.target.value)} rows={3} placeholder="e.g. VXLAN/EVPN fabric, vPC pairs, maintenance window Saturday 02:00 UTC" style={{...input_style,resize:"none"}}/>
+              <textarea value={ctx} onChange={e=>setCtx(e.target.value)} rows={2} placeholder="e.g. VXLAN/EVPN fabric, vPC pairs on leaf layer, maintenance window Saturday 02:00 UTC" style={{...inp,resize:"none"}}/>
             </div>
 
-            <button onClick={run} disabled={!inv.trim()} style={{background:inv.trim()?C.amber:"#5A4800",color:"#000",border:"none",borderRadius:8,fontFamily:mono,fontWeight:700,fontSize:14,padding:"13px",cursor:inv.trim()?"pointer":"not-allowed",width:"100%",opacity:inv.trim()?1:.5}}>
-              run_analysis()
+            <button onClick={parseInput} disabled={!rawInput.trim()||parsing}
+              style={{background:rawInput.trim()&&!parsing?C.amber:"#5A4800",color:"#000",border:"none",borderRadius:8,fontFamily:mono,fontWeight:700,fontSize:14,padding:"13px",cursor:rawInput.trim()&&!parsing?"pointer":"not-allowed",width:"100%",opacity:rawInput.trim()&&!parsing?1:.5,display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
+              {parsing
+                ? <><span style={{width:14,height:14,border:"2px solid #00000033",borderTopColor:"#000",borderRadius:"50%",animation:"spin .7s linear infinite"}}/> extracting_devices()</>
+                : "extract_devices() →"}
             </button>
-            <div style={{fontFamily:mono,fontSize:11,color:C.muted,textAlign:"center",marginTop:7}}>// 3 free analyses remaining this month</div>
+            <div style={{fontFamily:mono,fontSize:11,color:C.muted,textAlign:"center",marginTop:7}}>// we'll show you what we found before running</div>
           </div>
 
+          {/* Sidebar */}
           <div style={{display:"flex",flexDirection:"column",gap:11}}>
-            <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:10,overflow:"hidden"}}>
-              <MacBar label="format.csv"/>
-              <div style={{padding:"12px 14px",fontFamily:mono,fontSize:12,lineHeight:1.85}}>
-                <div style={{color:C.muted}}># Required columns:</div>
-                <div style={{color:C.amber}}>Platform, Version, Role</div>
-                <div style={{color:C.muted,marginTop:6}}># Example:</div>
-                <div style={{color:C.dim}}>Nexus 9336C-FX2, 10.2(3), Spine</div>
-                <div style={{color:C.dim}}>Nexus 93180YC-EX, 9.3(8), Leaf</div>
-                <div style={{marginTop:8,paddingTop:8,borderTop:`1px solid ${C.border}`,color:C.muted,fontSize:11}}>// no hostnames or IPs needed</div>
-              </div>
-            </div>
-            <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:10,padding:"13px 15px"}}>
-              <div style={{fontFamily:mono,fontSize:11,color:C.amber,letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:9}}>// what we check</div>
-              {[["NX-OS bugs","Nexus 9K, 7K, 5K, 3K"],["IOS-XE defects","Catalyst 9K, ASR, ISR"],["Security advisories","CVEs and PSIRTs"],["Version mismatches","vPC pairs, redundancy"],["EoL warnings","Hardware + software"],["Upgrade paths","Sequenced remediation"]].map(([t,s])=>(
+            <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:10,padding:"14px 16px"}}>
+              <div style={{fontFamily:mono,fontSize:11,color:C.amber,marginBottom:10,letterSpacing:"0.1em",textTransform:"uppercase"}}>// works with anything</div>
+              {[
+                ["CSV file","Platform, Version, Role columns"],
+                ["Spreadsheet paste","Any column order"],
+                ["show version output","Cisco CLI output"],
+                ["Free text","\"4 spines on 10.2(4)\""],
+                ["DCIM export","Most formats supported"],
+              ].map(([t,s])=>(
                 <div key={t} style={{display:"flex",gap:8,marginBottom:8}}>
                   <span style={{color:C.amber,flexShrink:0,fontFamily:mono,fontSize:11}}>→</span>
-                  <div>
-                    <div style={{fontSize:13,fontWeight:500}}>{t}</div>
-                    <div style={{fontSize:11,color:C.muted}}>{s}</div>
-                  </div>
+                  <div><div style={{fontSize:13,fontWeight:500}}>{t}</div><div style={{fontSize:11,color:C.muted}}>{s}</div></div>
                 </div>
               ))}
             </div>
             <div style={{background:C.greenG,border:`1px solid ${C.green}30`,borderRadius:10,padding:"11px 13px"}}>
               <div style={{fontFamily:mono,fontSize:11,color:C.green,marginBottom:5}}>// privacy</div>
-              <div style={{fontSize:12,color:C.dim,lineHeight:1.7}}>We only see platform names and versions. No hostnames, IPs, or topology. Results are never stored.</div>
+              <div style={{fontSize:12,color:C.dim,lineHeight:1.7}}>No hostnames, IPs, or credentials needed. Results are never stored.</div>
             </div>
           </div>
         </div>
-      ) : (
-        <Results data={results} reset={()=>{setResults(null);setInv("");}}/>
+      )}
+
+      {/* ── STEP 2: REVIEW ────────────────────────────────────────────────── */}
+      {screen==="review" && (
+        <div style={{animation:"fadeUp 0.3s ease"}}>
+          <div style={{marginBottom:22}}>
+            <div style={{fontFamily:mono,fontSize:11,color:C.amber,letterSpacing:"0.12em",textTransform:"uppercase",marginBottom:5}}>// step 2 of 3</div>
+            <h1 style={{fontSize:24,fontWeight:300,letterSpacing:"-0.03em",marginBottom:4}}>Confirm your devices</h1>
+            <p style={{fontSize:13,color:C.dim,lineHeight:1.7}}>We found {devices.length} device{devices.length!==1?"s":""}. Check the details are correct — especially software versions — then run the analysis.</p>
+          </div>
+
+          {missingVersions > 0 && (
+            <div style={{background:"#2A1400",border:`1px solid ${C.orange}44`,borderRadius:8,padding:"12px 16px",marginBottom:16,display:"flex",gap:12,alignItems:"flex-start"}}>
+              <span style={{color:C.orange,fontSize:16,flexShrink:0}}>⚠</span>
+              <div>
+                <div style={{fontFamily:mono,fontSize:12,color:C.orange,marginBottom:3}}>// {missingVersions} device{missingVersions!==1?"s":""} missing version</div>
+                <div style={{fontSize:13,color:C.dim,lineHeight:1.6}}>Bug and CVE analysis requires software version. Add versions below or run without them — missing versions will be clearly flagged in results.</div>
+              </div>
+            </div>
+          )}
+
+          {/* Device table */}
+          <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:10,overflow:"hidden",marginBottom:16}}>
+            <div style={{display:"grid",gridTemplateColumns:"2fr 1.5fr 1fr 32px",gap:0,background:C.hi,padding:"10px 16px",borderBottom:`1px solid ${C.border}`}}>
+              {["PLATFORM","VERSION","ROLE",""].map(h=><div key={h} style={{fontFamily:mono,fontSize:10,color:C.muted,letterSpacing:"0.1em"}}>{h}</div>)}
+            </div>
+            {devices.map((d,i)=>(
+              <div key={i} style={{display:"grid",gridTemplateColumns:"2fr 1.5fr 1fr 32px",gap:0,padding:"10px 16px",borderBottom:`1px solid ${C.border}`,alignItems:"center",background:d.verMissing?"#2A140022":"transparent"}}>
+                <div style={{fontFamily:mono,fontSize:13,color:C.text,paddingRight:8}}>{d.name}</div>
+                <div style={{paddingRight:8}}>
+                  <input value={d.ver} onChange={e=>updateDevice(i,"ver",e.target.value)} placeholder="e.g. 9.3(9)"
+                    style={{background:d.verMissing?C.hi:"transparent",border:`1px solid ${d.verMissing?C.orange:C.border}`,color:d.verMissing?C.orange:C.text,fontFamily:mono,fontSize:12,padding:"4px 8px",borderRadius:4,outline:"none",width:"100%"}}/>
+                </div>
+                <div style={{paddingRight:8}}>
+                  <input value={d.role} onChange={e=>updateDevice(i,"role",e.target.value)} placeholder="e.g. Leaf"
+                    style={{background:"transparent",border:`1px solid ${C.border}`,color:C.dim,fontFamily:mono,fontSize:12,padding:"4px 8px",borderRadius:4,outline:"none",width:"100%"}}/>
+                </div>
+                <button onClick={()=>removeDevice(i)} style={{background:"none",border:"none",color:C.muted,cursor:"pointer",fontSize:14,padding:"2px"}}>✕</button>
+              </div>
+            ))}
+          </div>
+
+          <div style={{display:"flex",gap:10}}>
+            <button onClick={()=>setScreen("paste")} style={{background:"none",border:`1px solid ${C.border}`,color:C.dim,fontFamily:mono,fontSize:13,padding:"12px 20px",borderRadius:8,cursor:"pointer"}}>
+              ← back()
+            </button>
+            <button onClick={runAnalysis} disabled={!canAnalyse}
+              style={{flex:1,background:canAnalyse?C.amber:"#5A4800",color:"#000",border:"none",borderRadius:8,fontFamily:mono,fontWeight:700,fontSize:14,padding:"13px",cursor:canAnalyse?"pointer":"not-allowed",opacity:canAnalyse?1:.5}}>
+              run_analysis() →
+            </button>
+          </div>
+          <div style={{fontFamily:mono,fontSize:11,color:C.muted,textAlign:"center",marginTop:7}}>
+            {missingVersions>0 ? `// ${missingVersions} device${missingVersions!==1?"s":""} will be analysed for topology issues only` : "// all devices have version data — full analysis enabled"}
+          </div>
+        </div>
+      )}
+
+      {/* ── STEP 3: RESULTS ───────────────────────────────────────────────── */}
+      {screen==="results" && results && (
+        <Results data={results} reset={reset}/>
       )}
     </div>
   );
