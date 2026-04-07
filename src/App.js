@@ -597,7 +597,7 @@ Text to parse:
 ${rawInput}`);
 
       const clean = text.replace(/```json|```/g,"").trim();
-      const parsed = JSON.parse(clean); console.log("Claude response:", JSON.stringify(parsed, null, 2));
+      const parsed = JSON.parse(clean);
       const withFlags = parsed.map(d=>({...d, verMissing:!d.ver.trim()}));
       setDevices(withFlags);
       setScreen("review");
@@ -650,14 +650,14 @@ Respond ONLY with valid JSON (no markdown):
   },
   "netwrkrIntel": {
     "hasIntel": true,
-    "summary": "brief summary",
+    "summary": "brief summary of intel available",
     "items": [{"platform":"","version":"","title":"","detail":"","id":"","verified":false,"sev":"MEDIUM"}]
   },
   "devices": [{"name":"","ver":"","role":"","fabricRisk":"LOW","intelRisk":"LOW","rec":""}]
-}
+}`, 4000);
 
       const clean = text.replace(/```json|```/g,"").trim();
-      const parsed = JSON.parse(clean); console.log("Claude response:", JSON.stringify(parsed, null, 2));
+      const parsed = JSON.parse(clean);
       clearInterval(timer);
       setStep(STEPS.length);
       setResults(parsed);
