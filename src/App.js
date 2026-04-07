@@ -1,4 +1,4 @@
-// v1.5 — visual refinements
+// v1.6 — APIC visibility + wording fix
 import { useState, useEffect, useRef } from "react";
 
 const C = {
