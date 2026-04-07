@@ -509,6 +509,9 @@ function Results({data,reset}) {
                           <div style={{flex:1}}>
                             <div style={{display:"flex",alignItems:"center",gap:7,flexWrap:"wrap",marginBottom:3}}>
                               <span style={{fontFamily:mono,fontSize:12,color:C.amber,fontWeight:600}}>{b.id}</span>
+                              {b.id&&<span style={{fontFamily:mono,fontSize:10,color:C.muted,background:C.faint,padding:"1px 6px",borderRadius:3}}>{b.id}</span>}
+                              {b.verified===false&&<span style={{fontFamily:mono,fontSize:10,color:C.orange,background:"#2A140088",border:`1px solid ${C.orange}44`,padding:"1px 6px",borderRadius:3}}>⚠ unverified — upgrade to enterprise for confirmed CSC data</span>}
+                              {b.verified===true&&<span style={{fontFamily:mono,fontSize:10,color:C.green,background:"#0A2A1088",border:`1px solid ${C.green}44`,padding:"1px 6px",borderRadius:3}}>✓ verified</span>}
                               {b.cve&&<span style={{fontFamily:mono,fontSize:10,color:C.muted,background:C.faint,padding:"1px 6px",borderRadius:3}}>{b.cve}</span>}
                               {b.cvss&&<span style={{fontFamily:mono,fontSize:10,color:b.cvss>=8?C.red:C.orange}}>CVSS {b.cvss}</span>}
                             </div>
