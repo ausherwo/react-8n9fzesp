@@ -597,7 +597,7 @@ Text to parse:
 ${rawInput}`);
 
       const clean = text.replace(/```json|```/g,"").trim();
-      const parsed = JSON.parse(clean);
+      const parsed = JSON.parse(clean); console.log("Claude response:", JSON.stringify(parsed, null, 2));
       const withFlags = parsed.map(d=>({...d, verMissing:!d.ver.trim()}));
       setDevices(withFlags);
       setScreen("review");
