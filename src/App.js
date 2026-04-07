@@ -547,7 +547,7 @@ function Analyse({go}) {
   const [results,setResults]     = useState(null);
   const ref                      = useRef();
 
-  const apiKey = () => process.env.REACT_APP_ANTHROPIC_API_KEY || "";
+  const apiKey = () => import.meta.env.VITE_ANTHROPIC_API_KEY || "";
 
   const callClaude = async (prompt, maxTokens=1000) => {
     const res = await fetch("https://api.anthropic.com/v1/messages", {
