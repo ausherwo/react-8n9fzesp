@@ -1,4 +1,4 @@
-// v1.4 — two stream JSON fix
+// v1.5 — visual refinements
 import { useState, useEffect, useRef } from "react";
 
 const C = {
@@ -481,12 +481,12 @@ function Results({data,reset}) {
             </div>
             <span style={{fontFamily:mono,fontSize:10,color:C.orange,background:"#2A140088",border:`1px solid ${C.orange}44`,padding:"2px 8px",borderRadius:3}}>⚠ unverified</span>
           </div>
-          <div style={{fontSize:12,color:C.muted,marginBottom:14,lineHeight:1.6}}>{ni.summary} — Based on AI software knowledge. <span style={{color:C.amber}}>Upgrade to enterprise</span> for verified CSC data from the live Cisco Bug API.</div>
+          <div style={{fontSize:12,color:C.muted,marginBottom:14,lineHeight:1.6}}>Potential software issues inferred from known version history. <span style={{color:C.amber}}>Upgrade to enterprise</span> for verified CSC data from the live Cisco Bug API.</div>
           <div style={{display:"flex",flexDirection:"column",gap:8}}>
             {ni.items.map((item,i)=>{
               const s=SEV[item.sev]||SEV.LOW;
               return (
-                <div key={i} style={{border:`1px solid ${s.bd}`,borderRadius:8,padding:"11px 14px",background:`${s.bg}66`}}>
+                <div key={i} style={{border:`1px solid ${C.border}`,borderRadius:8,padding:"11px 14px",background:C.hi,opacity:0.85}}>
                   <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:10,marginBottom:6}}>
                     <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
                       <Badge level={item.sev} sm/>
