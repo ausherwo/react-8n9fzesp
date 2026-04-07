@@ -1,4 +1,4 @@
-// v1.1 — calibrated risk scoring
+
 import { useState, useEffect, useRef } from "react";
 
 const C = {
