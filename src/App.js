@@ -1069,4 +1069,4 @@ export default function App() {
       </div>
     </div>
   );
-}
+}// v1.2 — mismatch detection + netwrkr intel fix
