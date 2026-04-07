@@ -1,4 +1,4 @@
-// v1.3 — mismatch detection + netwrkr intel fix
+// v1.4 — two stream JSON fix
 import { useState, useEffect, useRef } from "react";
 
 const C = {
@@ -641,12 +641,20 @@ Additional context: ${ctx||"None provided"}
 
 Respond ONLY with valid JSON (no markdown):
 {
-  "risk":"CRITICAL|HIGH|MEDIUM|LOW|UNKNOWN",
-  "totals":{"total":0,"atRisk":0,"critical":0,"high":0,"medium":0},
-  "findings":["finding [observed|inferred|assumed]"],
-  "sequence":[{"n":1,"dev":"device","act":"action","why":"reason","confidence":"observed|inferred|assumed"}],
-  "devices":[{"name":"Platform","ver":"version or not provided","role":"role","risk":"HIGH","rec":"recommendation","bugs":[{"id":"CSCxxxxxx","title":"title","sev":"HIGH","fix":"version","plain":"plain english explanation","confidence":"observed"}]}]
-}`, 4000);
+  "fabricAnalysis": {
+    "risk": "LOW|MEDIUM|HIGH",
+    "consistent": true,
+    "mismatches": [],
+    "missingVersions": [],
+    "findings": ["finding [observed]"]
+  },
+  "netwrkrIntel": {
+    "hasIntel": true,
+    "summary": "brief summary",
+    "items": [{"platform":"","version":"","title":"","detail":"","id":"","verified":false,"sev":"MEDIUM"}]
+  },
+  "devices": [{"name":"","ver":"","role":"","fabricRisk":"LOW","intelRisk":"LOW","rec":""}]
+}
 
       const clean = text.replace(/```json|```/g,"").trim();
       const parsed = JSON.parse(clean); console.log("Claude response:", JSON.stringify(parsed, null, 2));
