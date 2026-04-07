@@ -1,3 +1,4 @@
+// v1.3 — mismatch detection + netwrkr intel fix
 import { useState, useEffect, useRef } from "react";
 
 const C = {
@@ -1069,4 +1070,4 @@ export default function App() {
       </div>
     </div>
   );
-}// v1.2 — mismatch detection + netwrkr intel fix
+}
