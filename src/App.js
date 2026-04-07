@@ -649,7 +649,7 @@ Respond ONLY with valid JSON (no markdown):
 }`, 4000);
 
       const clean = text.replace(/```json|```/g,"").trim();
-      const parsed = JSON.parse(clean);
+      const parsed = JSON.parse(clean); console.log("Claude response:", JSON.stringify(parsed, null, 2));
       clearInterval(timer);
       setStep(STEPS.length);
       setResults(parsed);
