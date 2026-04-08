@@ -1,4 +1,4 @@
-// v1.7 — hierarchy + priority assessment
+// v1.8 — priority rendering + tier sort + Tier4 cap
 import { useState, useEffect, useRef } from "react";
 
 const C = {
@@ -667,19 +667,26 @@ Additional context: ${ctx||"None provided"}
 
 Respond ONLY with valid JSON (no markdown):
 {
+  "priorityAssessment": {
+    "items": [
+      {"priority": "P1", "title": "title", "reason": "one line reason", "devices": ["device names"]},
+      {"priority": "P2", "title": "title", "reason": "one line reason", "devices": ["device names"]},
+      {"priority": "P3", "title": "title", "reason": "one line reason", "devices": ["device names"]}
+    ]
+  },
   "fabricAnalysis": {
     "risk": "LOW|MEDIUM|HIGH",
-    "consistent": true,
-    "mismatches": [],
+    "consistent": false,
+    "mismatches": ["Platform: version1 vs version2 — description [observed]"],
     "missingVersions": [],
-    "findings": ["finding [observed]"]
+    "findings": ["finding [observed|inferred]"]
   },
   "netwrkrIntel": {
     "hasIntel": true,
     "summary": "brief summary of intel available",
     "items": [{"platform":"","version":"","title":"","detail":"","id":"","verified":false,"sev":"MEDIUM"}]
   },
-  "devices": [{"name":"","ver":"","role":"","fabricRisk":"LOW","intelRisk":"LOW","rec":""}]
+  "devices": [{"name":"","ver":"","role":"","tier":1,"fabricRisk":"LOW","intelRisk":"LOW","rec":""}]
 }`, 4000);
 
       const clean = text.replace(/```json|```/g,"").trim();
