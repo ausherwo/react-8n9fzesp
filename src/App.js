@@ -1,4 +1,4 @@
-// v1.8 — priority rendering + tier sort + Tier4 cap
+// v1.9 — priority wording + APIC sort fix
 import { useState, useEffect, useRef } from "react";
 
 const C = {
