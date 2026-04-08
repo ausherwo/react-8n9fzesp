@@ -1,4 +1,4 @@
-// v2.0 — confidence-calibrated wording throughout
+// v2.1 — real Cisco advisory API integration
 import { useState, useEffect, useRef } from "react";
 
 const C = {
@@ -641,12 +641,42 @@ ${rawInput}`);
   const missingVersions = devices.filter(d=>d.verMissing).length;
   const canAnalyse = devices.length > 0;
 
+  const fetchAdvisories = async (devices) => {
+    const results = {};
+    await Promise.all(devices.map(async (d) => {
+      if (!d.ver || d.ver === "not provided") return;
+      try {
+        const res = await fetch("/api/advisories", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ platform: d.name, version: d.ver, impact: "" })
+        });
+        const data = await res.json();
+        if (data.advisories?.length > 0) {
+          results[`${d.name}__${d.ver}`] = data.advisories;
+        }
+      } catch(e) {
+        console.error("Advisory fetch failed for", d.name, e);
+      }
+    }));
+    return results;
+  };
+
   const runAnalysis = async () => {
     setScreen("analysing"); setStep(0);
     let s=0;
     const timer = setInterval(()=>{ if(s<STEPS.length-1){s++;setStep(s);} },900);
 
     const inventoryCsv = "Platform, Version, Role\n" + devices.map(d=>`${d.name}, ${d.ver||"not provided"}, ${d.role||"unknown"}`).join("\n");
+
+    // Fetch real Cisco advisories for each device
+    const advisoryData = await fetchAdvisories(devices);
+    const advisorySummary = Object.entries(advisoryData).map(([key, advisories]) => {
+      const [platform, version] = key.split("__");
+      const high = advisories.filter(a => a.impact === "High");
+      const med = advisories.filter(a => a.impact === "Medium");
+      return `${platform} v${version}: ${advisories.length} advisories (${high.length} High, ${med.length} Medium). Top issues: ${advisories.slice(0,3).map(a => `${a.id} — ${a.title} [fixed in ${a.firstFixed}]`).join("; ")}`;
+    }).join("\n") || "No Cisco advisory data retrieved.";
 
     try {
       const text = await callClaude(`You are netwrkr.ai, an expert Cisco data centre network engineer.
@@ -664,6 +694,11 @@ Validated device inventory (engineer-confirmed):
 ${inventoryCsv}
 
 Additional context: ${ctx||"None provided"}
+
+VERIFIED CISCO SECURITY ADVISORIES (real data from Cisco Security Advisory API):
+${advisorySummary}
+
+Use the above verified advisory data to populate netwrkrIntel items where available. These are REAL verified advisories — set verified: true and use the real advisory ID. If no advisory data was retrieved for a platform, use your training knowledge but set verified: false.
 
 Respond ONLY with valid JSON (no markdown):
 {
