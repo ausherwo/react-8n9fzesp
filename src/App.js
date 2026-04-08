@@ -1,4 +1,4 @@
-// v1.9 — priority wording + APIC sort fix
+// v2.0 — confidence-calibrated wording throughout
 import { useState, useEffect, useRef } from "react";
 
 const C = {
