@@ -1,4 +1,4 @@
-// v2.2 — fix border leaf tier + prevent device hallucination
+// v2.3 — fix controller fabricRisk calibration
 import { useState, useEffect, useRef } from "react";
 
 const C = {
@@ -692,6 +692,7 @@ ABSOLUTE RULES:
 11. Border Leaf devices must have intelRisk "HIGH" minimum — they handle external routing, BGP adjacency, and WAN-facing traffic. Do not cap Border Leaf at MEDIUM.
 12. Tier 4 devices (Distribution, Firewall, Catalyst, Firepower) must never exceed intelRisk "MEDIUM".
 13. APIC controllers always appear first in the devices array, before Spines.
+14. Controllers (APIC, DNAC, NSO) must have fabricRisk "LOW" unless there is a version mismatch between the controllers themselves. A version mismatch elsewhere in the fabric (e.g. spine vs leaf) does not elevate controller fabricRisk.
 
 INFRASTRUCTURE TIER GUIDE:
 - Tier 1: Controllers — APIC, DNAC, NSO (always first, shapes entire upgrade path)
