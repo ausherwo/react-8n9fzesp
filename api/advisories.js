@@ -1,3 +1,4 @@
+// v1.1 — apix domain fix
 // api/advisories.js
 // Vercel serverless function — Cisco PSIRT openVuln API with OAuth
 // v1.1 — updated PSIRT base URL from api.cisco.com to apix.cisco.com (migration required post-March 2023)
