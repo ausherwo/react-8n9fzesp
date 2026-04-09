@@ -1,7 +1,7 @@
 // api/advisories.js
 // Vercel serverless function — Cisco PSIRT openVuln API with OAuth
 
-const CISCO_TOKEN_URL = "https://cloudsso.cisco.com/as/token.oauth2";
+const CISCO_TOKEN_URL = "https://id.cisco.com/oauth2/default/v1/token";
 const CISCO_PSIRT_BASE = "https://api.cisco.com/security/advisories";
 
 // Map platform names to Cisco product families for PSIRT API queries
