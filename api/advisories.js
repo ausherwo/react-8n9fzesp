@@ -1,8 +1,9 @@
 // api/advisories.js
 // Vercel serverless function — Cisco PSIRT openVuln API with OAuth
+// v1.1 — updated PSIRT base URL from api.cisco.com to apix.cisco.com (migration required post-March 2023)
 
 const CISCO_TOKEN_URL = "https://id.cisco.com/oauth2/default/v1/token";
-const CISCO_PSIRT_BASE = "https://api.cisco.com/security/advisories";
+const CISCO_PSIRT_BASE = "https://apix.cisco.com/security/advisories"; // ← FIXED: was api.cisco.com
 
 // Map platform names to Cisco product families for PSIRT API queries
 function getProductQuery(platformName) {
