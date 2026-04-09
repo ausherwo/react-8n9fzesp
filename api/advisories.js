@@ -1,26 +1,50 @@
-// v1.1 — apix domain fix
 // api/advisories.js
 // Vercel serverless function — Cisco PSIRT openVuln API with OAuth
-// v1.1 — updated PSIRT base URL from api.cisco.com to apix.cisco.com (migration required post-March 2023)
+// v1.2 — per-platform endpoint routing (NX-OS, IOS-XE, FTD, APIC)
 
 const CISCO_TOKEN_URL = "https://id.cisco.com/oauth2/default/v1/token";
-const CISCO_PSIRT_BASE = "https://apix.cisco.com/security/advisories"; // ← FIXED: was api.cisco.com
+const CISCO_PSIRT_BASE = "https://apix.cisco.com/security/advisories";
 
-// Map platform names to Cisco product families for PSIRT API queries
-function getProductQuery(platformName) {
+// Map platform names to { family, endpoint } for correct PSIRT API routing
+function getPlatformConfig(platformName) {
   if (!platformName) return null;
   const upper = platformName.toUpperCase();
-  if (upper.includes("NEXUS 93") || upper.includes("NEXUS 92") || upper.includes("NEXUS 9")) return "NX-OS";
-  if (upper.includes("NEXUS 7")) return "NX-OS";
-  if (upper.includes("NEXUS 5")) return "NX-OS";
-  if (upper.includes("NEXUS 3")) return "NX-OS";
-  if (upper.includes("CATALYST 9")) return "IOS XE";
-  if (upper.includes("CATALYST 6")) return "IOS";
-  if (upper.includes("ASR")) return "IOS XE";
-  if (upper.includes("ISR")) return "IOS XE";
-  if (upper.includes("FIREPOWER") || upper.includes("FTD")) return "Firepower";
-  if (upper.includes("APIC")) return "APIC";
-  if (upper.includes("MDS")) return "NX-OS";
+
+  // NX-OS platforms — Nexus switches and MDS
+  if (
+    upper.includes("NEXUS 9") ||
+    upper.includes("NEXUS 7") ||
+    upper.includes("NEXUS 5") ||
+    upper.includes("NEXUS 3") ||
+    upper.includes("MDS")
+  ) {
+    return { family: "NX-OS", endpoint: "nxos" };
+  }
+
+  // IOS-XE platforms — Catalyst 9k, ASR, ISR
+  if (
+    upper.includes("CATALYST 9") ||
+    upper.includes("ASR") ||
+    upper.includes("ISR")
+  ) {
+    return { family: "IOS XE", endpoint: "iosxe" };
+  }
+
+  // Classic IOS — Catalyst 6k and older
+  if (upper.includes("CATALYST 6")) {
+    return { family: "IOS", endpoint: "ios" };
+  }
+
+  // Firepower / FTD
+  if (upper.includes("FIREPOWER") || upper.includes("FTD")) {
+    return { family: "FTD", endpoint: "ftd" };
+  }
+
+  // APIC — use product name search as no dedicated version endpoint
+  if (upper.includes("APIC")) {
+    return { family: "APIC", endpoint: "product" };
+  }
+
   return null;
 }
 
@@ -52,8 +76,17 @@ async function getAccessToken() {
   return data.access_token;
 }
 
-async function fetchAdvisories(token, version) {
-  const url = `${CISCO_PSIRT_BASE}/ios?version=${encodeURIComponent(version)}`;
+async function fetchAdvisories(token, platformConfig, version) {
+  let url;
+
+  if (platformConfig.endpoint === "product") {
+    // APIC — query by product name, no version endpoint available
+    url = `${CISCO_PSIRT_BASE}/product?product=${encodeURIComponent("Cisco Application Policy Infrastructure Controller")}`;
+  } else {
+    // All others — query by version using platform-specific endpoint
+    url = `${CISCO_PSIRT_BASE}/${platformConfig.endpoint}?version=${encodeURIComponent(version)}`;
+  }
+
   const response = await fetch(url, {
     headers: {
       "Authorization": `Bearer ${token}`,
@@ -85,14 +118,18 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: "platform and version are required" });
   }
 
-  const productQuery = getProductQuery(platform);
-  if (!productQuery) {
-    return res.status(200).json({ advisories: [], message: `No product mapping for ${platform}` });
+  const platformConfig = getPlatformConfig(platform);
+  if (!platformConfig) {
+    return res.status(200).json({
+      advisories: [],
+      verified: false,
+      message: `No platform mapping for ${platform}`
+    });
   }
 
   try {
     const token = await getAccessToken();
-    const raw = await fetchAdvisories(token, version);
+    const raw = await fetchAdvisories(token, platformConfig, version);
 
     const advisories = raw.map(a => ({
       id: a.advisoryId || a.identifier || "",
@@ -105,7 +142,13 @@ export default async function handler(req, res) {
       cveId: Array.isArray(a.cves) ? a.cves[0] : (a.cves || ""),
     }));
 
-    return res.status(200).json({ advisories, platform, version, verified: true });
+    return res.status(200).json({
+      advisories,
+      platform,
+      version,
+      family: platformConfig.family,
+      verified: true
+    });
 
   } catch (err) {
     console.error("PSIRT API error:", err.message);
