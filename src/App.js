@@ -1,4 +1,4 @@
-// v2.1 — real Cisco advisory API integration
+// v2.2 — fix border leaf tier + prevent device hallucination
 import { useState, useEffect, useRef } from "react";
 
 const C = {
@@ -384,14 +384,11 @@ const MOCK = {
     {n:2,dev:"Nexus 9336C-FX2 (10.2.3)",                        act:"Upgrade to 10.3(1)",why:"BGP stability + VXLAN bug resolution"},
   ],
   devices:[
-    {name:"Nexus 9336C-FX2",  ver:"10.2(3)", role:"Spine", risk:"HIGH",     rec:"Upgrade to 10.3(1) resolves both issues",
-     bugs:[{id:"CSCwb91234",title:"BGP session reset under ECMP load",sev:"HIGH",fix:"10.3(1)"},
+    {name:"Nexus 9336C-FX2",  ver:"10.2(3)", role:"Spine", risk:"HIGH",     rec:"Upgrade to 10.3(1) resolves both issues",      bugs:[{id:"CSCwb91234",title:"BGP session reset under ECMP load",sev:"HIGH",fix:"10.3(1)"},
            {id:"CSCwc11872",title:"VXLAN BUM traffic drop above 40Gbps",sev:"MEDIUM",fix:"10.2(6)"}]},
-    {name:"Nexus 93180YC-EX", ver:"9.3(5)",  role:"Leaf",  risk:"CRITICAL", rec:"Upgrade to 9.3(7) immediately — production outage risk",
-     bugs:[{id:"CSCvz88341",title:"ARP memory leak causes process restart",sev:"CRITICAL",fix:"9.3(7)",cve:"CVE-2022-20824",cvss:8.6}]},
+    {name:"Nexus 93180YC-EX", ver:"9.3(5)",  role:"Leaf",  risk:"CRITICAL", rec:"Upgrade to 9.3(7) immediately — production outage risk",      bugs:[{id:"CSCvz88341",title:"ARP memory leak causes process restart",sev:"CRITICAL",fix:"9.3(7)",cve:"CVE-2022-20824",cvss:8.6}]},
     {name:"Nexus 93180YC-EX", ver:"9.3(8)",  role:"Leaf",  risk:"LOW",      rec:"No critical bugs identified — maintain current version", bugs:[]},
-    {name:"Nexus 9300-EX",    ver:"9.3(3)",  role:"Leaf",  risk:"HIGH",     rec:"Upgrade to 9.3(7) — resolves memory leak and OSPF instability",
-     bugs:[{id:"CSCvz88341",title:"ARP memory leak causes process restart",sev:"CRITICAL",fix:"9.3(7)",cve:"CVE-2022-20824",cvss:8.6},
+    {name:"Nexus 9300-EX",    ver:"9.3(3)",  role:"Leaf",  risk:"HIGH",     rec:"Upgrade to 9.3(7) — resolves memory leak and OSPF instability",      bugs:[{id:"CSCvz88341",title:"ARP memory leak causes process restart",sev:"CRITICAL",fix:"9.3(7)",cve:"CVE-2022-20824",cvss:8.6},
            {id:"CSCwd44123",title:"OSPF adjacency flap under high CPU",sev:"HIGH",fix:"9.3(6)"}]},
   ],
 };
@@ -612,7 +609,7 @@ function Analyse({go}) {
 Extract all network devices from the text below. For each device return:
 - name: the Cisco platform name (e.g. "Nexus 9336C-FX2", "Catalyst 9500")
 - ver: the exact software version string if explicitly present (e.g. "9.3(9)", "17.9.4") — if NOT present in the text set to ""
-- role: the device role if present (e.g. "Spine", "Leaf", "Distribution") — if not present set to ""
+- role: the device role if present (e.g. "Spine", "Leaf", "Border Leaf", "Distribution") — if not present set to ""
 
 IMPORTANT: Only extract versions that are explicitly written in the text. Do not guess or infer versions from platform names.
 
@@ -689,6 +686,19 @@ ABSOLUTE RULES:
 5. [observed] = directly from the data. [inferred] = logical conclusion. [assumed] = no evidence, low confidence only.
 6. CRITICAL or HIGH severity requires explicit version evidence. No version = maximum MEDIUM risk.
 7. If any device has ver="not provided", include this finding: "Software version not provided for X device(s) — bug and CVE analysis unavailable for those devices [observed]"
+8. NEVER add devices that are not in the submitted inventory. The devices array must contain EXACTLY the same devices as the submitted inventory — no additions, no omissions. Every device in the inventory must appear exactly once.
+9. Sort devices in the output by infrastructure tier in this strict order: Controllers (APIC, DNAC, NSO) → Spine → Border Leaf → Leaf → Distribution/Firewall/Edge.
+10. Identify Border Leaf from: device name or role containing "BORDER-LEAF", "BORDER_LEAF", "Border Leaf", "border-leaf", or "BL-". Border Leaf sits between Spine and regular Leaf in the sort order. Assign tier:2 to Border Leaf (same numeric tier as Spine but sort after Spine).
+11. Border Leaf devices must have intelRisk "HIGH" minimum — they handle external routing, BGP adjacency, and WAN-facing traffic. Do not cap Border Leaf at MEDIUM.
+12. Tier 4 devices (Distribution, Firewall, Catalyst, Firepower) must never exceed intelRisk "MEDIUM".
+13. APIC controllers always appear first in the devices array, before Spines.
+
+INFRASTRUCTURE TIER GUIDE:
+- Tier 1: Controllers — APIC, DNAC, NSO (always first, shapes entire upgrade path)
+- Tier 2a: Spine — core fabric stability
+- Tier 2b: Border Leaf — external routing, BGP, WAN-facing (MORE sensitive than regular leaf, HIGH intel minimum)
+- Tier 3: Leaf — forwarding fabric
+- Tier 4: Distribution, Firewall, Catalyst, Firepower (cap intel at MEDIUM)
 
 Validated device inventory (engineer-confirmed):
 ${inventoryCsv}
@@ -879,20 +889,13 @@ Respond ONLY with valid JSON (no markdown):
 }
 
 const SECS = [
-  {ic:"🔐",t:"Encrypted at rest",      tag:"AES-256",         s:"AES-256-GCM encryption before storage. Unreadable without a separately managed key.",
-   d:["Encryption uses AES-256-GCM before any write to storage.","Key stored separately in a dedicated secrets management service.","Even in a breach, credentials are unreadable without the key.","Keys are rotated regularly using industry-standard practices."]},
-  {ic:"🚫",t:"Never logged",           tag:"zero logging",    s:"Credential values are scrubbed from all logs at infrastructure level — not just application code.",
-   d:["Authorization headers scrubbed before logs are written.","Applies to application, access, error logs, and third-party monitoring.","Enforced at infrastructure level — cannot be bypassed by a code change.","We retain anonymised request metadata only — never credential values."]},
-  {ic:"👤",t:"No human access",        tag:"zero visibility", s:"The encryption architecture makes it technically impossible for our team to read your credentials.",
-   d:["Credentials encrypted using a key not accessible to engineering in normal operations.","No view credentials admin function exists anywhere in our tooling.","Any key access attempt generates an alert and requires multi-party approval.","We cannot recover your credentials if lost — you would regenerate on Cisco API Console."]},
-  {ic:"📦",t:"Bug data never stored",  tag:"minimal data",    s:"Analysis results flow through and are discarded after each request. Only email and encrypted credentials persist.",
-   d:["Bug API results, inventory, and analysis output never written to our database.","Data flows through the request lifecycle and is discarded on completion.","Only email, hashed password, and encrypted credentials are persisted.","Minimises exposure — no inventory or analysis history to exfiltrate."]},
-  {ic:"⚙️",t:"Server-side only",       tag:"credentials stay server-side", s:"All Cisco API calls originate from our servers. Your Client Secret never appears in browser code after setup.",
-   d:["Credentials sent to our backend over HTTPS once, then immediately encrypted.","Never stored in your browser, localStorage, or any client-side state.","All Cisco API calls originate from our servers — never from your browser.","Your Secret never appears in network tabs or browser developer tools after setup."]},
-  {ic:"🔑",t:"Revoke any time",        tag:"you are in control",s:"Delete credentials or your entire account from Settings at any time. Takes effect immediately.",
-   d:["Settings credentials deletion immediately removes the encrypted record.","Account deletion removes all data we hold, permanently and immediately.","We also recommend revoking the app registration on Cisco API Console.","Deletion is irreversible — we have no way to recover deleted data."]},
-  {ic:"🛡️",t:"Never sold or shared",  tag:"no third parties", s:"We do not sell, share, or license your data to any third party, ever.",
-   d:["Your data is used solely to provide the netwrkr.ai service.","We do not share credentials or usage data with any third party except Cisco API itself.","Third-party infrastructure providers are contractually prohibited from accessing your data.","We only disclose data in response to a valid legal requirement."]},
+  {ic:"🔐",t:"Encrypted at rest",      tag:"AES-256",         s:"AES-256-GCM encryption before storage. Unreadable without a separately managed key.",    d:["Encryption uses AES-256-GCM before any write to storage.","Key stored separately in a dedicated secrets management service.","Even in a breach, credentials are unreadable without the key.","Keys are rotated regularly using industry-standard practices."]},
+  {ic:"🚫",t:"Never logged",           tag:"zero logging",    s:"Credential values are scrubbed from all logs at infrastructure level — not just application code.",    d:["Authorization headers scrubbed before logs are written.","Applies to application, access, error logs, and third-party monitoring.","Enforced at infrastructure level — cannot be bypassed by a code change.","We retain anonymised request metadata only — never credential values."]},
+  {ic:"👤",t:"No human access",        tag:"zero visibility", s:"The encryption architecture makes it technically impossible for our team to read your credentials.",    d:["Credentials encrypted using a key not accessible to engineering in normal operations.","No view credentials admin function exists anywhere in our tooling.","Any key access attempt generates an alert and requires multi-party approval.","We cannot recover your credentials if lost — you would regenerate on Cisco API Console."]},
+  {ic:"📦",t:"Bug data never stored",  tag:"minimal data",    s:"Analysis results flow through and are discarded after each request. Only email and encrypted credentials persist.",    d:["Bug API results, inventory, and analysis output never written to our database.","Data flows through the request lifecycle and is discarded on completion.","Only email, hashed password, and encrypted credentials are persisted.","Minimises exposure — no inventory or analysis history to exfiltrate."]},
+  {ic:"⚙️",t:"Server-side only",       tag:"credentials stay server-side", s:"All Cisco API calls originate from our servers. Your Client Secret never appears in browser code after setup.",    d:["Credentials sent to our backend over HTTPS once, then immediately encrypted.","Never stored in your browser, localStorage, or any client-side state.","All Cisco API calls originate from our servers — never from your browser.","Your Secret never appears in network tabs or browser developer tools after setup."]},
+  {ic:"🔑",t:"Revoke any time",        tag:"you are in control",s:"Delete credentials or your entire account from Settings at any time. Takes effect immediately.",    d:["Settings credentials deletion immediately removes the encrypted record.","Account deletion removes all data we hold, permanently and immediately.","We also recommend revoking the app registration on Cisco API Console.","Deletion is irreversible — we have no way to recover deleted data."]},
+  {ic:"🛡️",t:"Never sold or shared",  tag:"no third parties", s:"We do not sell, share, or license your data to any third party, ever.",    d:["Your data is used solely to provide the netwrkr.ai service.","We do not share credentials or usage data with any third party except Cisco API itself.","Third-party infrastructure providers are contractually prohibited from accessing your data.","We only disclose data in response to a valid legal requirement."]},
 ];
 
 function SecurityPage() {
