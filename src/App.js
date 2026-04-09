@@ -1,4 +1,4 @@
-// v2.3 — fix controller fabricRisk calibration
+// v2.4 — soften border leaf recommendation wording
 import { useState, useEffect, useRef } from "react";
 
 const C = {
@@ -693,6 +693,7 @@ ABSOLUTE RULES:
 12. Tier 4 devices (Distribution, Firewall, Catalyst, Firepower) must never exceed intelRisk "MEDIUM".
 13. APIC controllers always appear first in the devices array, before Spines.
 14. Controllers (APIC, DNAC, NSO) must have fabricRisk "LOW" unless there is a version mismatch between the controllers themselves. A version mismatch elsewhere in the fabric (e.g. spine vs leaf) does not elevate controller fabricRisk.
+15. Border Leaf device recommendations must never use directive upgrade language (e.g. "Upgrade to match spine version"). Instead use advisory language such as "Review upgrade target against current fabric baseline" or "Assess version alignment before next maintenance window".
 
 INFRASTRUCTURE TIER GUIDE:
 - Tier 1: Controllers — APIC, DNAC, NSO (always first, shapes entire upgrade path)
