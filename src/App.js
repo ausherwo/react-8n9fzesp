@@ -747,9 +747,18 @@ Respond ONLY with valid JSON (no markdown):
 
       const clean = text.replace(/```json|```/g,"").trim();
       const parsed = JSON.parse(clean);
-      clearInterval(timer);
-      setStep(STEPS.length);
-      setResults(parsed);
+const realIds = new Set(
+  Object.values(advisoryData).flat().map(a => a.id).filter(Boolean)
+);
+if (parsed.netwrkrIntel?.items) {
+  parsed.netwrkrIntel.items = parsed.netwrkrIntel.items.map(item => ({
+    ...item,
+    verified: realIds.has(item.id) ? true : item.verified
+  }));
+}
+clearInterval(timer);
+setStep(STEPS.length);
+setResults(parsed);
       setScreen("results");
     } catch(e) {
       clearInterval(timer);
