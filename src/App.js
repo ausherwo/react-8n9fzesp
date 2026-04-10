@@ -498,7 +498,7 @@ function Results({data,reset}) {
       {/* STREAM 2: NETWRKR INTEL */}
       {ni.hasIntel&&ni.items?.length>0&&(
         <div style={{background:C.surface,border:`1px solid ${C.amber}33`,borderRadius:10,padding:"18px 22px",marginBottom:12}}>
-          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
+ignItems:"center",justifyContent:"space-between",marginBottom:12}}>
             <div style={{display:"flex",alignItems:"center",gap:10}}>
               <span style={{fontSize:14}}>🔍</span>
               <div style={{fontFamily:mono,fontSize:11,color:C.amber,letterSpacing:"0.12em",textTransform:"uppercase"}}>// netwrkr intel</div>
@@ -707,6 +707,8 @@ ABSOLUTE RULES:
 13. APIC controllers always appear first in the devices array, before Spines.
 14. Controllers (APIC, DNAC, NSO) must have fabricRisk "LOW" unless there is a version mismatch between the controllers themselves. A version mismatch elsewhere in the fabric (e.g. spine vs leaf) does not elevate controller fabricRisk.
 15. Border Leaf device recommendations must never use directive upgrade language (e.g. "Upgrade to match spine version"). Instead use advisory language such as "Review upgrade target against current fabric baseline" or "Assess version alignment before next maintenance window".
+16. P1/P2/P3 priority assessment titles must never contain the word "Critical" — use "High priority", "Significant", "Security advisory", or similar instead.
+17. fabricAnalysis findings must never reference advisory counts, CVEs, or bug data — topology facts from the submitted inventory only.
 
 INFRASTRUCTURE TIER GUIDE:
 - Tier 1: Controllers — APIC, DNAC, NSO (always first, shapes entire upgrade path)
