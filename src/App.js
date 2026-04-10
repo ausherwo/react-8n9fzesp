@@ -1,4 +1,4 @@
-// v2.6 — per-card verified PSIRT status fixed
+// v2.7 — glossary page, nav link, wire icons on results
 import { useState, useEffect, useRef } from "react";
 
 const C = {
@@ -33,6 +33,19 @@ function MacBar({ label }) {
       {["#FF5F56","#FFBD2E","#27C93F"].map(c=><div key={c} style={{width:10,height:10,borderRadius:"50%",background:c,opacity:.8}}/>)}
       <span style={{marginLeft:8,fontFamily:mono,fontSize:11,color:C.muted}}>{label}</span>
     </div>
+  );
+}
+
+// Wire info icon — used to link to glossary from results
+function InfoIcon({ onClick }) {
+  return (
+    <svg onClick={onClick} width="13" height="13" viewBox="0 0 13 13" fill="none" style={{cursor:"pointer",opacity:0.5,flexShrink:0,marginLeft:4,verticalAlign:"middle"}}
+      onMouseEnter={e=>e.currentTarget.style.opacity=1}
+      onMouseLeave={e=>e.currentTarget.style.opacity=0.5}>
+      <circle cx="6.5" cy="6.5" r="5.5" stroke={C.amber} strokeWidth="1"/>
+      <line x1="6.5" y1="5.5" x2="6.5" y2="9.5" stroke={C.amber} strokeWidth="1.2" strokeLinecap="round"/>
+      <circle cx="6.5" cy="3.8" r="0.7" fill={C.amber}/>
+    </svg>
   );
 }
 
@@ -96,6 +109,7 @@ function Nav({page,go,authed,usage=7}) {
         </div>
         <div style={{display:"flex",alignItems:"center",gap:3}}>
           {lnk("analyse","analyse")}
+          {lnk("glossary","glossary")}
           {lnk("security","security")}
           <div style={{width:1,height:16,background:C.border,margin:"0 8px"}}/>
           {authed ? (
@@ -121,6 +135,120 @@ function Nav({page,go,authed,usage=7}) {
         </div>
       </div>
     </nav>
+  );
+}
+
+// ── GLOSSARY DATA ────────────────────────────────────────────────
+const GLOSSARY = [
+  { section:"Risk levels", terms:[
+    { term:"Fabric risk", def:"A score reflecting how much a device's observed topology and version data contributes to instability in the fabric. Based only on facts from your submitted inventory — version mismatches, tier conflicts, consistency issues. Never includes bug or advisory data." },
+    { term:"Intel risk", def:"A score reflecting the potential security and software risk for a device based on known advisories and AI training knowledge. May include unverified findings — always check the verified indicator on each card." },
+    { term:"LOW / MEDIUM / HIGH", def:"The three risk levels used across fabric and intel scores. LOW means no significant issues found. MEDIUM means issues worth monitoring. HIGH means issues requiring attention before the next maintenance window. CRITICAL is only used for verified, confirmed fabric-impacting bugs in the enterprise tier." },
+  ]},
+  { section:"Finding labels", terms:[
+    { term:"[observed]", def:"This finding comes directly from data you submitted. For example, two devices of the same platform running different versions — that is a fact from your inventory, not an inference." },
+    { term:"[inferred]", def:"This finding is a logical conclusion drawn from observed data. For example, a version mismatch between spine and border leaf is observed — the potential routing instability that could result is inferred." },
+    { term:"[assumed]", def:"This finding has limited evidence. It is included as a low-confidence advisory only. Treat assumed findings with caution and verify independently before acting." },
+  ]},
+  { section:"Netwrkr intel", terms:[
+    { term:"Netwrkr intel", def:"The AI-powered intelligence stream. Netwrkr intel draws on known version history, Cisco security advisories, and training knowledge to surface potential software issues. Always shown separately from fabric analysis to make the confidence level clear." },
+    { term:"Verified — Cisco PSIRT API", def:"This advisory has been confirmed against the live Cisco PSIRT security database. The CSC ID is real and the vulnerability exists for this platform and version. This does not confirm whether the bug affects your specific fabric — that requires enterprise fabric exposure analysis." },
+    { term:"Unverified — AI knowledge only", def:"This advisory is based on AI training knowledge and has not been confirmed against the live Cisco database. It may be accurate but should be treated as a prompt to investigate, not a confirmed finding." },
+    { term:"CSC ID", def:"A Cisco bug identifier, for example cisco-sa-apic-dos-rNus8EFw. CSC IDs on verified cards are real identifiers from Cisco's security advisory database. You can look them up directly on tools.cisco.com." },
+    { term:"PSIRT", def:"Cisco Product Security Incident Response Team. The team responsible for publishing security advisories for Cisco products. netwrkr.ai queries the PSIRT openVuln API to retrieve verified advisory data." },
+  ]},
+  { section:"Infrastructure roles", terms:[
+    { term:"Controller (Tier 1)", def:"A management and policy controller such as APIC, DNAC, or NSO. Controllers sit at the top of the infrastructure hierarchy because their software version shapes the upgrade path for the entire fabric. Always shown first in the device breakdown." },
+    { term:"Spine (Tier 2)", def:"Core switching layer that connects all leaf devices. Spines carry all east-west and north-south traffic in the fabric. Version consistency across spines is critical for fabric stability." },
+    { term:"Border leaf (Tier 2)", def:"A leaf switch that connects the fabric to external networks — WAN, internet, or other data centres. Border leafs handle BGP peering and external routing, making them more sensitive than standard leafs. netwrkr.ai applies a higher minimum intel risk to border leaf devices because of their external exposure." },
+    { term:"Leaf (Tier 3)", def:"Access layer switches that connect servers, storage, and other endpoints to the fabric. Leafs form the forwarding plane of the network." },
+    { term:"Distribution / firewall / edge (Tier 4)", def:"Devices at the edge of the fabric such as Catalyst switches, Firepower firewalls, or ASR routers. netwrkr.ai caps intel risk at MEDIUM for tier 4 devices — they are important but do not compete with tier 1 and 2 issues for priority." },
+  ]},
+  { section:"Priority assessment", terms:[
+    { term:"P1", def:"The highest priority finding in this analysis. Typically the most structurally significant risk — a fabric-wide version mismatch, a border leaf exposure, or a high-severity verified advisory on a critical device. Address P1 findings before the next maintenance window." },
+    { term:"P2", def:"A significant finding that requires planning but is not immediately critical. Often relates to controller compatibility, version inconsistency across a device tier, or an unverified advisory on a high-sensitivity device." },
+    { term:"P3", def:"A monitoring item or low-urgency advisory. Worth tracking but does not require immediate action. Often relates to tier 4 devices or minor version inconsistencies." },
+  ]},
+  { section:"Fabric analysis", terms:[
+    { term:"Fabric analysis", def:"The first results stream. Contains only facts derived from your submitted inventory — version mismatches, topology observations, missing data. Never includes bug knowledge or advisory data. Everything in fabric analysis is labelled [observed] or [inferred]." },
+    { term:"Version mismatch", def:"Two or more devices of the same platform running different software versions. Version mismatches increase the risk of unexpected behaviour and complicate upgrade sequencing. netwrkr.ai detects mismatches only when version data is explicitly provided for multiple devices of the same type." },
+    { term:"Fabric exposure analysis", def:"An enterprise-tier feature that confirms whether a known bug actually affects your specific fabric topology. A verified advisory tells you a bug exists — fabric exposure analysis tells you whether your fabric is affected. Available with enterprise credentials and SNTC data." },
+  ]},
+];
+
+function GlossaryPage({go}) {
+  const [query, setQuery] = useState("");
+
+  const filtered = GLOSSARY.map(s=>({
+    ...s,
+    terms: s.terms.filter(t =>
+      !query || t.term.toLowerCase().includes(query.toLowerCase()) || t.def.toLowerCase().includes(query.toLowerCase())
+    )
+  })).filter(s => s.terms.length > 0);
+
+  return (
+    <div style={{background:"#FAFAF8",minHeight:"100vh",color:"#1A1A18"}}>
+      <div style={{maxWidth:780,margin:"0 auto",padding:"56px 36px 80px"}}>
+
+        {/* Header */}
+        <div style={{marginBottom:40}}>
+          <div style={{fontFamily:mono,fontSize:11,color:C.amber,letterSpacing:"0.14em",textTransform:"uppercase",marginBottom:10}}>// glossary</div>
+          <h1 style={{fontSize:36,fontWeight:300,letterSpacing:"-0.03em",marginBottom:12,color:"#1A1A18"}}>Terms explained</h1>
+          <p style={{fontSize:15,color:"#6B6B68",lineHeight:1.7,marginBottom:28}}>Plain-English definitions for every term used in netwrkr.ai analysis results.</p>
+
+          {/* Search */}
+          <div style={{position:"relative"}}>
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{position:"absolute",left:13,top:"50%",transform:"translateY(-50%)",opacity:0.4}}>
+              <circle cx="6.5" cy="6.5" r="5" stroke="#1A1A18" strokeWidth="1.3"/>
+              <line x1="10.5" y1="10.5" x2="14" y2="14" stroke="#1A1A18" strokeWidth="1.3" strokeLinecap="round"/>
+            </svg>
+            <input
+              type="text"
+              value={query}
+              onChange={e=>setQuery(e.target.value)}
+              placeholder="Search terms..."
+              style={{width:"100%",boxSizing:"border-box",padding:"11px 13px 11px 38px",fontSize:14,fontFamily:"'DM Sans',system-ui,sans-serif",background:"#fff",border:"1px solid #E0DED8",borderRadius:8,outline:"none",color:"#1A1A18"}}
+            />
+            {query && <button onClick={()=>setQuery("")} style={{position:"absolute",right:12,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",cursor:"pointer",fontFamily:mono,fontSize:11,color:"#9C9278",padding:0}}>clear</button>}
+          </div>
+        </div>
+
+        {/* Results count when searching */}
+        {query && (
+          <div style={{fontFamily:mono,fontSize:11,color:C.muted,marginBottom:24}}>
+            // {filtered.reduce((a,s)=>a+s.terms.length,0)} result{filtered.reduce((a,s)=>a+s.terms.length,0)!==1?"s":""} for "{query}"
+          </div>
+        )}
+
+        {/* Sections */}
+        {filtered.length === 0 ? (
+          <div style={{fontFamily:mono,fontSize:13,color:"#9C9278",padding:"40px 0",textAlign:"center"}}>// no results found</div>
+        ) : (
+          filtered.map((section,si)=>(
+            <div key={si} style={{marginBottom:40}}>
+              <div style={{fontFamily:mono,fontSize:11,color:C.amber,letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:16,paddingBottom:8,borderBottom:`1px solid #E8E6E0`}}>
+                // {section.section}
+              </div>
+              {section.terms.map((t,ti)=>(
+                <div key={ti} style={{display:"grid",gridTemplateColumns:"200px 1fr",gap:24,padding:"14px 0",borderBottom:"1px solid #F0EDE8",alignItems:"start"}}>
+                  <div style={{fontFamily:mono,fontSize:13,color:"#1A1A18",fontWeight:500,paddingTop:1}}>{t.term}</div>
+                  <div style={{fontSize:14,color:"#4A4A47",lineHeight:1.75}}>{t.def}</div>
+                </div>
+              ))}
+            </div>
+          ))
+        )}
+
+        {/* Footer CTA */}
+        <div style={{marginTop:40,paddingTop:32,borderTop:"1px solid #E0DED8",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+          <div style={{fontSize:13,color:"#9C9278"}}>Something missing? A term you don't recognise?</div>
+          <button onClick={()=>go("analyse")} style={{background:C.amber,color:"#000",border:"none",borderRadius:6,fontFamily:mono,fontWeight:700,fontSize:12,padding:"8px 16px",cursor:"pointer"}}>
+            try_analyse() →
+          </button>
+        </div>
+
+      </div>
+    </div>
   );
 }
 
@@ -342,7 +470,7 @@ function Home({go}) {
         <div style={{maxWidth:1140,margin:"0 auto",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
           <span style={{fontFamily:mono,fontSize:14,fontWeight:700}}>netwrkr<span style={{color:C.amber}}>.ai</span></span>
           <div style={{display:"flex",gap:18}}>
-            {["privacy","terms","security","docs","contact"].map(l=>(
+            {["privacy","terms","security","glossary","contact"].map(l=>(
               <button key={l} style={{background:"none",border:"none",color:C.muted,fontFamily:mono,fontSize:11,cursor:"pointer",letterSpacing:"0.04em"}}>{l}</button>
             ))}
           </div>
@@ -397,7 +525,7 @@ function Overlay({step}) {
   );
 }
 
-function Results({data,reset}) {
+function Results({data,reset,go}) {
   if(!data) return (
     <div style={{textAlign:"center",padding:"40px"}}>
       <div style={{fontFamily:mono,fontSize:14,color:C.red,marginBottom:12}}>// analysis error</div>
@@ -411,6 +539,10 @@ function Results({data,reset}) {
   const devices = data.devices || [];
   const faRisk = SEV[fa.risk]||SEV.LOW;
   const hasVerified = ni.items?.some(i=>i.verified);
+
+  const GlossaryLink = ({title}) => (
+    <InfoIcon onClick={()=>go("glossary")} title={`Learn more: ${title}`}/>
+  );
 
   return (
     <div>
@@ -426,7 +558,9 @@ function Results({data,reset}) {
       {/* PRIORITY ASSESSMENT */}
       {data.priorityAssessment?.items?.length>0&&(
         <div style={{background:C.surface,border:`1px solid ${C.amber}44`,borderRadius:10,padding:"18px 22px",marginBottom:12}}>
-          <div style={{fontFamily:mono,fontSize:11,color:C.amber,letterSpacing:"0.12em",textTransform:"uppercase",marginBottom:14}}>// priority assessment</div>
+          <div style={{fontFamily:mono,fontSize:11,color:C.amber,letterSpacing:"0.12em",textTransform:"uppercase",marginBottom:14,display:"flex",alignItems:"center"}}>
+            // priority assessment <GlossaryLink title="P1 / P2 / P3"/>
+          </div>
           <div style={{display:"flex",flexDirection:"column",gap:10}}>
             {data.priorityAssessment.items.map((item,i)=>{
               const pColor = item.priority==="P1"?C.red:item.priority==="P2"?C.orange:C.yellow;
@@ -454,7 +588,9 @@ function Results({data,reset}) {
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
           <div style={{display:"flex",alignItems:"center",gap:10}}>
             <div style={{width:8,height:8,borderRadius:"50%",background:faRisk.color,boxShadow:`0 0 6px ${faRisk.color}`}}/>
-            <div style={{fontFamily:mono,fontSize:11,color:faRisk.color,letterSpacing:"0.12em",textTransform:"uppercase"}}>// fabric analysis</div>
+            <div style={{fontFamily:mono,fontSize:11,color:faRisk.color,letterSpacing:"0.12em",textTransform:"uppercase",display:"flex",alignItems:"center"}}>
+              // fabric analysis <GlossaryLink title="Fabric analysis"/>
+            </div>
           </div>
           <Badge level={fa.risk||"LOW"}/>
         </div>
@@ -467,7 +603,9 @@ function Results({data,reset}) {
         ))}
         {fa.mismatches?.length>0&&(
           <div style={{marginTop:10,padding:"10px 13px",background:"#2A140088",border:`1px solid ${C.orange}44`,borderRadius:6}}>
-            <div style={{fontFamily:mono,fontSize:11,color:C.orange,marginBottom:6}}>// version mismatches detected</div>
+            <div style={{fontFamily:mono,fontSize:11,color:C.orange,marginBottom:6,display:"flex",alignItems:"center"}}>
+              // version mismatches detected <GlossaryLink title="Version mismatch"/>
+            </div>
             {fa.mismatches.map((m,i)=><div key={i} style={{fontSize:12,color:C.dim}}>{m}</div>)}
           </div>
         )}
@@ -479,7 +617,9 @@ function Results({data,reset}) {
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
             <div style={{display:"flex",alignItems:"center",gap:10}}>
               <span style={{fontSize:14}}>🔍</span>
-              <div style={{fontFamily:mono,fontSize:11,color:C.amber,letterSpacing:"0.12em",textTransform:"uppercase"}}>// netwrkr intel</div>
+              <div style={{fontFamily:mono,fontSize:11,color:C.amber,letterSpacing:"0.12em",textTransform:"uppercase",display:"flex",alignItems:"center"}}>
+                // netwrkr intel <GlossaryLink title="Netwrkr intel"/>
+              </div>
             </div>
             {hasVerified
               ? <span style={{fontFamily:mono,fontSize:10,color:C.green,background:"#0A2A1088",border:`1px solid ${C.green}44`,padding:"2px 8px",borderRadius:3}}>✓ live PSIRT data</span>
@@ -520,7 +660,9 @@ function Results({data,reset}) {
       )}
 
       {/* DEVICE BREAKDOWN */}
-      <div style={{fontFamily:mono,fontSize:11,color:C.muted,letterSpacing:"0.12em",textTransform:"uppercase",marginBottom:9}}>// device breakdown</div>
+      <div style={{fontFamily:mono,fontSize:11,color:C.muted,letterSpacing:"0.12em",textTransform:"uppercase",marginBottom:9,display:"flex",alignItems:"center"}}>
+        // device breakdown <GlossaryLink title="Infrastructure roles"/>
+      </div>
       <div style={{display:"flex",flexDirection:"column",gap:9,marginBottom:16}}>
         {devices.map((d,di)=>{
           const fds=SEV[d.fabricRisk]||SEV.LOW;
@@ -557,7 +699,9 @@ function Results({data,reset}) {
       {/* Enterprise upsell */}
       <div style={{background:C.amberG,border:`1px solid ${C.amber}33`,borderRadius:10,padding:"16px 20px",display:"flex",alignItems:"center",justifyContent:"space-between",gap:18}}>
         <div>
-          <div style={{fontFamily:mono,fontSize:11,color:C.amber,marginBottom:4}}>// unlock verified fabric exposure analysis</div>
+          <div style={{fontFamily:mono,fontSize:11,color:C.amber,marginBottom:4,display:"flex",alignItems:"center"}}>
+            // unlock verified fabric exposure analysis <GlossaryLink title="Fabric exposure analysis"/>
+          </div>
           <div style={{fontSize:13,color:C.dim,lineHeight:1.6}}>Enterprise adds live Cisco Bug API data — verified CSC IDs and confirmed fabric exposure analysis.</div>
         </div>
         <button style={{background:C.amber,border:"none",color:"#000",fontFamily:mono,fontSize:12,fontWeight:700,padding:"9px 16px",borderRadius:6,cursor:"pointer",whiteSpace:"nowrap",flexShrink:0}}>get_enterprise()</button>
@@ -728,7 +872,6 @@ Respond ONLY with valid JSON (no markdown):
       const clean = text.replace(/```json|```/g,"").trim();
       const parsed = JSON.parse(clean);
 
-      // Auto-verify any intel items whose ID matches a real advisory we retrieved
       const realIds = new Set(
         Object.values(advisoryData).flat().map(a => a.id).filter(Boolean)
       );
@@ -885,7 +1028,7 @@ Respond ONLY with valid JSON (no markdown):
       )}
 
       {screen==="results" && results && (
-        <Results data={results} reset={reset}/>
+        <Results data={results} reset={reset} go={go}/>
       )}
     </div>
   );
@@ -1145,6 +1288,7 @@ export default function App() {
         <div style={{flex:1,display:"flex",flexDirection:"column"}}>
           {page==="home"     && <Home go={go}/>}
           {page==="analyse"  && <Analyse go={go}/>}
+          {page==="glossary" && <GlossaryPage go={go}/>}
           {page==="security" && <SecurityPage/>}
           {(page==="login"||page==="signup") && <Auth mode={page==="login"?"login":"signup"} go={go} setAuthed={setAuthed}/>}
         </div>
