@@ -719,7 +719,7 @@ Additional context: ${ctx||"None provided"}
 VERIFIED CISCO SECURITY ADVISORIES (real data from Cisco Security Advisory API):
 ${advisorySummary}
 
-Use the above verified advisory data to populate netwrkrIntel items where available. These are REAL verified advisories — set verified: true and use the real advisory ID. If no advisory data was retrieved for a platform, use your training knowledge but set verified: false.
+CRITICAL: Use the VERIFIED CISCO SECURITY ADVISORIES above to populate netwrkrIntel items. For ANY platform that appears in that section, you MUST set verified: true and use the exact advisory ID provided. Only set verified: false for platforms where NO advisory data was retrieved. Setting verified: false for a platform that appears in the advisory data above is an error.
 
 Respond ONLY with valid JSON (no markdown):
 {
