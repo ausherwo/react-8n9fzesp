@@ -1,4 +1,4 @@
-// v2.5 — verified PSIRT intel cards
+// v2.6 — per-card verified PSIRT status fixed
 import { useState, useEffect, useRef } from "react";
 
 const C = {
@@ -371,28 +371,6 @@ const STEPS = [
   {l:"Generating remediation plan",  d:700},
 ];
 
-const MOCK = {
-  risk:"HIGH",
-  totals:{total:7,atRisk:5,critical:2,high:4,medium:3},
-  findings:[
-    "LEAF nodes on 9.3(5) and 9.3(3) have a critical ARP memory leak — prioritise before next maintenance window",
-    "vPC pair LEAF-SW-01/LEAF-SW-02 running 9.3(8) vs 9.3(5) — version mismatch is a stability risk",
-    "Spine BGP stability issue is lower urgency but should be resolved in Q3 window",
-  ],
-  sequence:[
-    {n:1,dev:"Nexus 93180YC-EX (9.3.5), Nexus 9300-EX (9.3.3)",act:"Upgrade to 9.3(7)",why:"Critical ARP memory leak — highest risk"},
-    {n:2,dev:"Nexus 9336C-FX2 (10.2.3)",                        act:"Upgrade to 10.3(1)",why:"BGP stability + VXLAN bug resolution"},
-  ],
-  devices:[
-    {name:"Nexus 9336C-FX2",  ver:"10.2(3)", role:"Spine", risk:"HIGH",     rec:"Upgrade to 10.3(1) resolves both issues",      bugs:[{id:"CSCwb91234",title:"BGP session reset under ECMP load",sev:"HIGH",fix:"10.3(1)"},
-           {id:"CSCwc11872",title:"VXLAN BUM traffic drop above 40Gbps",sev:"MEDIUM",fix:"10.2(6)"}]},
-    {name:"Nexus 93180YC-EX", ver:"9.3(5)",  role:"Leaf",  risk:"CRITICAL", rec:"Upgrade to 9.3(7) immediately — production outage risk",      bugs:[{id:"CSCvz88341",title:"ARP memory leak causes process restart",sev:"CRITICAL",fix:"9.3(7)",cve:"CVE-2022-20824",cvss:8.6}]},
-    {name:"Nexus 93180YC-EX", ver:"9.3(8)",  role:"Leaf",  risk:"LOW",      rec:"No critical bugs identified — maintain current version", bugs:[]},
-    {name:"Nexus 9300-EX",    ver:"9.3(3)",  role:"Leaf",  risk:"HIGH",     rec:"Upgrade to 9.3(7) — resolves memory leak and OSPF instability",      bugs:[{id:"CSCvz88341",title:"ARP memory leak causes process restart",sev:"CRITICAL",fix:"9.3(7)",cve:"CVE-2022-20824",cvss:8.6},
-           {id:"CSCwd44123",title:"OSPF adjacency flap under high CPU",sev:"HIGH",fix:"9.3(6)"}]},
-  ],
-};
-
 function Overlay({step}) {
   return (
     <div style={{position:"fixed",inset:0,background:"#080806EE",backdropFilter:"blur(8px)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center"}}>
@@ -498,7 +476,7 @@ function Results({data,reset}) {
       {/* STREAM 2: NETWRKR INTEL */}
       {ni.hasIntel&&ni.items?.length>0&&(
         <div style={{background:C.surface,border:`1px solid ${C.amber}33`,borderRadius:10,padding:"18px 22px",marginBottom:12}}>
-          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
             <div style={{display:"flex",alignItems:"center",gap:10}}>
               <span style={{fontSize:14}}>🔍</span>
               <div style={{fontFamily:mono,fontSize:11,color:C.amber,letterSpacing:"0.12em",textTransform:"uppercase"}}>// netwrkr intel</div>
@@ -515,26 +493,28 @@ function Results({data,reset}) {
             }
           </div>
           <div style={{display:"flex",flexDirection:"column",gap:8}}>
-            {ni.items.map((item,i)=>{
-              const s=SEV[item.sev]||SEV.LOW;
-              return (
-                <div key={i} style={{border:`1px solid ${C.border}`,borderRadius:8,padding:"11px 14px",background:C.hi,opacity:0.85}}>
-                  <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:10,marginBottom:6}}>
-                    <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
-                      <Badge level={item.sev} sm/>
-                      <span style={{fontFamily:mono,fontSize:12,color:C.text,fontWeight:600}}>{item.title}</span>
-                      {item.id&&<span style={{fontFamily:mono,fontSize:10,color:C.amber,background:C.amberG,border:`1px solid ${C.amber}30`,padding:"1px 6px",borderRadius:3}}>{item.id}</span>}
-                    </div>
-                    <span style={{fontFamily:mono,fontSize:10,color:C.muted,flexShrink:0}}>{item.platform} v{item.version}</span>
+            {ni.items.map((item,i)=>(
+              <div key={i} style={{border:`1px solid ${item.verified?C.green+"44":C.border}`,borderRadius:8,padding:"11px 14px",background:C.hi,opacity:item.verified?1:0.85}}>
+                <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:10,marginBottom:6}}>
+                  <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+                    <Badge level={item.sev} sm/>
+                    <span style={{fontFamily:mono,fontSize:12,color:C.text,fontWeight:600}}>{item.title}</span>
+                    {item.id&&<span style={{fontFamily:mono,fontSize:10,color:C.amber,background:C.amberG,border:`1px solid ${C.amber}30`,padding:"1px 6px",borderRadius:3}}>{item.id}</span>}
                   </div>
-                  <div style={{fontSize:12,color:C.dim,lineHeight:1.6,marginBottom:8}}>{item.detail}</div>
-                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-                    <span style={{fontFamily:mono,fontSize:10,color:C.orange}}>⚠ unverified — AI knowledge only</span>
-                    <button style={{background:"none",border:`1px solid ${C.amber}44`,color:C.amber,fontFamily:mono,fontSize:10,padding:"2px 8px",borderRadius:3,cursor:"pointer"}}>🔒 verify with enterprise</button>
-                  </div>
+                  <span style={{fontFamily:mono,fontSize:10,color:C.muted,flexShrink:0}}>{item.platform} v{item.version}</span>
                 </div>
-              );
-            })}
+                <div style={{fontSize:12,color:C.dim,lineHeight:1.6,marginBottom:8}}>{item.detail}</div>
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                  {item.verified
+                    ? <span style={{fontFamily:mono,fontSize:10,color:C.green}}>✓ verified — Cisco PSIRT API</span>
+                    : <span style={{fontFamily:mono,fontSize:10,color:C.orange}}>⚠ unverified — AI knowledge only</span>
+                  }
+                  {!item.verified &&
+                    <button style={{background:"none",border:`1px solid ${C.amber}44`,color:C.amber,fontFamily:mono,fontSize:10,padding:"2px 8px",borderRadius:3,cursor:"pointer"}}>🔒 verify with enterprise</button>
+                  }
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       )}
@@ -544,7 +524,6 @@ function Results({data,reset}) {
       <div style={{display:"flex",flexDirection:"column",gap:9,marginBottom:16}}>
         {devices.map((d,di)=>{
           const fds=SEV[d.fabricRisk]||SEV.LOW;
-          const ids=SEV[d.intelRisk]||SEV.LOW;
           return (
             <div key={di} style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:10,padding:"13px 18px"}}>
               <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
@@ -647,9 +626,9 @@ ${rawInput}`);
   const missingVersions = devices.filter(d=>d.verMissing).length;
   const canAnalyse = devices.length > 0;
 
-  const fetchAdvisories = async (devices) => {
+  const fetchAdvisories = async (devList) => {
     const results = {};
-    await Promise.all(devices.map(async (d) => {
+    await Promise.all(devList.map(async (d) => {
       if (!d.ver || d.ver === "not provided") return;
       try {
         const res = await fetch("/api/advisories", {
@@ -675,7 +654,6 @@ ${rawInput}`);
 
     const inventoryCsv = "Platform, Version, Role\n" + devices.map(d=>`${d.name}, ${d.ver||"not provided"}, ${d.role||"unknown"}`).join("\n");
 
-    // Fetch real Cisco advisories for each device
     const advisoryData = await fetchAdvisories(devices);
     const advisorySummary = Object.entries(advisoryData).map(([key, advisories]) => {
       const [platform, version] = key.split("__");
@@ -703,6 +681,8 @@ ABSOLUTE RULES:
 13. APIC controllers always appear first in the devices array, before Spines.
 14. Controllers (APIC, DNAC, NSO) must have fabricRisk "LOW" unless there is a version mismatch between the controllers themselves. A version mismatch elsewhere in the fabric (e.g. spine vs leaf) does not elevate controller fabricRisk.
 15. Border Leaf device recommendations must never use directive upgrade language (e.g. "Upgrade to match spine version"). Instead use advisory language such as "Review upgrade target against current fabric baseline" or "Assess version alignment before next maintenance window".
+16. P1/P2/P3 priority assessment titles must never contain the word "Critical" — use "High priority", "Significant", "Security advisory", or similar instead.
+17. fabricAnalysis findings must never reference advisory counts, CVEs, or bug data — topology facts from the submitted inventory only.
 
 INFRASTRUCTURE TIER GUIDE:
 - Tier 1: Controllers — APIC, DNAC, NSO (always first, shapes entire upgrade path)
@@ -716,7 +696,7 @@ ${inventoryCsv}
 
 Additional context: ${ctx||"None provided"}
 
-VERIFIED CISCO SECURITY ADVISORIES (real data from Cisco Security Advisory API):
+VERIFIED CISCO SECURITY ADVISORIES (real data from Cisco PSIRT API):
 ${advisorySummary}
 
 CRITICAL: Use the VERIFIED CISCO SECURITY ADVISORIES above to populate netwrkrIntel items. For ANY platform that appears in that section, you MUST set verified: true and use the exact advisory ID provided. Only set verified: false for platforms where NO advisory data was retrieved. Setting verified: false for a platform that appears in the advisory data above is an error.
@@ -747,18 +727,21 @@ Respond ONLY with valid JSON (no markdown):
 
       const clean = text.replace(/```json|```/g,"").trim();
       const parsed = JSON.parse(clean);
-const realIds = new Set(
-  Object.values(advisoryData).flat().map(a => a.id).filter(Boolean)
-);
-if (parsed.netwrkrIntel?.items) {
-  parsed.netwrkrIntel.items = parsed.netwrkrIntel.items.map(item => ({
-    ...item,
-    verified: realIds.has(item.id) ? true : item.verified
-  }));
-}
-clearInterval(timer);
-setStep(STEPS.length);
-setResults(parsed);
+
+      // Auto-verify any intel items whose ID matches a real advisory we retrieved
+      const realIds = new Set(
+        Object.values(advisoryData).flat().map(a => a.id).filter(Boolean)
+      );
+      if (parsed.netwrkrIntel?.items) {
+        parsed.netwrkrIntel.items = parsed.netwrkrIntel.items.map(item => ({
+          ...item,
+          verified: realIds.has(item.id) ? true : item.verified
+        }));
+      }
+
+      clearInterval(timer);
+      setStep(STEPS.length);
+      setResults(parsed);
       setScreen("results");
     } catch(e) {
       clearInterval(timer);
@@ -1021,7 +1004,6 @@ function Auth({mode:init,go,setAuthed}) {
   return (
     <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",padding:"44px 20px"}}>
       <div style={{width:"100%",maxWidth:370}}>
-
         {mode==="login"&&(
           <div style={{animation:"fadeUp .3s ease"}}>
             <div style={{textAlign:"center",marginBottom:26}}>
