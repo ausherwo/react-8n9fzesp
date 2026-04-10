@@ -1,4 +1,4 @@
-// v2.4 — soften border leaf recommendation wording
+// v2.5 — verified PSIRT intel cards
 import { useState, useEffect, useRef } from "react";
 
 const C = {
@@ -432,6 +432,7 @@ function Results({data,reset}) {
   const ni = data.netwrkrIntel || {};
   const devices = data.devices || [];
   const faRisk = SEV[fa.risk]||SEV.LOW;
+  const hasVerified = ni.items?.some(i=>i.verified);
 
   return (
     <div>
@@ -502,14 +503,21 @@ function Results({data,reset}) {
               <span style={{fontSize:14}}>🔍</span>
               <div style={{fontFamily:mono,fontSize:11,color:C.amber,letterSpacing:"0.12em",textTransform:"uppercase"}}>// netwrkr intel</div>
             </div>
-            <span style={{fontFamily:mono,fontSize:10,color:C.orange,background:"#2A140088",border:`1px solid ${C.orange}44`,padding:"2px 8px",borderRadius:3}}>⚠ unverified</span>
+            {hasVerified
+  ? <span style={{fontFamily:mono,fontSize:10,color:C.green,background:"#0A2A1088",border:`1px solid ${C.green}44`,padding:"2px 8px",borderRadius:3}}>✓ live PSIRT data</span>
+  : <span style={{fontFamily:mono,fontSize:10,color:C.orange,background:"#2A140088",border:`1px solid ${C.orange}44`,padding:"2px 8px",borderRadius:3}}>⚠ unverified</span>
+}<div style={{fontSize:12,color:C.muted,marginBottom:14,lineHeight:1.6}}>
+  {hasVerified
+    ? <>Verified advisories sourced from the live Cisco PSIRT API. Unverified items are from AI training knowledge — <span style={{color:C.amber}}>Upgrade to enterprise</span> for full fabric exposure analysis.</>
+    : <>Potential software issues inferred from known version history. <span style={{color:C.amber}}>Upgrade to enterprise</span> for verified CSC data from the live Cisco Bug API.</>
+  }
+</div>
           </div>
-          <div style={{fontSize:12,color:C.muted,marginBottom:14,lineHeight:1.6}}>Potential software issues inferred from known version history. <span style={{color:C.amber}}>Upgrade to enterprise</span> for verified CSC data from the live Cisco Bug API.</div>
           <div style={{display:"flex",flexDirection:"column",gap:8}}>
             {ni.items.map((item,i)=>{
               const s=SEV[item.sev]||SEV.LOW;
               return (
-                <div key={i} style={{border:`1px solid ${C.border}`,borderRadius:8,padding:"11px 14px",background:C.hi,opacity:0.85}}>
+                <div key={i} style={{border:`1px solid ${item.verified?C.green+"44":C.border}`,borderRadius:8,padding:"11px 14px",background:C.hi,opacity:item.verified?1:0.85}}>
                   <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:10,marginBottom:6}}>
                     <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
                       <Badge level={item.sev} sm/>
@@ -520,8 +528,13 @@ function Results({data,reset}) {
                   </div>
                   <div style={{fontSize:12,color:C.dim,lineHeight:1.6,marginBottom:8}}>{item.detail}</div>
                   <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-                    <span style={{fontFamily:mono,fontSize:10,color:C.orange}}>⚠ unverified — AI knowledge only</span>
-                    <button style={{background:"none",border:`1px solid ${C.amber}44`,color:C.amber,fontFamily:mono,fontSize:10,padding:"2px 8px",borderRadius:3,cursor:"pointer"}}>🔒 verify with enterprise</button>
+                  {item.verified
+  ? <span style={{fontFamily:mono,fontSize:10,color:C.green}}>✓ verified — Cisco PSIRT API</span>
+  : <span style={{fontFamily:mono,fontSize:10,color:C.orange}}>⚠ unverified — AI knowledge only</span>
+}
+{!item.verified &&
+  <button style={{background:"none",border:`1px solid ${C.amber}44`,color:C.amber,fontFamily:mono,fontSize:10,padding:"2px 8px",borderRadius:3,cursor:"pointer"}}>🔒 verify with enterprise</button>
+}
                   </div>
                 </div>
               );
