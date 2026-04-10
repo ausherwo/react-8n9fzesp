@@ -1,4 +1,4 @@
-// v2.7 — glossary page, nav link, wire icons on results
+// v2.8 — glossary dark theme
 import { useState, useEffect, useRef } from "react";
 
 const C = {
@@ -36,7 +36,6 @@ function MacBar({ label }) {
   );
 }
 
-// Wire info icon — used to link to glossary from results
 function InfoIcon({ onClick }) {
   return (
     <svg onClick={onClick} width="13" height="13" viewBox="0 0 13 13" fill="none" style={{cursor:"pointer",opacity:0.5,flexShrink:0,marginLeft:4,verticalAlign:"middle"}}
@@ -138,7 +137,6 @@ function Nav({page,go,authed,usage=7}) {
   );
 }
 
-// ── GLOSSARY DATA ────────────────────────────────────────────────
 const GLOSSARY = [
   { section:"Risk levels", terms:[
     { term:"Fabric risk", def:"A score reflecting how much a device's observed topology and version data contributes to instability in the fabric. Based only on facts from your submitted inventory — version mismatches, tier conflicts, consistency issues. Never includes bug or advisory data." },
@@ -187,61 +185,56 @@ function GlossaryPage({go}) {
   })).filter(s => s.terms.length > 0);
 
   return (
-    <div style={{background:"#FAFAF8",minHeight:"100vh",color:"#1A1A18"}}>
+    <div>
       <div style={{maxWidth:780,margin:"0 auto",padding:"56px 36px 80px"}}>
 
-        {/* Header */}
         <div style={{marginBottom:40}}>
           <div style={{fontFamily:mono,fontSize:11,color:C.amber,letterSpacing:"0.14em",textTransform:"uppercase",marginBottom:10}}>// glossary</div>
-          <h1 style={{fontSize:36,fontWeight:300,letterSpacing:"-0.03em",marginBottom:12,color:"#1A1A18"}}>Terms explained</h1>
-          <p style={{fontSize:15,color:"#6B6B68",lineHeight:1.7,marginBottom:28}}>Plain-English definitions for every term used in netwrkr.ai analysis results.</p>
+          <h1 style={{fontSize:36,fontWeight:300,letterSpacing:"-0.03em",marginBottom:12}}>Terms explained</h1>
+          <p style={{fontSize:15,color:C.dim,lineHeight:1.7,marginBottom:28}}>Plain-English definitions for every term used in netwrkr.ai analysis results.</p>
 
-          {/* Search */}
           <div style={{position:"relative"}}>
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{position:"absolute",left:13,top:"50%",transform:"translateY(-50%)",opacity:0.4}}>
-              <circle cx="6.5" cy="6.5" r="5" stroke="#1A1A18" strokeWidth="1.3"/>
-              <line x1="10.5" y1="10.5" x2="14" y2="14" stroke="#1A1A18" strokeWidth="1.3" strokeLinecap="round"/>
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{position:"absolute",left:13,top:"50%",transform:"translateY(-50%)",opacity:0.3}}>
+              <circle cx="6.5" cy="6.5" r="5" stroke={C.amber} strokeWidth="1.3"/>
+              <line x1="10.5" y1="10.5" x2="14" y2="14" stroke={C.amber} strokeWidth="1.3" strokeLinecap="round"/>
             </svg>
             <input
               type="text"
               value={query}
               onChange={e=>setQuery(e.target.value)}
               placeholder="Search terms..."
-              style={{width:"100%",boxSizing:"border-box",padding:"11px 13px 11px 38px",fontSize:14,fontFamily:"'DM Sans',system-ui,sans-serif",background:"#fff",border:"1px solid #E0DED8",borderRadius:8,outline:"none",color:"#1A1A18"}}
+              style={{width:"100%",boxSizing:"border-box",padding:"11px 13px 11px 38px",fontSize:14,fontFamily:"'DM Sans',system-ui,sans-serif",background:C.hi,border:`1px solid ${C.border}`,borderRadius:8,outline:"none",color:C.text}}
             />
-            {query && <button onClick={()=>setQuery("")} style={{position:"absolute",right:12,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",cursor:"pointer",fontFamily:mono,fontSize:11,color:"#9C9278",padding:0}}>clear</button>}
+            {query && <button onClick={()=>setQuery("")} style={{position:"absolute",right:12,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",cursor:"pointer",fontFamily:mono,fontSize:11,color:C.muted,padding:0}}>clear</button>}
           </div>
         </div>
 
-        {/* Results count when searching */}
         {query && (
           <div style={{fontFamily:mono,fontSize:11,color:C.muted,marginBottom:24}}>
             // {filtered.reduce((a,s)=>a+s.terms.length,0)} result{filtered.reduce((a,s)=>a+s.terms.length,0)!==1?"s":""} for "{query}"
           </div>
         )}
 
-        {/* Sections */}
         {filtered.length === 0 ? (
-          <div style={{fontFamily:mono,fontSize:13,color:"#9C9278",padding:"40px 0",textAlign:"center"}}>// no results found</div>
+          <div style={{fontFamily:mono,fontSize:13,color:C.muted,padding:"40px 0",textAlign:"center"}}>// no results found</div>
         ) : (
           filtered.map((section,si)=>(
             <div key={si} style={{marginBottom:40}}>
-              <div style={{fontFamily:mono,fontSize:11,color:C.amber,letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:16,paddingBottom:8,borderBottom:`1px solid #E8E6E0`}}>
+              <div style={{fontFamily:mono,fontSize:11,color:C.amber,letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:16,paddingBottom:8,borderBottom:`1px solid ${C.border}`}}>
                 // {section.section}
               </div>
               {section.terms.map((t,ti)=>(
-                <div key={ti} style={{display:"grid",gridTemplateColumns:"200px 1fr",gap:24,padding:"14px 0",borderBottom:"1px solid #F0EDE8",alignItems:"start"}}>
-                  <div style={{fontFamily:mono,fontSize:13,color:"#1A1A18",fontWeight:500,paddingTop:1}}>{t.term}</div>
-                  <div style={{fontSize:14,color:"#4A4A47",lineHeight:1.75}}>{t.def}</div>
+                <div key={ti} style={{display:"grid",gridTemplateColumns:"200px 1fr",gap:24,padding:"14px 0",borderBottom:`1px solid ${C.faint}`,alignItems:"start"}}>
+                  <div style={{fontFamily:mono,fontSize:13,color:C.text,fontWeight:500,paddingTop:1}}>{t.term}</div>
+                  <div style={{fontSize:14,color:C.dim,lineHeight:1.75}}>{t.def}</div>
                 </div>
               ))}
             </div>
           ))
         )}
 
-        {/* Footer CTA */}
-        <div style={{marginTop:40,paddingTop:32,borderTop:"1px solid #E0DED8",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-          <div style={{fontSize:13,color:"#9C9278"}}>Something missing? A term you don't recognise?</div>
+        <div style={{marginTop:40,paddingTop:32,borderTop:`1px solid ${C.border}`,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+          <div style={{fontSize:13,color:C.muted}}>Something missing? A term you don't recognise?</div>
           <button onClick={()=>go("analyse")} style={{background:C.amber,color:"#000",border:"none",borderRadius:6,fontFamily:mono,fontWeight:700,fontSize:12,padding:"8px 16px",cursor:"pointer"}}>
             try_analyse() →
           </button>
@@ -539,14 +532,10 @@ function Results({data,reset,go}) {
   const devices = data.devices || [];
   const faRisk = SEV[fa.risk]||SEV.LOW;
   const hasVerified = ni.items?.some(i=>i.verified);
-
-  const GlossaryLink = ({title}) => (
-    <InfoIcon onClick={()=>go("glossary")} title={`Learn more: ${title}`}/>
-  );
+  const GlossaryLink = () => <InfoIcon onClick={()=>go("glossary")}/>;
 
   return (
     <div>
-      {/* Header */}
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
         <div style={{fontFamily:mono,fontSize:11,color:C.muted,letterSpacing:"0.1em",textTransform:"uppercase"}}>// analysis complete</div>
         <div style={{display:"flex",gap:9}}>
@@ -555,11 +544,10 @@ function Results({data,reset,go}) {
         </div>
       </div>
 
-      {/* PRIORITY ASSESSMENT */}
       {data.priorityAssessment?.items?.length>0&&(
         <div style={{background:C.surface,border:`1px solid ${C.amber}44`,borderRadius:10,padding:"18px 22px",marginBottom:12}}>
           <div style={{fontFamily:mono,fontSize:11,color:C.amber,letterSpacing:"0.12em",textTransform:"uppercase",marginBottom:14,display:"flex",alignItems:"center"}}>
-            // priority assessment <GlossaryLink title="P1 / P2 / P3"/>
+            // priority assessment <GlossaryLink/>
           </div>
           <div style={{display:"flex",flexDirection:"column",gap:10}}>
             {data.priorityAssessment.items.map((item,i)=>{
@@ -583,13 +571,12 @@ function Results({data,reset,go}) {
         </div>
       )}
 
-      {/* STREAM 1: FABRIC ANALYSIS */}
       <div style={{background:faRisk.bg,border:`1px solid ${faRisk.bd}`,borderRadius:10,padding:"18px 22px",marginBottom:12}}>
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
           <div style={{display:"flex",alignItems:"center",gap:10}}>
             <div style={{width:8,height:8,borderRadius:"50%",background:faRisk.color,boxShadow:`0 0 6px ${faRisk.color}`}}/>
             <div style={{fontFamily:mono,fontSize:11,color:faRisk.color,letterSpacing:"0.12em",textTransform:"uppercase",display:"flex",alignItems:"center"}}>
-              // fabric analysis <GlossaryLink title="Fabric analysis"/>
+              // fabric analysis <GlossaryLink/>
             </div>
           </div>
           <Badge level={fa.risk||"LOW"}/>
@@ -604,21 +591,20 @@ function Results({data,reset,go}) {
         {fa.mismatches?.length>0&&(
           <div style={{marginTop:10,padding:"10px 13px",background:"#2A140088",border:`1px solid ${C.orange}44`,borderRadius:6}}>
             <div style={{fontFamily:mono,fontSize:11,color:C.orange,marginBottom:6,display:"flex",alignItems:"center"}}>
-              // version mismatches detected <GlossaryLink title="Version mismatch"/>
+              // version mismatches detected <GlossaryLink/>
             </div>
             {fa.mismatches.map((m,i)=><div key={i} style={{fontSize:12,color:C.dim}}>{m}</div>)}
           </div>
         )}
       </div>
 
-      {/* STREAM 2: NETWRKR INTEL */}
       {ni.hasIntel&&ni.items?.length>0&&(
         <div style={{background:C.surface,border:`1px solid ${C.amber}33`,borderRadius:10,padding:"18px 22px",marginBottom:12}}>
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
             <div style={{display:"flex",alignItems:"center",gap:10}}>
               <span style={{fontSize:14}}>🔍</span>
               <div style={{fontFamily:mono,fontSize:11,color:C.amber,letterSpacing:"0.12em",textTransform:"uppercase",display:"flex",alignItems:"center"}}>
-                // netwrkr intel <GlossaryLink title="Netwrkr intel"/>
+                // netwrkr intel <GlossaryLink/>
               </div>
             </div>
             {hasVerified
@@ -659,9 +645,8 @@ function Results({data,reset,go}) {
         </div>
       )}
 
-      {/* DEVICE BREAKDOWN */}
       <div style={{fontFamily:mono,fontSize:11,color:C.muted,letterSpacing:"0.12em",textTransform:"uppercase",marginBottom:9,display:"flex",alignItems:"center"}}>
-        // device breakdown <GlossaryLink title="Infrastructure roles"/>
+        // device breakdown <GlossaryLink/>
       </div>
       <div style={{display:"flex",flexDirection:"column",gap:9,marginBottom:16}}>
         {devices.map((d,di)=>{
@@ -696,11 +681,10 @@ function Results({data,reset,go}) {
         })}
       </div>
 
-      {/* Enterprise upsell */}
       <div style={{background:C.amberG,border:`1px solid ${C.amber}33`,borderRadius:10,padding:"16px 20px",display:"flex",alignItems:"center",justifyContent:"space-between",gap:18}}>
         <div>
           <div style={{fontFamily:mono,fontSize:11,color:C.amber,marginBottom:4,display:"flex",alignItems:"center"}}>
-            // unlock verified fabric exposure analysis <GlossaryLink title="Fabric exposure analysis"/>
+            // unlock verified fabric exposure analysis <GlossaryLink/>
           </div>
           <div style={{fontSize:13,color:C.dim,lineHeight:1.6}}>Enterprise adds live Cisco Bug API data — verified CSC IDs and confirmed fabric exposure analysis.</div>
         </div>
