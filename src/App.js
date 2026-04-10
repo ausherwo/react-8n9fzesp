@@ -498,26 +498,27 @@ function Results({data,reset}) {
       {/* STREAM 2: NETWRKR INTEL */}
       {ni.hasIntel&&ni.items?.length>0&&(
         <div style={{background:C.surface,border:`1px solid ${C.amber}33`,borderRadius:10,padding:"18px 22px",marginBottom:12}}>
-ignItems:"center",justifyContent:"space-between",marginBottom:12}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
             <div style={{display:"flex",alignItems:"center",gap:10}}>
               <span style={{fontSize:14}}>🔍</span>
               <div style={{fontFamily:mono,fontSize:11,color:C.amber,letterSpacing:"0.12em",textTransform:"uppercase"}}>// netwrkr intel</div>
             </div>
             {hasVerified
-  ? <span style={{fontFamily:mono,fontSize:10,color:C.green,background:"#0A2A1088",border:`1px solid ${C.green}44`,padding:"2px 8px",borderRadius:3}}>✓ live PSIRT data</span>
-  : <span style={{fontFamily:mono,fontSize:10,color:C.orange,background:"#2A140088",border:`1px solid ${C.orange}44`,padding:"2px 8px",borderRadius:3}}>⚠ unverified</span>
-}<div style={{fontSize:12,color:C.muted,marginBottom:14,lineHeight:1.6}}>
-  {hasVerified
-    ? <>Verified advisories sourced from the live Cisco PSIRT API. Unverified items are from AI training knowledge — <span style={{color:C.amber}}>Upgrade to enterprise</span> for full fabric exposure analysis.</>
-    : <>Potential software issues inferred from known version history. <span style={{color:C.amber}}>Upgrade to enterprise</span> for verified CSC data from the live Cisco Bug API.</>
-  }
-</div>
+              ? <span style={{fontFamily:mono,fontSize:10,color:C.green,background:"#0A2A1088",border:`1px solid ${C.green}44`,padding:"2px 8px",borderRadius:3}}>✓ live PSIRT data</span>
+              : <span style={{fontFamily:mono,fontSize:10,color:C.orange,background:"#2A140088",border:`1px solid ${C.orange}44`,padding:"2px 8px",borderRadius:3}}>⚠ unverified</span>
+            }
+          </div>
+          <div style={{fontSize:12,color:C.muted,marginBottom:14,lineHeight:1.6}}>
+            {hasVerified
+              ? <>Verified advisories sourced from the live Cisco PSIRT API. Unverified items are from AI training knowledge — <span style={{color:C.amber}}>Upgrade to enterprise</span> for full fabric exposure analysis.</>
+              : <>Potential software issues inferred from known version history. <span style={{color:C.amber}}>Upgrade to enterprise</span> for verified CSC data from the live Cisco Bug API.</>
+            }
           </div>
           <div style={{display:"flex",flexDirection:"column",gap:8}}>
             {ni.items.map((item,i)=>{
               const s=SEV[item.sev]||SEV.LOW;
               return (
-                <div key={i} style={{border:`1px solid ${item.verified?C.green+"44":C.border}`,borderRadius:8,padding:"11px 14px",background:C.hi,opacity:item.verified?1:0.85}}>
+                <div key={i} style={{border:`1px solid ${C.border}`,borderRadius:8,padding:"11px 14px",background:C.hi,opacity:0.85}}>
                   <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:10,marginBottom:6}}>
                     <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
                       <Badge level={item.sev} sm/>
@@ -528,13 +529,8 @@ ignItems:"center",justifyContent:"space-between",marginBottom:12}}>
                   </div>
                   <div style={{fontSize:12,color:C.dim,lineHeight:1.6,marginBottom:8}}>{item.detail}</div>
                   <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-                  {item.verified
-  ? <span style={{fontFamily:mono,fontSize:10,color:C.green}}>✓ verified — Cisco PSIRT API</span>
-  : <span style={{fontFamily:mono,fontSize:10,color:C.orange}}>⚠ unverified — AI knowledge only</span>
-}
-{!item.verified &&
-  <button style={{background:"none",border:`1px solid ${C.amber}44`,color:C.amber,fontFamily:mono,fontSize:10,padding:"2px 8px",borderRadius:3,cursor:"pointer"}}>🔒 verify with enterprise</button>
-}
+                    <span style={{fontFamily:mono,fontSize:10,color:C.orange}}>⚠ unverified — AI knowledge only</span>
+                    <button style={{background:"none",border:`1px solid ${C.amber}44`,color:C.amber,fontFamily:mono,fontSize:10,padding:"2px 8px",borderRadius:3,cursor:"pointer"}}>🔒 verify with enterprise</button>
                   </div>
                 </div>
               );
@@ -707,8 +703,6 @@ ABSOLUTE RULES:
 13. APIC controllers always appear first in the devices array, before Spines.
 14. Controllers (APIC, DNAC, NSO) must have fabricRisk "LOW" unless there is a version mismatch between the controllers themselves. A version mismatch elsewhere in the fabric (e.g. spine vs leaf) does not elevate controller fabricRisk.
 15. Border Leaf device recommendations must never use directive upgrade language (e.g. "Upgrade to match spine version"). Instead use advisory language such as "Review upgrade target against current fabric baseline" or "Assess version alignment before next maintenance window".
-16. P1/P2/P3 priority assessment titles must never contain the word "Critical" — use "High priority", "Significant", "Security advisory", or similar instead.
-17. fabricAnalysis findings must never reference advisory counts, CVEs, or bug data — topology facts from the submitted inventory only.
 
 INFRASTRUCTURE TIER GUIDE:
 - Tier 1: Controllers — APIC, DNAC, NSO (always first, shapes entire upgrade path)
