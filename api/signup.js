@@ -40,7 +40,6 @@ export default async function handler(req, res) {
             "Title": title || "",
             "Company": company || "",
             "Source": source || "gate",
-            "Date Created": new Date().toISOString().split("T")[0],
           }
         }]
       })
