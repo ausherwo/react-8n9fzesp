@@ -1,4 +1,4 @@
-// v2.8 — glossary dark theme
+// v2.9 — signup gate, email capture, Airtable integration
 import { useState, useEffect, useRef } from "react";
 
 const C = {
@@ -17,6 +17,12 @@ const SEV = {
 };
 
 const mono = "JetBrains Mono, Fira Code, monospace";
+
+// localStorage helpers for anonymous usage tracking
+const getCount = () => parseInt(localStorage.getItem("nw_count") || "0");
+const incCount = () => localStorage.setItem("nw_count", getCount() + 1);
+const isRegistered = () => localStorage.getItem("nw_registered") === "true";
+const setRegistered = () => localStorage.setItem("nw_registered", "true");
 
 function Pill({ children, color=C.amber }) {
   return <span style={{fontFamily:mono,fontSize:10,color,background:color+"18",border:`1px solid ${color}30`,padding:"2px 8px",borderRadius:3,letterSpacing:"0.04em"}}>{children}</span>;
@@ -52,6 +58,117 @@ function Cur() {
   const [v,setV]=useState(true);
   useEffect(()=>{const t=setInterval(()=>setV(x=>!x),530);return()=>clearInterval(t);},[]);
   return <span style={{color:C.amber,opacity:v?1:0}}>▌</span>;
+}
+
+// ── SIGNUP GATE MODAL ────────────────────────────────────────────
+function SignupGate({ onComplete, onDismiss }) {
+  const [step, setStep] = useState("form"); // form | success
+  const [form, setForm] = useState({ firstName:"", lastName:"", email:"", title:"", company:"" });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const set = (k,v) => setForm(f=>({...f,[k]:v}));
+  const valid = form.email.includes("@") && form.firstName.trim() && form.lastName.trim();
+
+  const submit = async () => {
+    if (!valid) return;
+    setLoading(true);
+    setError("");
+    try {
+      const res = await fetch("/api/signup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...form, source: "gate" })
+      });
+      if (!res.ok) throw new Error("Signup failed");
+      setRegistered();
+      setStep("success");
+      setTimeout(() => onComplete(), 1800);
+    } catch(e) {
+      setError("Something went wrong — please try again.");
+    }
+    setLoading(false);
+  };
+
+  const inp = {fontFamily:mono,fontSize:13,background:C.hi,border:`1px solid ${C.border}`,color:C.text,borderRadius:6,padding:"9px 12px",width:"100%",outline:"none",boxSizing:"border-box"};
+
+  return (
+    <div style={{position:"fixed",inset:0,background:"#080806EE",backdropFilter:"blur(8px)",zIndex:300,display:"flex",alignItems:"center",justifyContent:"center",padding:"20px"}}>
+      <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:12,padding:"32px 36px",width:"100%",maxWidth:440,boxShadow:`0 0 60px ${C.amber}12`}}>
+
+        {step === "form" && <>
+          <div style={{fontFamily:mono,fontSize:11,color:C.amber,letterSpacing:"0.12em",textTransform:"uppercase",marginBottom:6}}>// free account</div>
+          <h2 style={{fontSize:22,fontWeight:300,letterSpacing:"-0.02em",marginBottom:6}}>Create your free account</h2>
+          <p style={{fontSize:13,color:C.dim,lineHeight:1.6,marginBottom:22}}>10 analyses/month, no credit card required. Your first analysis was on us.</p>
+
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
+            <div>
+              <label style={{fontFamily:mono,fontSize:10,color:C.muted,display:"block",marginBottom:5,letterSpacing:"0.08em"}}>FIRST NAME *</label>
+              <input value={form.firstName} onChange={e=>set("firstName",e.target.value)} placeholder="Andrew" style={inp}/>
+            </div>
+            <div>
+              <label style={{fontFamily:mono,fontSize:10,color:C.muted,display:"block",marginBottom:5,letterSpacing:"0.08em"}}>LAST NAME *</label>
+              <input value={form.lastName} onChange={e=>set("lastName",e.target.value)} placeholder="Usherwood" style={inp}/>
+            </div>
+          </div>
+
+          <div style={{marginBottom:10}}>
+            <label style={{fontFamily:mono,fontSize:10,color:C.muted,display:"block",marginBottom:5,letterSpacing:"0.08em"}}>WORK EMAIL *</label>
+            <input type="email" value={form.email} onChange={e=>set("email",e.target.value)} placeholder="engineer@yourcompany.com" style={inp}/>
+          </div>
+
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:20}}>
+            <div>
+              <label style={{fontFamily:mono,fontSize:10,color:C.muted,display:"block",marginBottom:5,letterSpacing:"0.08em"}}>TITLE</label>
+              <input value={form.title} onChange={e=>set("title",e.target.value)} placeholder="Network Architect" style={inp}/>
+            </div>
+            <div>
+              <label style={{fontFamily:mono,fontSize:10,color:C.muted,display:"block",marginBottom:5,letterSpacing:"0.08em"}}>COMPANY</label>
+              <input value={form.company} onChange={e=>set("company",e.target.value)} placeholder="Acme Corp" style={inp}/>
+            </div>
+          </div>
+
+          {error && <div style={{fontFamily:mono,fontSize:11,color:C.red,marginBottom:12}}>{error}</div>}
+
+          <button onClick={submit} disabled={!valid||loading}
+            style={{background:valid&&!loading?C.amber:"#5A4800",color:"#000",border:"none",borderRadius:7,fontFamily:mono,fontWeight:700,fontSize:13,padding:"12px",cursor:valid&&!loading?"pointer":"not-allowed",width:"100%",opacity:valid&&!loading?1:.5,display:"flex",alignItems:"center",justifyContent:"center",gap:8,marginBottom:10}}>
+            {loading?<><span style={{width:13,height:13,border:"2px solid #00000033",borderTopColor:"#000",borderRadius:"50%",animation:"spin .7s linear infinite"}}/>creating_account()</>:"create_free_account() →"}
+          </button>
+
+          <button onClick={onDismiss} style={{background:"none",border:"none",color:C.muted,fontFamily:mono,fontSize:11,cursor:"pointer",width:"100%",padding:"4px"}}>
+            maybe later — use my last free analysis
+          </button>
+
+          <div style={{fontFamily:mono,fontSize:10,color:C.faint,textAlign:"center",marginTop:10}}>// no credit card · no spam · unsubscribe anytime</div>
+        </>}
+
+        {step === "success" && (
+          <div style={{textAlign:"center",padding:"20px 0"}}>
+            <div style={{width:48,height:48,borderRadius:"50%",background:C.greenG,border:`1px solid ${C.green}44`,display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 16px",fontSize:20}}>✓</div>
+            <div style={{fontFamily:mono,fontSize:14,color:C.green,marginBottom:8}}>account_created()</div>
+            <div style={{fontSize:13,color:C.dim}}>Welcome to netwrkr.ai. Running your next analysis now...</div>
+          </div>
+        )}
+
+      </div>
+    </div>
+  );
+}
+
+// ── POST-ANALYSIS NUDGE BANNER ───────────────────────────────────
+function SignupNudge({ onSignup, onDismiss }) {
+  return (
+    <div style={{background:`${C.amber}12`,border:`1px solid ${C.amber}44`,borderRadius:10,padding:"14px 18px",marginTop:14,display:"flex",alignItems:"center",justifyContent:"space-between",gap:16}}>
+      <div>
+        <div style={{fontFamily:mono,fontSize:11,color:C.amber,marginBottom:3}}>// you have 1 free analysis remaining</div>
+        <div style={{fontSize:13,color:C.dim}}>Create a free account to get 10 analyses/month and keep your results history.</div>
+      </div>
+      <div style={{display:"flex",gap:8,flexShrink:0}}>
+        <button onClick={onDismiss} style={{background:"none",border:`1px solid ${C.border}`,color:C.muted,fontFamily:mono,fontSize:11,padding:"6px 12px",borderRadius:5,cursor:"pointer"}}>later</button>
+        <button onClick={onSignup} style={{background:C.amber,border:"none",color:"#000",fontFamily:mono,fontWeight:700,fontSize:11,padding:"6px 14px",borderRadius:5,cursor:"pointer"}}>create_account()</button>
+      </div>
+    </div>
+  );
 }
 
 const TL = [
@@ -176,53 +293,29 @@ const GLOSSARY = [
 
 function GlossaryPage({go}) {
   const [query, setQuery] = useState("");
-
-  const filtered = GLOSSARY.map(s=>({
-    ...s,
-    terms: s.terms.filter(t =>
-      !query || t.term.toLowerCase().includes(query.toLowerCase()) || t.def.toLowerCase().includes(query.toLowerCase())
-    )
-  })).filter(s => s.terms.length > 0);
-
+  const filtered = GLOSSARY.map(s=>({...s,terms:s.terms.filter(t=>!query||t.term.toLowerCase().includes(query.toLowerCase())||t.def.toLowerCase().includes(query.toLowerCase()))})).filter(s=>s.terms.length>0);
   return (
     <div>
       <div style={{maxWidth:780,margin:"0 auto",padding:"56px 36px 80px"}}>
-
         <div style={{marginBottom:40}}>
           <div style={{fontFamily:mono,fontSize:11,color:C.amber,letterSpacing:"0.14em",textTransform:"uppercase",marginBottom:10}}>// glossary</div>
           <h1 style={{fontSize:36,fontWeight:300,letterSpacing:"-0.03em",marginBottom:12}}>Terms explained</h1>
           <p style={{fontSize:15,color:C.dim,lineHeight:1.7,marginBottom:28}}>Plain-English definitions for every term used in netwrkr.ai analysis results.</p>
-
           <div style={{position:"relative"}}>
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{position:"absolute",left:13,top:"50%",transform:"translateY(-50%)",opacity:0.3}}>
               <circle cx="6.5" cy="6.5" r="5" stroke={C.amber} strokeWidth="1.3"/>
               <line x1="10.5" y1="10.5" x2="14" y2="14" stroke={C.amber} strokeWidth="1.3" strokeLinecap="round"/>
             </svg>
-            <input
-              type="text"
-              value={query}
-              onChange={e=>setQuery(e.target.value)}
-              placeholder="Search terms..."
-              style={{width:"100%",boxSizing:"border-box",padding:"11px 13px 11px 38px",fontSize:14,fontFamily:"'DM Sans',system-ui,sans-serif",background:C.hi,border:`1px solid ${C.border}`,borderRadius:8,outline:"none",color:C.text}}
-            />
-            {query && <button onClick={()=>setQuery("")} style={{position:"absolute",right:12,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",cursor:"pointer",fontFamily:mono,fontSize:11,color:C.muted,padding:0}}>clear</button>}
+            <input type="text" value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search terms..."
+              style={{width:"100%",boxSizing:"border-box",padding:"11px 13px 11px 38px",fontSize:14,fontFamily:"'DM Sans',system-ui,sans-serif",background:C.hi,border:`1px solid ${C.border}`,borderRadius:8,outline:"none",color:C.text}}/>
+            {query&&<button onClick={()=>setQuery("")} style={{position:"absolute",right:12,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",cursor:"pointer",fontFamily:mono,fontSize:11,color:C.muted,padding:0}}>clear</button>}
           </div>
         </div>
-
-        {query && (
-          <div style={{fontFamily:mono,fontSize:11,color:C.muted,marginBottom:24}}>
-            // {filtered.reduce((a,s)=>a+s.terms.length,0)} result{filtered.reduce((a,s)=>a+s.terms.length,0)!==1?"s":""} for "{query}"
-          </div>
-        )}
-
-        {filtered.length === 0 ? (
-          <div style={{fontFamily:mono,fontSize:13,color:C.muted,padding:"40px 0",textAlign:"center"}}>// no results found</div>
-        ) : (
+        {query&&<div style={{fontFamily:mono,fontSize:11,color:C.muted,marginBottom:24}}>// {filtered.reduce((a,s)=>a+s.terms.length,0)} result{filtered.reduce((a,s)=>a+s.terms.length,0)!==1?"s":""} for "{query}"</div>}
+        {filtered.length===0?(<div style={{fontFamily:mono,fontSize:13,color:C.muted,padding:"40px 0",textAlign:"center"}}>// no results found</div>):(
           filtered.map((section,si)=>(
             <div key={si} style={{marginBottom:40}}>
-              <div style={{fontFamily:mono,fontSize:11,color:C.amber,letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:16,paddingBottom:8,borderBottom:`1px solid ${C.border}`}}>
-                // {section.section}
-              </div>
+              <div style={{fontFamily:mono,fontSize:11,color:C.amber,letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:16,paddingBottom:8,borderBottom:`1px solid ${C.border}`}}>// {section.section}</div>
               {section.terms.map((t,ti)=>(
                 <div key={ti} style={{display:"grid",gridTemplateColumns:"200px 1fr",gap:24,padding:"14px 0",borderBottom:`1px solid ${C.faint}`,alignItems:"start"}}>
                   <div style={{fontFamily:mono,fontSize:13,color:C.text,fontWeight:500,paddingTop:1}}>{t.term}</div>
@@ -232,14 +325,10 @@ function GlossaryPage({go}) {
             </div>
           ))
         )}
-
         <div style={{marginTop:40,paddingTop:32,borderTop:`1px solid ${C.border}`,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
           <div style={{fontSize:13,color:C.muted}}>Something missing? A term you don't recognise?</div>
-          <button onClick={()=>go("analyse")} style={{background:C.amber,color:"#000",border:"none",borderRadius:6,fontFamily:mono,fontWeight:700,fontSize:12,padding:"8px 16px",cursor:"pointer"}}>
-            try_analyse() →
-          </button>
+          <button onClick={()=>go("analyse")} style={{background:C.amber,color:"#000",border:"none",borderRadius:6,fontFamily:mono,fontWeight:700,fontSize:12,padding:"8px 16px",cursor:"pointer"}}>try_analyse() →</button>
         </div>
-
       </div>
     </div>
   );
@@ -249,13 +338,9 @@ function Home({go}) {
   const [tab,setTab]=useState("ent");
   const [email,setEmail]=useState("");
   const [done,setDone]=useState(false);
-
   const Btn = ({label,active,onClick}) => (
-    <button onClick={onClick} style={{background:active?C.amber:"transparent",color:active?"#000":C.muted,border:"none",borderRadius:5,fontFamily:mono,fontSize:12,fontWeight:active?700:400,padding:"8px 18px",cursor:"pointer",letterSpacing:"0.03em",transition:"all .15s"}}>
-      {label}
-    </button>
+    <button onClick={onClick} style={{background:active?C.amber:"transparent",color:active?"#000":C.muted,border:"none",borderRadius:5,fontFamily:mono,fontSize:12,fontWeight:active?700:400,padding:"8px 18px",cursor:"pointer",letterSpacing:"0.03em",transition:"all .15s"}}>{label}</button>
   );
-
   return (
     <div>
       <div style={{maxWidth:1140,margin:"0 auto",padding:"80px 36px 64px",display:"grid",gridTemplateColumns:"1fr 1fr",gap:60,alignItems:"center"}}>
@@ -274,12 +359,8 @@ function Home({go}) {
             netwrkr.ai cross-references your Cisco DC fabric against live bug data and generates a sequenced remediation plan — free in your browser, or self-hosted behind your firewall.
           </p>
           <div style={{display:"flex",gap:12,marginBottom:32}}>
-            <button onClick={()=>go("analyse")} style={{background:C.amber,color:"#000",border:"none",borderRadius:6,fontFamily:mono,fontWeight:700,fontSize:13,padding:"12px 26px",cursor:"pointer"}}>
-              try_free() // no signup
-            </button>
-            <button style={{background:"none",border:`1px solid ${C.border}`,color:C.dim,borderRadius:6,fontFamily:mono,fontSize:13,padding:"12px 20px",cursor:"pointer"}}>
-              docker pull netwrkr/netwrkr-ai
-            </button>
+            <button onClick={()=>go("analyse")} style={{background:C.amber,color:"#000",border:"none",borderRadius:6,fontFamily:mono,fontWeight:700,fontSize:13,padding:"12px 26px",cursor:"pointer"}}>try_free() // no signup</button>
+            <button style={{background:"none",border:`1px solid ${C.border}`,color:C.dim,borderRadius:6,fontFamily:mono,fontSize:13,padding:"12px 20px",cursor:"pointer"}}>docker pull netwrkr/netwrkr-ai</button>
           </div>
           <div style={{display:"flex",borderTop:`1px solid ${C.border}`,paddingTop:22}}>
             {[["Free","browser-based"],["Self-hosted","enterprise docker"],["0 credentials","leave your network"]].map(([v,l],i)=>(
@@ -297,29 +378,19 @@ function Home({go}) {
         <div style={{display:"flex",justifyContent:"center",marginBottom:36}}>
           <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:8,padding:4,display:"flex",gap:2}}>
             <Btn label="Enterprise // self-hosted" active={tab==="ent"} onClick={()=>setTab("ent")}/>
-            <Btn label="Free // browser-based"     active={tab==="free"} onClick={()=>setTab("free")}/>
+            <Btn label="Free // browser-based" active={tab==="free"} onClick={()=>setTab("free")}/>
           </div>
         </div>
-
-        {tab==="ent" && (
+        {tab==="ent"&&(
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:44,alignItems:"start"}}>
             <div>
               <div style={{fontFamily:mono,fontSize:11,color:C.amber,letterSpacing:"0.14em",textTransform:"uppercase",marginBottom:12}}>// enterprise edition</div>
               <h2 style={{fontSize:30,fontWeight:300,letterSpacing:"-0.03em",lineHeight:1.2,marginBottom:14}}>Runs inside your perimeter.</h2>
-              <p style={{fontSize:14,color:C.dim,lineHeight:1.8,marginBottom:22}}>
-                A Docker image you run on your own infrastructure. Credentials never leave your network — not even to us.
-              </p>
-              {[["🔐","Zero credential exposure","Cisco API calls from your server. We never see your credentials."],
-                ["🐳","One-command install","docker pull + docker run. Running in under 2 minutes."],
-                ["🔍","Fully auditable","Open source backend. Read every line before you run it."],
-                ["⚡","Live Cisco Bug API","Real-time authoritative data. Every CSC ID verified."]
-              ].map(([ic,t,d])=>(
+              <p style={{fontSize:14,color:C.dim,lineHeight:1.8,marginBottom:22}}>A Docker image you run on your own infrastructure. Credentials never leave your network — not even to us.</p>
+              {[["🔐","Zero credential exposure","Cisco API calls from your server. We never see your credentials."],["🐳","One-command install","docker pull + docker run. Running in under 2 minutes."],["🔍","Fully auditable","Open source backend. Read every line before you run it."],["⚡","Live Cisco Bug API","Real-time authoritative data. Every CSC ID verified."]].map(([ic,t,d])=>(
                 <div key={t} style={{display:"flex",gap:12,marginBottom:14,alignItems:"flex-start"}}>
                   <span style={{fontSize:17,flexShrink:0,marginTop:1}}>{ic}</span>
-                  <div>
-                    <div style={{fontWeight:600,fontSize:13,marginBottom:2}}>{t}</div>
-                    <div style={{fontSize:13,color:C.dim,lineHeight:1.6}}>{d}</div>
-                  </div>
+                  <div><div style={{fontWeight:600,fontSize:13,marginBottom:2}}>{t}</div><div style={{fontSize:13,color:C.dim,lineHeight:1.6}}>{d}</div></div>
                 </div>
               ))}
             </div>
@@ -344,59 +415,32 @@ function Home({go}) {
                   </div>
                 ))}
               </div>
-              <button onClick={()=>go("signup")} style={{background:C.amber,color:"#000",border:"none",borderRadius:7,fontFamily:mono,fontWeight:700,fontSize:13,padding:"12px",cursor:"pointer",width:"100%"}}>
-                contact_us() // enterprise pricing
-              </button>
+              <button onClick={()=>go("signup")} style={{background:C.amber,color:"#000",border:"none",borderRadius:7,fontFamily:mono,fontWeight:700,fontSize:13,padding:"12px",cursor:"pointer",width:"100%"}}>contact_us() // enterprise pricing</button>
             </div>
           </div>
         )}
-
-        {tab==="free" && (
+        {tab==="free"&&(
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:44,alignItems:"start"}}>
             <div>
               <div style={{fontFamily:mono,fontSize:11,color:C.amber,letterSpacing:"0.14em",textTransform:"uppercase",marginBottom:12}}>// free tier</div>
-              <h2 style={{fontSize:30,fontWeight:300,letterSpacing:"-0.03em",lineHeight:1.2,marginBottom:14}}>
-                No signup. No credentials.<br/><span style={{color:C.amber}}>Just paste and go.</span>
-              </h2>
-              <p style={{fontSize:14,color:C.dim,lineHeight:1.8,marginBottom:22}}>
-                Upload a CSV of platform names and versions. Claude analyzes it against known bug patterns instantly. Nothing sensitive required.
-              </p>
-              {[["📋","CSV upload only","Platform + version. No hostnames, IPs, or sensitive data."],
-                ["🤖","AI-powered analysis","Cross-referenced against bugs, advisories, and release notes."],
-                ["🔒","Nothing sensitive shared","You control exactly what you upload."],
-                ["⚡","10 analyses / month","Free forever. No credit card. No account needed to try."]
-              ].map(([ic,t,d])=>(
+              <h2 style={{fontSize:30,fontWeight:300,letterSpacing:"-0.03em",lineHeight:1.2,marginBottom:14}}>No signup. No credentials.<br/><span style={{color:C.amber}}>Just paste and go.</span></h2>
+              <p style={{fontSize:14,color:C.dim,lineHeight:1.8,marginBottom:22}}>Upload a CSV of platform names and versions. Claude analyzes it against known bug patterns instantly. Nothing sensitive required.</p>
+              {[["📋","CSV upload only","Platform + version. No hostnames, IPs, or sensitive data."],["🤖","AI-powered analysis","Cross-referenced against bugs, advisories, and release notes."],["🔒","Nothing sensitive shared","You control exactly what you upload."],["⚡","10 analyses / month","Free forever. No credit card. No account needed to try."]].map(([ic,t,d])=>(
                 <div key={t} style={{display:"flex",gap:12,marginBottom:14,alignItems:"flex-start"}}>
                   <span style={{fontSize:17,flexShrink:0,marginTop:1}}>{ic}</span>
-                  <div>
-                    <div style={{fontWeight:600,fontSize:13,marginBottom:2}}>{t}</div>
-                    <div style={{fontSize:13,color:C.dim,lineHeight:1.6}}>{d}</div>
-                  </div>
+                  <div><div style={{fontWeight:600,fontSize:13,marginBottom:2}}>{t}</div><div style={{fontSize:13,color:C.dim,lineHeight:1.6}}>{d}</div></div>
                 </div>
               ))}
-              <button onClick={()=>go("analyse")} style={{background:C.amber,color:"#000",border:"none",borderRadius:7,fontFamily:mono,fontWeight:700,fontSize:13,padding:"12px 24px",cursor:"pointer",marginTop:6}}>
-                try_free() // no account needed
-              </button>
+              <button onClick={()=>go("analyse")} style={{background:C.amber,color:"#000",border:"none",borderRadius:7,fontFamily:mono,fontWeight:700,fontSize:13,padding:"12px 24px",cursor:"pointer",marginTop:6}}>try_free() // no account needed</button>
             </div>
             <div style={{background:"#050503",border:`1px solid ${C.border}`,borderRadius:10,overflow:"hidden"}}>
               <MacBar label="fabric.csv"/>
               <div style={{padding:"18px 20px",fontFamily:mono,fontSize:12,lineHeight:1.9}}>
                 <div style={{color:C.muted}}># Platform, Version, Role</div>
-                {[["Nexus 9336C-FX2","10.2(3)","Spine",C.text],
-                  ["Nexus 9336C-FX2","10.2(3)","Spine",C.text],
-                  ["Nexus 93180YC-EX","9.3(8)","Leaf",C.text],
-                  ["Nexus 93180YC-EX","9.3(5)","Leaf",C.orange],
-                  ["Catalyst 9500","17.6.1","Distribution",C.text],
-                  ["Firepower 4140","7.0.1","Firewall",C.text],
-                ].map(([p,v,r,col],i)=>(
-                  <div key={i} style={{color:col}}>
-                    {p}, {v}, {r}
-                    {col===C.orange&&<span style={{color:C.orange,marginLeft:8}}>← version mismatch</span>}
-                  </div>
+                {[["Nexus 9336C-FX2","10.2(3)","Spine",C.text],["Nexus 9336C-FX2","10.2(3)","Spine",C.text],["Nexus 93180YC-EX","9.3(8)","Leaf",C.text],["Nexus 93180YC-EX","9.3(5)","Leaf",C.orange],["Catalyst 9500","17.6.1","Distribution",C.text],["Firepower 4140","7.0.1","Firewall",C.text]].map(([p,v,r,col],i)=>(
+                  <div key={i} style={{color:col}}>{p}, {v}, {r}{col===C.orange&&<span style={{color:C.orange,marginLeft:8}}>← version mismatch</span>}</div>
                 ))}
-                <div style={{marginTop:12,paddingTop:10,borderTop:`1px solid ${C.faint}`,color:C.muted,fontSize:11}}>
-                  // no hostnames · no IPs · platform + version only
-                </div>
+                <div style={{marginTop:12,paddingTop:10,borderTop:`1px solid ${C.faint}`,color:C.muted,fontSize:11}}>// no hostnames · no IPs · platform + version only</div>
               </div>
             </div>
           </div>
@@ -410,18 +454,10 @@ function Home({go}) {
               <div style={{fontFamily:mono,fontSize:11,color:C.amber,letterSpacing:"0.14em",textTransform:"uppercase",marginBottom:10}}>// security</div>
               <h2 style={{fontSize:30,fontWeight:300,letterSpacing:"-0.03em"}}>Built for engineers who don't trust anyone.</h2>
             </div>
-            <button onClick={()=>go("security")} style={{background:"none",border:`1px solid ${C.border}`,color:C.amber,fontFamily:mono,fontSize:12,padding:"8px 16px",borderRadius:6,cursor:"pointer",whiteSpace:"nowrap",flexShrink:0}}>
-              full details →
-            </button>
+            <button onClick={()=>go("security")} style={{background:"none",border:`1px solid ${C.border}`,color:C.amber,fontFamily:mono,fontSize:12,padding:"8px 16px",borderRadius:6,cursor:"pointer",whiteSpace:"nowrap",flexShrink:0}}>full details →</button>
           </div>
           <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:1,background:C.border,borderRadius:10,overflow:"hidden"}}>
-            {[["🔐","AES-256 encrypted","Credentials encrypted before storage."],
-              ["🚫","Never logged","Scrubbed from all logs at infrastructure level."],
-              ["👤","No human access","Technically impossible for our team to read your credentials."],
-              ["📦","Bug data never stored","Flows through and discarded after each analysis."],
-              ["⚙️","Server-side only","Your Secret never appears in browser code after setup."],
-              ["🔑","Revoke any time","Delete credentials instantly from Settings."],
-            ].map(([ic,t,d])=>(
+            {[["🔐","AES-256 encrypted","Credentials encrypted before storage."],["🚫","Never logged","Scrubbed from all logs at infrastructure level."],["👤","No human access","Technically impossible for our team to read your credentials."],["📦","Bug data never stored","Flows through and discarded after each analysis."],["⚙️","Server-side only","Your Secret never appears in browser code after setup."],["🔑","Revoke any time","Delete credentials instantly from Settings."]].map(([ic,t,d])=>(
               <div key={t} style={{background:C.surface,padding:"20px 22px"}}>
                 <div style={{fontSize:19,marginBottom:9}}>{ic}</div>
                 <div style={{fontFamily:mono,fontSize:12,fontWeight:600,color:C.amber,marginBottom:6}}>{t}</div>
@@ -440,16 +476,15 @@ function Home({go}) {
             <p style={{fontSize:14,color:C.dim,lineHeight:1.8}}>Free tier needs no account. Enterprise runs in your own infrastructure.</p>
           </div>
           <div style={{display:"flex",flexDirection:"column",gap:10}}>
-            {!done ? <>
+            {!done?<>
               <div style={{fontFamily:mono,fontSize:11,color:C.muted}}>$ notify_me --on launch</div>
-              <input type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="engineer@yourcompany.com"
-                style={{background:C.hi,border:`1px solid ${C.border}`,color:C.text,fontFamily:mono,fontSize:13,padding:"10px 13px",borderRadius:6,outline:"none"}}/>
+              <input type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="engineer@yourcompany.com" style={{background:C.hi,border:`1px solid ${C.border}`,color:C.text,fontFamily:mono,fontSize:13,padding:"10px 13px",borderRadius:6,outline:"none"}}/>
               <button onClick={()=>email&&setDone(true)} style={{background:C.amber,color:"#000",border:"none",borderRadius:6,fontFamily:mono,fontWeight:700,fontSize:13,padding:"11px",cursor:"pointer"}}>notify_me()</button>
               <div style={{display:"flex",gap:10}}>
                 <button onClick={()=>go("analyse")} style={{flex:1,background:"none",border:`1px solid ${C.border}`,color:C.dim,borderRadius:6,fontFamily:mono,fontSize:12,padding:"9px",cursor:"pointer"}}>try_free()</button>
                 <button style={{flex:1,background:"none",border:`1px solid ${C.border}`,color:C.dim,borderRadius:6,fontFamily:mono,fontSize:12,padding:"9px",cursor:"pointer"}}>docker_pull()</button>
               </div>
-            </> : (
+            </>:(
               <div style={{background:"#0A2A10",border:`1px solid ${C.green}44`,borderRadius:8,padding:22,textAlign:"center"}}>
                 <div style={{fontFamily:mono,fontSize:14,color:C.green,marginBottom:5}}>✓ notify_me() registered</div>
                 <div style={{fontSize:13,color:C.dim}}>We will email you when enterprise launches.</div>
@@ -518,7 +553,7 @@ function Overlay({step}) {
   );
 }
 
-function Results({data,reset,go}) {
+function Results({data,reset,go,onShowSignup,showNudge,onDismissNudge}) {
   if(!data) return (
     <div style={{textAlign:"center",padding:"40px"}}>
       <div style={{fontFamily:mono,fontSize:14,color:C.red,marginBottom:12}}>// analysis error</div>
@@ -546,9 +581,7 @@ function Results({data,reset,go}) {
 
       {data.priorityAssessment?.items?.length>0&&(
         <div style={{background:C.surface,border:`1px solid ${C.amber}44`,borderRadius:10,padding:"18px 22px",marginBottom:12}}>
-          <div style={{fontFamily:mono,fontSize:11,color:C.amber,letterSpacing:"0.12em",textTransform:"uppercase",marginBottom:14,display:"flex",alignItems:"center"}}>
-            // priority assessment <GlossaryLink/>
-          </div>
+          <div style={{fontFamily:mono,fontSize:11,color:C.amber,letterSpacing:"0.12em",textTransform:"uppercase",marginBottom:14,display:"flex",alignItems:"center"}}>// priority assessment <GlossaryLink/></div>
           <div style={{display:"flex",flexDirection:"column",gap:10}}>
             {data.priorityAssessment.items.map((item,i)=>{
               const pColor = item.priority==="P1"?C.red:item.priority==="P2"?C.orange:C.yellow;
@@ -558,11 +591,7 @@ function Results({data,reset,go}) {
                   <div style={{flex:1}}>
                     <div style={{fontWeight:600,fontSize:13,marginBottom:3}}>{item.title}</div>
                     <div style={{fontSize:12,color:C.dim,lineHeight:1.6,marginBottom:4}}>{item.reason}</div>
-                    <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-                      {item.devices?.map((d,di)=>(
-                        <span key={di} style={{fontFamily:mono,fontSize:10,color:C.muted,background:C.faint,padding:"1px 7px",borderRadius:3}}>{d}</span>
-                      ))}
-                    </div>
+                    <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{item.devices?.map((d,di)=>(<span key={di} style={{fontFamily:mono,fontSize:10,color:C.muted,background:C.faint,padding:"1px 7px",borderRadius:3}}>{d}</span>))}</div>
                   </div>
                 </div>
               );
@@ -575,9 +604,7 @@ function Results({data,reset,go}) {
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
           <div style={{display:"flex",alignItems:"center",gap:10}}>
             <div style={{width:8,height:8,borderRadius:"50%",background:faRisk.color,boxShadow:`0 0 6px ${faRisk.color}`}}/>
-            <div style={{fontFamily:mono,fontSize:11,color:faRisk.color,letterSpacing:"0.12em",textTransform:"uppercase",display:"flex",alignItems:"center"}}>
-              // fabric analysis <GlossaryLink/>
-            </div>
+            <div style={{fontFamily:mono,fontSize:11,color:faRisk.color,letterSpacing:"0.12em",textTransform:"uppercase",display:"flex",alignItems:"center"}}>// fabric analysis <GlossaryLink/></div>
           </div>
           <Badge level={fa.risk||"LOW"}/>
         </div>
@@ -590,9 +617,7 @@ function Results({data,reset,go}) {
         ))}
         {fa.mismatches?.length>0&&(
           <div style={{marginTop:10,padding:"10px 13px",background:"#2A140088",border:`1px solid ${C.orange}44`,borderRadius:6}}>
-            <div style={{fontFamily:mono,fontSize:11,color:C.orange,marginBottom:6,display:"flex",alignItems:"center"}}>
-              // version mismatches detected <GlossaryLink/>
-            </div>
+            <div style={{fontFamily:mono,fontSize:11,color:C.orange,marginBottom:6,display:"flex",alignItems:"center"}}>// version mismatches detected <GlossaryLink/></div>
             {fa.mismatches.map((m,i)=><div key={i} style={{fontSize:12,color:C.dim}}>{m}</div>)}
           </div>
         )}
@@ -603,9 +628,7 @@ function Results({data,reset,go}) {
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
             <div style={{display:"flex",alignItems:"center",gap:10}}>
               <span style={{fontSize:14}}>🔍</span>
-              <div style={{fontFamily:mono,fontSize:11,color:C.amber,letterSpacing:"0.12em",textTransform:"uppercase",display:"flex",alignItems:"center"}}>
-                // netwrkr intel <GlossaryLink/>
-              </div>
+              <div style={{fontFamily:mono,fontSize:11,color:C.amber,letterSpacing:"0.12em",textTransform:"uppercase",display:"flex",alignItems:"center"}}>// netwrkr intel <GlossaryLink/></div>
             </div>
             {hasVerified
               ? <span style={{fontFamily:mono,fontSize:10,color:C.green,background:"#0A2A1088",border:`1px solid ${C.green}44`,padding:"2px 8px",borderRadius:3}}>✓ live PSIRT data</span>
@@ -635,9 +658,7 @@ function Results({data,reset,go}) {
                     ? <span style={{fontFamily:mono,fontSize:10,color:C.green}}>✓ verified — Cisco PSIRT API</span>
                     : <span style={{fontFamily:mono,fontSize:10,color:C.orange}}>⚠ unverified — AI knowledge only</span>
                   }
-                  {!item.verified &&
-                    <button style={{background:"none",border:`1px solid ${C.amber}44`,color:C.amber,fontFamily:mono,fontSize:10,padding:"2px 8px",borderRadius:3,cursor:"pointer"}}>🔒 verify with enterprise</button>
-                  }
+                  {!item.verified&&<button style={{background:"none",border:`1px solid ${C.amber}44`,color:C.amber,fontFamily:mono,fontSize:10,padding:"2px 8px",borderRadius:3,cursor:"pointer"}}>🔒 verify with enterprise</button>}
                 </div>
               </div>
             ))}
@@ -645,9 +666,7 @@ function Results({data,reset,go}) {
         </div>
       )}
 
-      <div style={{fontFamily:mono,fontSize:11,color:C.muted,letterSpacing:"0.12em",textTransform:"uppercase",marginBottom:9,display:"flex",alignItems:"center"}}>
-        // device breakdown <GlossaryLink/>
-      </div>
+      <div style={{fontFamily:mono,fontSize:11,color:C.muted,letterSpacing:"0.12em",textTransform:"uppercase",marginBottom:9,display:"flex",alignItems:"center"}}>// device breakdown <GlossaryLink/></div>
       <div style={{display:"flex",flexDirection:"column",gap:9,marginBottom:16}}>
         {devices.map((d,di)=>{
           const fds=SEV[d.fabricRisk]||SEV.LOW;
@@ -666,14 +685,8 @@ function Results({data,reset,go}) {
                   </div>
                 </div>
                 <div style={{display:"flex",alignItems:"center",gap:9}}>
-                  <div style={{textAlign:"right"}}>
-                    <div style={{fontFamily:mono,fontSize:10,color:C.muted,marginBottom:3}}>fabric</div>
-                    <Badge level={d.fabricRisk||"LOW"}/>
-                  </div>
-                  <div style={{textAlign:"right"}}>
-                    <div style={{fontFamily:mono,fontSize:10,color:C.muted,marginBottom:3}}>intel</div>
-                    <Badge level={d.intelRisk||"LOW"}/>
-                  </div>
+                  <div style={{textAlign:"right"}}><div style={{fontFamily:mono,fontSize:10,color:C.muted,marginBottom:3}}>fabric</div><Badge level={d.fabricRisk||"LOW"}/></div>
+                  <div style={{textAlign:"right"}}><div style={{fontFamily:mono,fontSize:10,color:C.muted,marginBottom:3}}>intel</div><Badge level={d.intelRisk||"LOW"}/></div>
                 </div>
               </div>
             </div>
@@ -681,15 +694,15 @@ function Results({data,reset,go}) {
         })}
       </div>
 
-      <div style={{background:C.amberG,border:`1px solid ${C.amber}33`,borderRadius:10,padding:"16px 20px",display:"flex",alignItems:"center",justifyContent:"space-between",gap:18}}>
+      <div style={{background:C.amberG,border:`1px solid ${C.amber}33`,borderRadius:10,padding:"16px 20px",display:"flex",alignItems:"center",justifyContent:"space-between",gap:18,marginBottom:12}}>
         <div>
-          <div style={{fontFamily:mono,fontSize:11,color:C.amber,marginBottom:4,display:"flex",alignItems:"center"}}>
-            // unlock verified fabric exposure analysis <GlossaryLink/>
-          </div>
+          <div style={{fontFamily:mono,fontSize:11,color:C.amber,marginBottom:4,display:"flex",alignItems:"center"}}>// unlock verified fabric exposure analysis <GlossaryLink/></div>
           <div style={{fontSize:13,color:C.dim,lineHeight:1.6}}>Enterprise adds live Cisco Bug API data — verified CSC IDs and confirmed fabric exposure analysis.</div>
         </div>
         <button style={{background:C.amber,border:"none",color:"#000",fontFamily:mono,fontSize:12,fontWeight:700,padding:"9px 16px",borderRadius:6,cursor:"pointer",whiteSpace:"nowrap",flexShrink:0}}>get_enterprise()</button>
       </div>
+
+      {showNudge && <SignupNudge onSignup={onShowSignup} onDismiss={onDismissNudge}/>}
     </div>
   );
 }
@@ -702,7 +715,10 @@ function Analyse({go}) {
   const [devices,setDevices]     = useState([]);
   const [step,setStep]           = useState(0);
   const [results,setResults]     = useState(null);
-  const ref                      = useRef();
+  const [showGate,setShowGate]   = useState(false);
+  const [showNudge,setShowNudge] = useState(false);
+  const [pendingRun,setPendingRun] = useState(false);
+  const ref = useRef();
 
   const apiKey = () => process.env.REACT_APP_ANTHROPIC_API_KEY || "";
 
@@ -734,23 +750,16 @@ Return ONLY a JSON array, no markdown, no explanation:
 
 Text to parse:
 ${rawInput}`);
-
       const clean = text.replace(/```json|```/g,"").trim();
       const parsed = JSON.parse(clean);
-      const withFlags = parsed.map(d=>({...d, verMissing:!d.ver.trim()}));
-      setDevices(withFlags);
+      setDevices(parsed.map(d=>({...d, verMissing:!d.ver.trim()})));
       setScreen("review");
-    } catch(e) {
-      console.error(e);
-    }
+    } catch(e) { console.error(e); }
     setParsing(false);
   };
 
-  const updateDevice = (i, field, val) => {
-    setDevices(prev => prev.map((d,idx) => idx===i ? {...d,[field]:val, verMissing:field==="ver"?!val.trim():d.verMissing} : d));
-  };
+  const updateDevice = (i,field,val) => setDevices(prev=>prev.map((d,idx)=>idx===i?{...d,[field]:val,verMissing:field==="ver"?!val.trim():d.verMissing}:d));
   const removeDevice = (i) => setDevices(prev=>prev.filter((_,idx)=>idx!==i));
-
   const missingVersions = devices.filter(d=>d.verMissing).length;
   const canAnalyse = devices.length > 0;
 
@@ -760,34 +769,42 @@ ${rawInput}`);
       if (!d.ver || d.ver === "not provided") return;
       try {
         const res = await fetch("/api/advisories", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ platform: d.name, version: d.ver, impact: "" })
+          method:"POST", headers:{"Content-Type":"application/json"},
+          body:JSON.stringify({platform:d.name,version:d.ver,impact:""})
         });
         const data = await res.json();
-        if (data.advisories?.length > 0) {
-          results[`${d.name}__${d.ver}`] = data.advisories;
-        }
-      } catch(e) {
-        console.error("Advisory fetch failed for", d.name, e);
-      }
+        if (data.advisories?.length > 0) results[`${d.name}__${d.ver}`] = data.advisories;
+      } catch(e) { console.error("Advisory fetch failed for", d.name, e); }
     }));
     return results;
   };
 
+  const attemptAnalysis = () => {
+    const count = getCount();
+    const registered = isRegistered();
+    // Analysis 2+ for unregistered users — show gate
+    if (count >= 1 && !registered) {
+      setPendingRun(true);
+      setShowGate(true);
+      return;
+    }
+    runAnalysis();
+  };
+
   const runAnalysis = async () => {
+    setShowGate(false);
+    setPendingRun(false);
     setScreen("analysing"); setStep(0);
     let s=0;
     const timer = setInterval(()=>{ if(s<STEPS.length-1){s++;setStep(s);} },900);
 
     const inventoryCsv = "Platform, Version, Role\n" + devices.map(d=>`${d.name}, ${d.ver||"not provided"}, ${d.role||"unknown"}`).join("\n");
-
     const advisoryData = await fetchAdvisories(devices);
-    const advisorySummary = Object.entries(advisoryData).map(([key, advisories]) => {
-      const [platform, version] = key.split("__");
-      const high = advisories.filter(a => a.impact === "High");
-      const med = advisories.filter(a => a.impact === "Medium");
-      return `${platform} v${version}: ${advisories.length} advisories (${high.length} High, ${med.length} Medium). Top issues: ${advisories.slice(0,3).map(a => `${a.id} — ${a.title} [fixed in ${a.firstFixed}]`).join("; ")}`;
+    const advisorySummary = Object.entries(advisoryData).map(([key,advisories])=>{
+      const [platform,version] = key.split("__");
+      const high = advisories.filter(a=>a.impact==="High");
+      const med = advisories.filter(a=>a.impact==="Medium");
+      return `${platform} v${version}: ${advisories.length} advisories (${high.length} High, ${med.length} Medium). Top issues: ${advisories.slice(0,3).map(a=>`${a.id} — ${a.title} [fixed in ${a.firstFixed}]`).join("; ")}`;
     }).join("\n") || "No Cisco advisory data retrieved.";
 
     try {
@@ -831,45 +848,33 @@ CRITICAL: Use the VERIFIED CISCO SECURITY ADVISORIES above to populate netwrkrIn
 
 Respond ONLY with valid JSON (no markdown):
 {
-  "priorityAssessment": {
-    "items": [
-      {"priority": "P1", "title": "title", "reason": "one line reason", "devices": ["device names"]},
-      {"priority": "P2", "title": "title", "reason": "one line reason", "devices": ["device names"]},
-      {"priority": "P3", "title": "title", "reason": "one line reason", "devices": ["device names"]}
-    ]
-  },
-  "fabricAnalysis": {
-    "risk": "LOW|MEDIUM|HIGH",
-    "consistent": false,
-    "mismatches": ["Platform: version1 vs version2 — description [observed]"],
-    "missingVersions": [],
-    "findings": ["finding [observed|inferred]"]
-  },
-  "netwrkrIntel": {
-    "hasIntel": true,
-    "summary": "brief summary of intel available",
-    "items": [{"platform":"","version":"","title":"","detail":"","id":"","verified":false,"sev":"MEDIUM"}]
-  },
+  "priorityAssessment": {"items": [{"priority":"P1","title":"title","reason":"one line reason","devices":["device names"]},{"priority":"P2","title":"title","reason":"one line reason","devices":["device names"]},{"priority":"P3","title":"title","reason":"one line reason","devices":["device names"]}]},
+  "fabricAnalysis": {"risk":"LOW|MEDIUM|HIGH","consistent":false,"mismatches":["Platform: version1 vs version2 — description [observed]"],"missingVersions":[],"findings":["finding [observed|inferred]"]},
+  "netwrkrIntel": {"hasIntel":true,"summary":"brief summary","items":[{"platform":"","version":"","title":"","detail":"","id":"","verified":false,"sev":"MEDIUM"}]},
   "devices": [{"name":"","ver":"","role":"","tier":1,"fabricRisk":"LOW","intelRisk":"LOW","rec":""}]
 }`, 4000);
 
       const clean = text.replace(/```json|```/g,"").trim();
       const parsed = JSON.parse(clean);
 
-      const realIds = new Set(
-        Object.values(advisoryData).flat().map(a => a.id).filter(Boolean)
-      );
+      const realIds = new Set(Object.values(advisoryData).flat().map(a=>a.id).filter(Boolean));
       if (parsed.netwrkrIntel?.items) {
-        parsed.netwrkrIntel.items = parsed.netwrkrIntel.items.map(item => ({
-          ...item,
-          verified: realIds.has(item.id) ? true : item.verified
-        }));
+        parsed.netwrkrIntel.items = parsed.netwrkrIntel.items.map(item=>({...item, verified: realIds.has(item.id)?true:item.verified}));
       }
 
+      // Increment counter and show nudge after first analysis for unregistered users
+      incCount();
+      const newCount = getCount();
       clearInterval(timer);
       setStep(STEPS.length);
       setResults(parsed);
       setScreen("results");
+
+      // Show nudge after first analysis if not registered
+      if (newCount === 1 && !isRegistered()) {
+        setShowNudge(true);
+      }
+
     } catch(e) {
       clearInterval(timer);
       setResults(null);
@@ -878,13 +883,25 @@ Respond ONLY with valid JSON (no markdown):
     }
   };
 
-  const reset = () => { setScreen("paste"); setRawInput(""); setDevices([]); setCtx(""); setResults(null); setStep(0); };
+  const reset = () => { setScreen("paste"); setRawInput(""); setDevices([]); setCtx(""); setResults(null); setStep(0); setShowNudge(false); };
 
   const inp = {fontFamily:mono,fontSize:13,background:C.hi,border:`1px solid ${C.border}`,color:C.text,borderRadius:8,padding:"11px 13px",width:"100%",outline:"none",lineHeight:1.7};
 
   return (
     <div style={{maxWidth:1100,margin:"0 auto",padding:"34px 36px"}}>
       {screen==="analysing" && <Overlay step={step}/>}
+
+      {showGate && (
+        <SignupGate
+          onComplete={()=>runAnalysis()}
+          onDismiss={()=>{
+            setShowGate(false);
+            setPendingRun(false);
+            // Allow one more as "last free"
+            runAnalysis();
+          }}
+        />
+      )}
 
       {screen==="paste" && (
         <div style={{display:"grid",gridTemplateColumns:"1fr 290px",gap:20,alignItems:"start"}}>
@@ -894,56 +911,32 @@ Respond ONLY with valid JSON (no markdown):
               <h1 style={{fontSize:24,fontWeight:300,letterSpacing:"-0.03em",marginBottom:4}}>Paste your inventory</h1>
               <p style={{fontSize:13,color:C.dim,lineHeight:1.7}}>Paste anything — a CSV, a spreadsheet column, show version output, or just type your devices. We will extract what we need and ask you to confirm before running.</p>
             </div>
-
-            <div
-              onDragOver={e=>e.preventDefault()}
-              onDrop={e=>{e.preventDefault();const f=e.dataTransfer.files[0];if(f){const r=new FileReader();r.onload=ev=>setRawInput(ev.target.result);r.readAsText(f);}}}
+            <div onDragOver={e=>e.preventDefault()} onDrop={e=>{e.preventDefault();const f=e.dataTransfer.files[0];if(f){const r=new FileReader();r.onload=ev=>setRawInput(ev.target.result);r.readAsText(f);}}}
               style={{border:`1px dashed ${rawInput?C.amber:C.border}`,borderRadius:10,marginBottom:11,transition:"border-color 0.2s",padding:"6px"}}>
               <div style={{position:"relative"}}>
-                <textarea
-                  value={rawInput}
-                  onChange={e=>setRawInput(e.target.value)}
-                  rows={12}
-                  placeholder="Paste anything — CSV, spreadsheet, show version output, or free text..."
-                  style={{...inp,borderRadius:8,resize:"vertical"}}
-                />
-                {rawInput && (
-                  <button onClick={()=>setRawInput("")} style={{position:"absolute",top:9,right:9,background:C.surface,border:`1px solid ${C.border}`,color:C.muted,fontFamily:mono,fontSize:11,padding:"3px 9px",borderRadius:4,cursor:"pointer"}}>clear</button>
-                )}
+                <textarea value={rawInput} onChange={e=>setRawInput(e.target.value)} rows={12} placeholder="Paste anything — CSV, spreadsheet, show version output, or free text..." style={{...inp,borderRadius:8,resize:"vertical"}}/>
+                {rawInput&&<button onClick={()=>setRawInput("")} style={{position:"absolute",top:9,right:9,background:C.surface,border:`1px solid ${C.border}`,color:C.muted,fontFamily:mono,fontSize:11,padding:"3px 9px",borderRadius:4,cursor:"pointer"}}>clear</button>}
               </div>
             </div>
-
             <input ref={ref} type="file" accept=".csv,.txt,.log" onChange={e=>{const f=e.target.files[0];if(f){const r=new FileReader();r.onload=ev=>setRawInput(ev.target.result);r.readAsText(f);}}} style={{display:"none"}}/>
-
             <div style={{display:"flex",gap:9,marginBottom:11}}>
               <button onClick={()=>setRawInput(SAMPLE)} style={{flex:1,background:"none",border:`1px solid ${C.border}`,color:C.dim,fontFamily:mono,fontSize:12,padding:"8px",borderRadius:6,cursor:"pointer"}}>load_sample()</button>
               <button onClick={()=>ref.current?.click()} style={{flex:1,background:"none",border:`1px solid ${C.border}`,color:C.dim,fontFamily:mono,fontSize:12,padding:"8px",borderRadius:6,cursor:"pointer"}}>upload_file()</button>
             </div>
-
             <div style={{marginBottom:14}}>
               <label style={{fontFamily:mono,fontSize:11,color:C.muted,display:"block",marginBottom:6,letterSpacing:"0.08em"}}>CONTEXT <span style={{color:C.faint}}> // optional — improves accuracy</span></label>
               <textarea value={ctx} onChange={e=>setCtx(e.target.value)} rows={2} placeholder="e.g. VXLAN/EVPN fabric, vPC pairs on leaf layer, maintenance window Saturday 02:00 UTC" style={{...inp,resize:"none"}}/>
             </div>
-
             <button onClick={parseInput} disabled={!rawInput.trim()||parsing}
               style={{background:rawInput.trim()&&!parsing?C.amber:"#5A4800",color:"#000",border:"none",borderRadius:8,fontFamily:mono,fontWeight:700,fontSize:14,padding:"13px",cursor:rawInput.trim()&&!parsing?"pointer":"not-allowed",width:"100%",opacity:rawInput.trim()&&!parsing?1:.5,display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
-              {parsing
-                ? <><span style={{width:14,height:14,border:"2px solid #00000033",borderTopColor:"#000",borderRadius:"50%",animation:"spin .7s linear infinite"}}/> extracting_devices()</>
-                : "extract_devices() →"}
+              {parsing?<><span style={{width:14,height:14,border:"2px solid #00000033",borderTopColor:"#000",borderRadius:"50%",animation:"spin .7s linear infinite"}}/> extracting_devices()</>:"extract_devices() →"}
             </button>
             <div style={{fontFamily:mono,fontSize:11,color:C.muted,textAlign:"center",marginTop:7}}>// we will show you what we found before running</div>
           </div>
-
           <div style={{display:"flex",flexDirection:"column",gap:11}}>
             <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:10,padding:"14px 16px"}}>
               <div style={{fontFamily:mono,fontSize:11,color:C.amber,marginBottom:10,letterSpacing:"0.1em",textTransform:"uppercase"}}>// works with anything</div>
-              {[
-                ["CSV file","Platform, Version, Role columns"],
-                ["Spreadsheet paste","Any column order"],
-                ["show version output","Cisco CLI output"],
-                ["Free text","4 spines on 10.2(4)"],
-                ["DCIM export","Most formats supported"],
-              ].map(([t,s])=>(
+              {[["CSV file","Platform, Version, Role columns"],["Spreadsheet paste","Any column order"],["show version output","Cisco CLI output"],["Free text","4 spines on 10.2(4)"],["DCIM export","Most formats supported"]].map(([t,s])=>(
                 <div key={t} style={{display:"flex",gap:8,marginBottom:8}}>
                   <span style={{color:C.amber,flexShrink:0,fontFamily:mono,fontSize:11}}>→</span>
                   <div><div style={{fontSize:13,fontWeight:500}}>{t}</div><div style={{fontSize:11,color:C.muted}}>{s}</div></div>
@@ -965,8 +958,7 @@ Respond ONLY with valid JSON (no markdown):
             <h1 style={{fontSize:24,fontWeight:300,letterSpacing:"-0.03em",marginBottom:4}}>Confirm your devices</h1>
             <p style={{fontSize:13,color:C.dim,lineHeight:1.7}}>We found {devices.length} device{devices.length!==1?"s":""}. Check the details are correct — especially software versions — then run the analysis.</p>
           </div>
-
-          {missingVersions > 0 && (
+          {missingVersions>0&&(
             <div style={{background:"#2A1400",border:`1px solid ${C.orange}44`,borderRadius:8,padding:"12px 16px",marginBottom:16,display:"flex",gap:12,alignItems:"flex-start"}}>
               <span style={{color:C.orange,fontSize:16,flexShrink:0}}>⚠</span>
               <div>
@@ -975,7 +967,6 @@ Respond ONLY with valid JSON (no markdown):
               </div>
             </div>
           )}
-
           <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:10,overflow:"hidden",marginBottom:16}}>
             <div style={{display:"grid",gridTemplateColumns:"2fr 1.5fr 1fr 32px",gap:0,background:C.hi,padding:"10px 16px",borderBottom:`1px solid ${C.border}`}}>
               {["PLATFORM","VERSION","ROLE",""].map(h=><div key={h} style={{fontFamily:mono,fontSize:10,color:C.muted,letterSpacing:"0.1em"}}>{h}</div>)}
@@ -995,37 +986,38 @@ Respond ONLY with valid JSON (no markdown):
               </div>
             ))}
           </div>
-
           <div style={{display:"flex",gap:10}}>
-            <button onClick={()=>setScreen("paste")} style={{background:"none",border:`1px solid ${C.border}`,color:C.dim,fontFamily:mono,fontSize:13,padding:"12px 20px",borderRadius:8,cursor:"pointer"}}>
-              ← back()
-            </button>
-            <button onClick={runAnalysis} disabled={!canAnalyse}
+            <button onClick={()=>setScreen("paste")} style={{background:"none",border:`1px solid ${C.border}`,color:C.dim,fontFamily:mono,fontSize:13,padding:"12px 20px",borderRadius:8,cursor:"pointer"}}>← back()</button>
+            <button onClick={attemptAnalysis} disabled={!canAnalyse}
               style={{flex:1,background:canAnalyse?C.amber:"#5A4800",color:"#000",border:"none",borderRadius:8,fontFamily:mono,fontWeight:700,fontSize:14,padding:"13px",cursor:canAnalyse?"pointer":"not-allowed",opacity:canAnalyse?1:.5}}>
               run_analysis() →
             </button>
           </div>
           <div style={{fontFamily:mono,fontSize:11,color:C.muted,textAlign:"center",marginTop:7}}>
-            {missingVersions>0 ? `// ${missingVersions} device${missingVersions!==1?"s":""} will be analysed for topology issues only` : "// all devices have version data — full analysis enabled"}
+            {missingVersions>0?`// ${missingVersions} device${missingVersions!==1?"s":""} will be analysed for topology issues only`:"// all devices have version data — full analysis enabled"}
           </div>
         </div>
       )}
 
       {screen==="results" && results && (
-        <Results data={results} reset={reset} go={go}/>
+        <Results data={results} reset={reset} go={go}
+          onShowSignup={()=>setShowGate(true)}
+          showNudge={showNudge}
+          onDismissNudge={()=>setShowNudge(false)}
+        />
       )}
     </div>
   );
 }
 
 const SECS = [
-  {ic:"🔐",t:"Encrypted at rest",      tag:"AES-256",         s:"AES-256-GCM encryption before storage. Unreadable without a separately managed key.",    d:["Encryption uses AES-256-GCM before any write to storage.","Key stored separately in a dedicated secrets management service.","Even in a breach, credentials are unreadable without the key.","Keys are rotated regularly using industry-standard practices."]},
-  {ic:"🚫",t:"Never logged",           tag:"zero logging",    s:"Credential values are scrubbed from all logs at infrastructure level — not just application code.",    d:["Authorization headers scrubbed before logs are written.","Applies to application, access, error logs, and third-party monitoring.","Enforced at infrastructure level — cannot be bypassed by a code change.","We retain anonymised request metadata only — never credential values."]},
-  {ic:"👤",t:"No human access",        tag:"zero visibility", s:"The encryption architecture makes it technically impossible for our team to read your credentials.",    d:["Credentials encrypted using a key not accessible to engineering in normal operations.","No view credentials admin function exists anywhere in our tooling.","Any key access attempt generates an alert and requires multi-party approval.","We cannot recover your credentials if lost — you would regenerate on Cisco API Console."]},
-  {ic:"📦",t:"Bug data never stored",  tag:"minimal data",    s:"Analysis results flow through and are discarded after each request. Only email and encrypted credentials persist.",    d:["Bug API results, inventory, and analysis output never written to our database.","Data flows through the request lifecycle and is discarded on completion.","Only email, hashed password, and encrypted credentials are persisted.","Minimises exposure — no inventory or analysis history to exfiltrate."]},
-  {ic:"⚙️",t:"Server-side only",       tag:"credentials stay server-side", s:"All Cisco API calls originate from our servers. Your Client Secret never appears in browser code after setup.",    d:["Credentials sent to our backend over HTTPS once, then immediately encrypted.","Never stored in your browser, localStorage, or any client-side state.","All Cisco API calls originate from our servers — never from your browser.","Your Secret never appears in network tabs or browser developer tools after setup."]},
-  {ic:"🔑",t:"Revoke any time",        tag:"you are in control",s:"Delete credentials or your entire account from Settings at any time. Takes effect immediately.",    d:["Settings credentials deletion immediately removes the encrypted record.","Account deletion removes all data we hold, permanently and immediately.","We also recommend revoking the app registration on Cisco API Console.","Deletion is irreversible — we have no way to recover deleted data."]},
-  {ic:"🛡️",t:"Never sold or shared",  tag:"no third parties", s:"We do not sell, share, or license your data to any third party, ever.",    d:["Your data is used solely to provide the netwrkr.ai service.","We do not share credentials or usage data with any third party except Cisco API itself.","Third-party infrastructure providers are contractually prohibited from accessing your data.","We only disclose data in response to a valid legal requirement."]},
+  {ic:"🔐",t:"Encrypted at rest",tag:"AES-256",s:"AES-256-GCM encryption before storage. Unreadable without a separately managed key.",d:["Encryption uses AES-256-GCM before any write to storage.","Key stored separately in a dedicated secrets management service.","Even in a breach, credentials are unreadable without the key.","Keys are rotated regularly using industry-standard practices."]},
+  {ic:"🚫",t:"Never logged",tag:"zero logging",s:"Credential values are scrubbed from all logs at infrastructure level — not just application code.",d:["Authorization headers scrubbed before logs are written.","Applies to application, access, error logs, and third-party monitoring.","Enforced at infrastructure level — cannot be bypassed by a code change.","We retain anonymised request metadata only — never credential values."]},
+  {ic:"👤",t:"No human access",tag:"zero visibility",s:"The encryption architecture makes it technically impossible for our team to read your credentials.",d:["Credentials encrypted using a key not accessible to engineering in normal operations.","No view credentials admin function exists anywhere in our tooling.","Any key access attempt generates an alert and requires multi-party approval.","We cannot recover your credentials if lost — you would regenerate on Cisco API Console."]},
+  {ic:"📦",t:"Bug data never stored",tag:"minimal data",s:"Analysis results flow through and are discarded after each request. Only email and encrypted credentials persist.",d:["Bug API results, inventory, and analysis output never written to our database.","Data flows through the request lifecycle and is discarded on completion.","Only email, hashed password, and encrypted credentials are persisted.","Minimises exposure — no inventory or analysis history to exfiltrate."]},
+  {ic:"⚙️",t:"Server-side only",tag:"credentials stay server-side",s:"All Cisco API calls originate from our servers. Your Client Secret never appears in browser code after setup.",d:["Credentials sent to our backend over HTTPS once, then immediately encrypted.","Never stored in your browser, localStorage, or any client-side state.","All Cisco API calls originate from our servers — never from your browser.","Your Secret never appears in network tabs or browser developer tools after setup."]},
+  {ic:"🔑",t:"Revoke any time",tag:"you are in control",s:"Delete credentials or your entire account from Settings at any time. Takes effect immediately.",d:["Settings credentials deletion immediately removes the encrypted record.","Account deletion removes all data we hold, permanently and immediately.","We also recommend revoking the app registration on Cisco API Console.","Deletion is irreversible — we have no way to recover deleted data."]},
+  {ic:"🛡️",t:"Never sold or shared",tag:"no third parties",s:"We do not sell, share, or license your data to any third party, ever.",d:["Your data is used solely to provide the netwrkr.ai service.","We do not share credentials or usage data with any third party except Cisco API itself.","Third-party infrastructure providers are contractually prohibited from accessing your data.","We only disclose data in response to a valid legal requirement."]},
 ];
 
 function SecurityPage() {
@@ -1046,16 +1038,12 @@ function SecurityPage() {
           {SECS.map(p=>{
             const open=exp===p.t;
             return (
-              <div key={p.t} onClick={()=>setExp(open?null:p.t)}
-                style={{background:C.surface,border:`1px solid ${open?C.amber+"44":C.border}`,borderRadius:10,overflow:"hidden",cursor:"pointer",transition:"border-color .2s"}}>
+              <div key={p.t} onClick={()=>setExp(open?null:p.t)} style={{background:C.surface,border:`1px solid ${open?C.amber+"44":C.border}`,borderRadius:10,overflow:"hidden",cursor:"pointer",transition:"border-color .2s"}}>
                 <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"16px 20px"}}>
                   <div style={{display:"flex",alignItems:"center",gap:13}}>
                     <div style={{width:36,height:36,borderRadius:8,background:C.amberG,border:`1px solid ${C.amber}22`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,flexShrink:0}}>{p.ic}</div>
                     <div>
-                      <div style={{display:"flex",alignItems:"center",gap:9,marginBottom:3}}>
-                        <span style={{fontWeight:600,fontSize:14}}>{p.t}</span>
-                        <Pill>{p.tag}</Pill>
-                      </div>
+                      <div style={{display:"flex",alignItems:"center",gap:9,marginBottom:3}}><span style={{fontWeight:600,fontSize:14}}>{p.t}</span><Pill>{p.tag}</Pill></div>
                       <div style={{fontSize:13,color:C.dim,lineHeight:1.5}}>{p.s}</div>
                     </div>
                   </div>
@@ -1064,12 +1052,7 @@ function SecurityPage() {
                 {open&&(
                   <div style={{borderTop:`1px solid ${C.border}`,padding:"16px 20px",background:C.hi}}>
                     <div style={{fontFamily:mono,fontSize:11,color:C.amber,marginBottom:10}}>// technical detail</div>
-                    {p.d.map((d,i)=>(
-                      <div key={i} style={{display:"flex",gap:9,marginBottom:9,alignItems:"flex-start"}}>
-                        <span style={{color:C.amber,fontFamily:mono,fontSize:12,flexShrink:0,marginTop:1}}>→</span>
-                        <span style={{fontSize:13,color:C.dim,lineHeight:1.7}}>{d}</span>
-                      </div>
-                    ))}
+                    {p.d.map((d,i)=>(<div key={i} style={{display:"flex",gap:9,marginBottom:9,alignItems:"flex-start"}}><span style={{color:C.amber,fontFamily:mono,fontSize:12,flexShrink:0,marginTop:1}}>→</span><span style={{fontSize:13,color:C.dim,lineHeight:1.7}}>{d}</span></div>))}
                   </div>
                 )}
               </div>
@@ -1109,23 +1092,14 @@ function Auth({mode:init,go,setAuthed}) {
   const strC = ["",C.red,"#EAB308",C.amber,C.green][str];
   const strL = ["","weak","fair","good","strong"][str];
   const match = pw&&pw2&&pw===pw2;
-
-  const submit=p=>{
-    setLoading(p);
-    setTimeout(()=>{setLoading(null);setAuthed(true);go("analyse");},1500);
-  };
-
+  const submit=p=>{setLoading(p);setTimeout(()=>{setLoading(null);setAuthed(true);go("analyse");},1500);};
   const inp = {background:C.hi,border:`1px solid ${C.border}`,color:C.text,fontFamily:mono,fontSize:13,padding:"10px 13px",borderRadius:6,outline:"none",width:"100%"};
   const sso = (p,icon,label) => (
-    <button onClick={()=>submit(p)} disabled={!!loading}
-      style={{background:C.hi,border:`1px solid ${C.border}`,color:C.dim,borderRadius:6,fontFamily:mono,fontSize:12,padding:"10px",cursor:"pointer",width:"100%",display:"flex",alignItems:"center",justifyContent:"center",gap:9}}>
-      {loading===p?<span style={{width:12,height:12,border:`2px solid ${C.border}`,borderTopColor:C.amber,borderRadius:"50%",animation:"spin .7s linear infinite"}}/>:icon}
-      {label}
+    <button onClick={()=>submit(p)} disabled={!!loading} style={{background:C.hi,border:`1px solid ${C.border}`,color:C.dim,borderRadius:6,fontFamily:mono,fontSize:12,padding:"10px",cursor:"pointer",width:"100%",display:"flex",alignItems:"center",justifyContent:"center",gap:9}}>
+      {loading===p?<span style={{width:12,height:12,border:`2px solid ${C.border}`,borderTopColor:C.amber,borderRadius:"50%",animation:"spin .7s linear infinite"}}/>:icon}{label}
     </button>
   );
-  const divider = <div style={{display:"flex",alignItems:"center",gap:10,margin:"2px 0"}}>
-    <div style={{flex:1,height:1,background:C.border}}/><span style={{fontFamily:mono,fontSize:11,color:C.muted}}>or</span><div style={{flex:1,height:1,background:C.border}}/>
-  </div>;
+  const divider = <div style={{display:"flex",alignItems:"center",gap:10,margin:"2px 0"}}><div style={{flex:1,height:1,background:C.border}}/><span style={{fontFamily:mono,fontSize:11,color:C.muted}}>or</span><div style={{flex:1,height:1,background:C.border}}/></div>;
   const lnk=(label,fn)=><button onClick={fn} style={{background:"none",border:"none",color:C.amber,fontFamily:mono,fontSize:11,cursor:"pointer",padding:0}}>{label}</button>;
 
   return (
@@ -1138,37 +1112,21 @@ function Auth({mode:init,go,setAuthed}) {
               <h1 style={{fontSize:23,fontWeight:300,letterSpacing:"-0.03em",marginBottom:3}}>Welcome back</h1>
               <p style={{fontSize:13,color:C.dim}}>Sign in to your netwrkr.ai account</p>
             </div>
-            <div style={{display:"flex",flexDirection:"column",gap:9,marginBottom:14}}>
-              {sso("google",<GGIcon/>,"continue_with_google()")}
-              {sso("github",<GHIcon/>,"continue_with_github()")}
-            </div>
+            <div style={{display:"flex",flexDirection:"column",gap:9,marginBottom:14}}>{sso("google",<GGIcon/>,"continue_with_google()")}{sso("github",<GHIcon/>,"continue_with_github()")}</div>
             {divider}
             <div style={{display:"flex",flexDirection:"column",gap:11,margin:"14px 0"}}>
+              <div><label style={{fontFamily:mono,fontSize:11,color:C.muted,display:"block",marginBottom:6,letterSpacing:"0.08em"}}>EMAIL</label><input type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="engineer@yourcompany.com" style={inp}/></div>
               <div>
-                <label style={{fontFamily:mono,fontSize:11,color:C.muted,display:"block",marginBottom:6,letterSpacing:"0.08em"}}>EMAIL</label>
-                <input type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="engineer@yourcompany.com" style={inp}/>
-              </div>
-              <div>
-                <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
-                  <label style={{fontFamily:mono,fontSize:11,color:C.muted,letterSpacing:"0.08em"}}>PASSWORD</label>
-                  {lnk("forgot_password()",()=>setMode("forgot"))}
-                </div>
-                <div style={{position:"relative"}}>
-                  <input type={show?"text":"password"} value={pw} onChange={e=>setPw(e.target.value)} placeholder="••••••••" style={inp}/>
-                  <button onClick={()=>setShow(s=>!s)} style={{position:"absolute",right:11,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",color:C.muted,fontFamily:mono,fontSize:11,cursor:"pointer"}}>{show?"hide":"show"}</button>
-                </div>
+                <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}><label style={{fontFamily:mono,fontSize:11,color:C.muted,letterSpacing:"0.08em"}}>PASSWORD</label>{lnk("forgot_password()",()=>setMode("forgot"))}</div>
+                <div style={{position:"relative"}}><input type={show?"text":"password"} value={pw} onChange={e=>setPw(e.target.value)} placeholder="••••••••" style={inp}/><button onClick={()=>setShow(s=>!s)} style={{position:"absolute",right:11,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",color:C.muted,fontFamily:mono,fontSize:11,cursor:"pointer"}}>{show?"hide":"show"}</button></div>
               </div>
             </div>
-            <button onClick={()=>submit("email")} disabled={!email||!pw||!!loading}
-              style={{background:email&&pw&&!loading?C.amber:"#5A4800",color:"#000",border:"none",borderRadius:6,fontFamily:mono,fontWeight:700,fontSize:13,padding:"11px",cursor:"pointer",width:"100%",opacity:email&&pw&&!loading?1:.5,display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
+            <button onClick={()=>submit("email")} disabled={!email||!pw||!!loading} style={{background:email&&pw&&!loading?C.amber:"#5A4800",color:"#000",border:"none",borderRadius:6,fontFamily:mono,fontWeight:700,fontSize:13,padding:"11px",cursor:"pointer",width:"100%",opacity:email&&pw&&!loading?1:.5,display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
               {loading==="email"?<><span style={{width:12,height:12,border:"2px solid #00000033",borderTopColor:"#000",borderRadius:"50%",animation:"spin .7s linear infinite"}}/>signing_in()</>:"sign_in()"}
             </button>
-            <div style={{marginTop:13,textAlign:"center",fontFamily:mono,fontSize:11,color:C.muted}}>
-              no account? {lnk("create_account()",()=>setMode("signup"))}
-            </div>
+            <div style={{marginTop:13,textAlign:"center",fontFamily:mono,fontSize:11,color:C.muted}}>no account? {lnk("create_account()",()=>setMode("signup"))}</div>
           </div>
         )}
-
         {mode==="signup"&&(
           <div style={{animation:"fadeUp .3s ease"}}>
             <div style={{textAlign:"center",marginBottom:26}}>
@@ -1176,43 +1134,24 @@ function Auth({mode:init,go,setAuthed}) {
               <h1 style={{fontSize:23,fontWeight:300,letterSpacing:"-0.03em",marginBottom:3}}>Get started free</h1>
               <p style={{fontSize:13,color:C.dim}}>10 analyses/month. No credit card required.</p>
             </div>
-            <div style={{display:"flex",flexDirection:"column",gap:9,marginBottom:14}}>
-              {sso("google",<GGIcon/>,"continue_with_google()")}
-              {sso("github",<GHIcon/>,"continue_with_github()")}
-            </div>
+            <div style={{display:"flex",flexDirection:"column",gap:9,marginBottom:14}}>{sso("google",<GGIcon/>,"continue_with_google()")}{sso("github",<GHIcon/>,"continue_with_github()")}</div>
             {divider}
             <div style={{display:"flex",flexDirection:"column",gap:11,margin:"14px 0"}}>
-              <div>
-                <label style={{fontFamily:mono,fontSize:11,color:C.muted,display:"block",marginBottom:6,letterSpacing:"0.08em"}}>EMAIL</label>
-                <input type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="engineer@yourcompany.com" style={inp}/>
-              </div>
+              <div><label style={{fontFamily:mono,fontSize:11,color:C.muted,display:"block",marginBottom:6,letterSpacing:"0.08em"}}>EMAIL</label><input type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="engineer@yourcompany.com" style={inp}/></div>
               <div>
                 <label style={{fontFamily:mono,fontSize:11,color:C.muted,display:"block",marginBottom:6,letterSpacing:"0.08em"}}>PASSWORD</label>
-                <div style={{position:"relative"}}>
-                  <input type={show?"text":"password"} value={pw} onChange={e=>setPw(e.target.value)} placeholder="min. 8 characters" style={inp}/>
-                  <button onClick={()=>setShow(s=>!s)} style={{position:"absolute",right:11,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",color:C.muted,fontFamily:mono,fontSize:11,cursor:"pointer"}}>{show?"hide":"show"}</button>
-                </div>
+                <div style={{position:"relative"}}><input type={show?"text":"password"} value={pw} onChange={e=>setPw(e.target.value)} placeholder="min. 8 characters" style={inp}/><button onClick={()=>setShow(s=>!s)} style={{position:"absolute",right:11,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",color:C.muted,fontFamily:mono,fontSize:11,cursor:"pointer"}}>{show?"hide":"show"}</button></div>
                 {pw&&<div style={{marginTop:6,display:"flex",alignItems:"center",gap:5}}>{[1,2,3,4].map(i=><div key={i} style={{height:3,flex:1,borderRadius:2,background:i<=str?strC:C.border,transition:"background .2s"}}/>)}<span style={{fontFamily:mono,fontSize:10,color:strC,width:34}}>{strL}</span></div>}
               </div>
-              <div>
-                <label style={{fontFamily:mono,fontSize:11,color:C.muted,display:"block",marginBottom:6,letterSpacing:"0.08em"}}>CONFIRM PASSWORD</label>
-                <input type="password" value={pw2} onChange={e=>setPw2(e.target.value)} placeholder="••••••••" style={{...inp,borderColor:pw2&&!match?C.red:C.border}}/>
-                {pw2&&!match&&<div style={{fontFamily:mono,fontSize:11,color:C.red,marginTop:4}}>// passwords do not match</div>}
-              </div>
+              <div><label style={{fontFamily:mono,fontSize:11,color:C.muted,display:"block",marginBottom:6,letterSpacing:"0.08em"}}>CONFIRM PASSWORD</label><input type="password" value={pw2} onChange={e=>setPw2(e.target.value)} placeholder="••••••••" style={{...inp,borderColor:pw2&&!match?C.red:C.border}}/>{pw2&&!match&&<div style={{fontFamily:mono,fontSize:11,color:C.red,marginTop:4}}>// passwords do not match</div>}</div>
             </div>
-            <button onClick={()=>submit("email")} disabled={!email||!match||pw.length<8||!!loading}
-              style={{background:email&&match&&pw.length>=8&&!loading?C.amber:"#5A4800",color:"#000",border:"none",borderRadius:6,fontFamily:mono,fontWeight:700,fontSize:13,padding:"11px",cursor:"pointer",width:"100%",opacity:email&&match&&pw.length>=8&&!loading?1:.5,display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
+            <button onClick={()=>submit("email")} disabled={!email||!match||pw.length<8||!!loading} style={{background:email&&match&&pw.length>=8&&!loading?C.amber:"#5A4800",color:"#000",border:"none",borderRadius:6,fontFamily:mono,fontWeight:700,fontSize:13,padding:"11px",cursor:"pointer",width:"100%",opacity:email&&match&&pw.length>=8&&!loading?1:.5,display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
               {loading==="email"?<><span style={{width:12,height:12,border:"2px solid #00000033",borderTopColor:"#000",borderRadius:"50%",animation:"spin .7s linear infinite"}}/>creating_account()</>:"create_account()"}
             </button>
-            <div style={{marginTop:11,background:C.hi,border:`1px solid ${C.border}`,borderRadius:6,padding:"8px 11px",fontFamily:mono,fontSize:11,color:C.muted}}>
-              // by signing up you agree to our {lnk("terms",()=>{})} and {lnk("privacy policy",()=>{})}
-            </div>
-            <div style={{marginTop:12,textAlign:"center",fontFamily:mono,fontSize:11,color:C.muted}}>
-              have an account? {lnk("sign_in()",()=>setMode("login"))}
-            </div>
+            <div style={{marginTop:11,background:C.hi,border:`1px solid ${C.border}`,borderRadius:6,padding:"8px 11px",fontFamily:mono,fontSize:11,color:C.muted}}>// by signing up you agree to our {lnk("terms",()=>{})} and {lnk("privacy policy",()=>{})}</div>
+            <div style={{marginTop:12,textAlign:"center",fontFamily:mono,fontSize:11,color:C.muted}}>have an account? {lnk("sign_in()",()=>setMode("login"))}</div>
           </div>
         )}
-
         {mode==="forgot"&&(
           <div style={{animation:"fadeUp .3s ease"}}>
             <div style={{textAlign:"center",marginBottom:26}}>
@@ -1220,24 +1159,19 @@ function Auth({mode:init,go,setAuthed}) {
               <h1 style={{fontSize:23,fontWeight:300,letterSpacing:"-0.03em",marginBottom:3}}>Reset your password</h1>
               <p style={{fontSize:13,color:C.dim}}>Enter your email and we will send a reset link.</p>
             </div>
-            {!sent?(
-              <>
-                <label style={{fontFamily:mono,fontSize:11,color:C.muted,display:"block",marginBottom:6,letterSpacing:"0.08em"}}>EMAIL</label>
-                <input type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="engineer@yourcompany.com" style={{...inp,marginBottom:11}}/>
-                <button onClick={()=>{setLoading("r");setTimeout(()=>{setLoading(null);setSent(true);},1300);}} disabled={!email||!!loading}
-                  style={{background:email&&!loading?C.amber:"#5A4800",color:"#000",border:"none",borderRadius:6,fontFamily:mono,fontWeight:700,fontSize:13,padding:"11px",cursor:"pointer",width:"100%",display:"flex",alignItems:"center",justifyContent:"center",gap:8,opacity:email&&!loading?1:.5}}>
-                  {loading==="r"?<><span style={{width:12,height:12,border:"2px solid #00000033",borderTopColor:"#000",borderRadius:"50%",animation:"spin .7s linear infinite"}}/>sending_link()</>:"send_reset_link()"}
-                </button>
-              </>
-            ):(
+            {!sent?(<>
+              <label style={{fontFamily:mono,fontSize:11,color:C.muted,display:"block",marginBottom:6,letterSpacing:"0.08em"}}>EMAIL</label>
+              <input type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="engineer@yourcompany.com" style={{...inp,marginBottom:11}}/>
+              <button onClick={()=>{setLoading("r");setTimeout(()=>{setLoading(null);setSent(true);},1300);}} disabled={!email||!!loading} style={{background:email&&!loading?C.amber:"#5A4800",color:"#000",border:"none",borderRadius:6,fontFamily:mono,fontWeight:700,fontSize:13,padding:"11px",cursor:"pointer",width:"100%",display:"flex",alignItems:"center",justifyContent:"center",gap:8,opacity:email&&!loading?1:.5}}>
+                {loading==="r"?<><span style={{width:12,height:12,border:"2px solid #00000033",borderTopColor:"#000",borderRadius:"50%",animation:"spin .7s linear infinite"}}/>sending_link()</>:"send_reset_link()"}
+              </button>
+            </>):(
               <div style={{background:"#0A2A10",border:`1px solid ${C.green}44`,borderRadius:8,padding:22,textAlign:"center"}}>
                 <div style={{fontFamily:mono,fontSize:14,color:C.green,marginBottom:5}}>✓ reset_link_sent()</div>
                 <div style={{fontSize:13,color:C.dim}}>Check your inbox. Link expires in 30 minutes.</div>
               </div>
             )}
-            <div style={{marginTop:14,textAlign:"center",fontFamily:mono,fontSize:11,color:C.muted}}>
-              {lnk("← back_to_login()",()=>{setMode("login");setSent(false);})}
-            </div>
+            <div style={{marginTop:14,textAlign:"center",fontFamily:mono,fontSize:11,color:C.muted}}>{lnk("← back_to_login()",()=>{setMode("login");setSent(false);})}</div>
           </div>
         )}
       </div>
@@ -1248,7 +1182,6 @@ function Auth({mode:init,go,setAuthed}) {
 export default function App() {
   const [page,setPage]=useState("home");
   const [authed,setAuthed]=useState(false);
-
   const go = p => { setPage(p); window.scrollTo?.(0,0); };
 
   return (
@@ -1262,11 +1195,9 @@ export default function App() {
         @keyframes spin{to{transform:rotate(360deg);}}
         @keyframes pulse{0%,100%{opacity:1;}50%{opacity:.3;}}
       `}</style>
-
       <div style={{position:"fixed",inset:0,backgroundImage:`linear-gradient(${C.border}55 1px,transparent 1px),linear-gradient(90deg,${C.border}55 1px,transparent 1px)`,backgroundSize:"72px 72px",pointerEvents:"none",zIndex:0,opacity:.4}}/>
       <div style={{position:"fixed",top:"15%",left:"50%",transform:"translateX(-50%)",width:680,height:480,background:`radial-gradient(ellipse,${C.amber}06 0%,transparent 65%)`,pointerEvents:"none",zIndex:0}}/>
       <div style={{position:"fixed",inset:0,background:"repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,.012) 2px,rgba(0,0,0,.012) 4px)",pointerEvents:"none",zIndex:0}}/>
-
       <div style={{position:"relative",zIndex:1,display:"flex",flexDirection:"column",minHeight:"100vh"}}>
         <Nav page={page} go={go} authed={authed}/>
         <div style={{flex:1,display:"flex",flexDirection:"column"}}>
