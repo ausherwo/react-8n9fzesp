@@ -31,6 +31,7 @@ export default async function handler(req, res) {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
+        typecast: true,
         records: [{
           fields: {
             "First Name": firstName || "",
@@ -48,7 +49,7 @@ export default async function handler(req, res) {
     if (!response.ok) {
       const err = await response.text();
       console.error("Airtable error:", err);
-      return res.status(500).json({ error: "Failed to save signup" });
+      return res.status(500).json({ error: "Failed to save signup", detail: err });
     }
 
     return res.status(200).json({ success: true });
