@@ -1,10 +1,10 @@
-// test: verify PSIRT API on main
+// v3.1 — ACI fabric detection, isAciSwitch flag, EoL display (EoX API calls disabled pending enterprise SNTC)
 import { useState, useEffect, useRef } from "react";
 
 const C = {
   bg:"#080806", surface:"#0E0D0A", hi:"#141310",
-  border:"#272318", amber:"#D4A000", amberB:"#FFCA28",
-  amberG:"#D4A000", green:"#22C55E", greenG:"#22C55E15",
+  border:"#272318", amber:"#0099FF", amberB:"#FFCA28",
+  amberG:"#0099FF15", green:"#22C55E", greenG:"#22C55E15",
   red:"#EF4444", orange:"#F97316", yellow:"#EAB308",
   text:"#EDE8DC", dim:"#9C9278", muted:"#524B3A", faint:"#1A1810",
 };
@@ -944,13 +944,13 @@ ${rawInput}`);
       return `${platform} v${version} [${data.family||""}]: ${data.advisories.length} advisories (${high.length} High, ${med.length} Medium). Top issues: ${data.advisories.slice(0,3).map(a=>`${a.id} — ${a.title}`).join("; ")}${data.queryVersion !== version ? ` [ACI NX-OS version queried: ${data.queryVersion}]` : ""}`;
     }).filter(Boolean).join("\n") || "No Cisco advisory data retrieved.";
 
-    // Build EoL summary for Claude prompt
-    const eolSummary = Object.entries(advMap).map(([key, data]) => {
+    // Build EoL summary for Claude prompt — disabled, requires enterprise SNTC credentials
+    /* const eolSummary = Object.entries(advMap).map(([key, data]) => {
       const [platform] = key.split("__");
       if (!data.eol) return null;
       const eol = data.eol;
       return `${platform} (PID: ${data.pid||"unknown"}): EndOfSale=${eol.endOfSaleDate||"N/A"}, EndOfSwMaint=${eol.endOfSwMaintenanceDate||"N/A"}, EndOfSecuritySupport=${eol.endOfSecuritySupportDate||"N/A"}, LastDateOfSupport=${eol.endOfSupportDate||"N/A"}`;
-    }).filter(Boolean).join("\n") || "No EoL data retrieved.";
+    }).filter(Boolean).join("\n") || "No EoL data retrieved."; */
 
     try {
       const text = await callClaude(`You are netwrkr.ai, an expert Cisco data centre network engineer.
@@ -973,7 +973,7 @@ ABSOLUTE RULES:
 15. Border Leaf device recommendations must never use directive upgrade language. Use advisory language such as "Review upgrade target against current fabric baseline".
 16. P1/P2/P3 priority assessment titles must never contain the word "Critical".
 17. fabricAnalysis findings must never reference advisory counts, CVEs, or bug data — topology facts from the submitted inventory only.
-18. If EoL data shows a device is past End of Security Support or Last Date of Support, this MUST be surfaced as a fabric finding labelled [observed].
+// 18. EoL findings disabled pending enterprise SNTC credentials
 ${aciFabric ? "19. This is an ACI fabric (APIC detected). APIC version uses ACI release numbering. Nexus switches in this fabric run NX-OS with major version = APIC major version + 10 (e.g. APIC 6.1(5e) → NX-OS 16.1(5e)). Note this version relationship in fabric analysis findings." : ""}
 
 INFRASTRUCTURE TIER GUIDE:
@@ -992,12 +992,11 @@ Additional context: ${ctx||"None provided"}
 VERIFIED CISCO SECURITY ADVISORIES (live Cisco PSIRT API data):
 ${advisorySummary}
 
-HARDWARE END OF LIFE DATA (live Cisco EoX API data):
-${eolSummary}
+// HARDWARE END OF LIFE DATA: disabled pending enterprise SNTC credentials
 
 CRITICAL: Use the VERIFIED CISCO SECURITY ADVISORIES above to populate netwrkrIntel items. For ANY platform that appears in that section, set verified: true and use the exact advisory ID provided. Setting verified: false for a platform that appears in the advisory data above is an error.
 
-If EoL data shows past-support dates, include findings in fabricAnalysis labelled [observed] — these are hard facts, not inferences.
+// EoL fabric findings disabled pending enterprise SNTC credentials
 
 Respond ONLY with valid JSON (no markdown):
 {

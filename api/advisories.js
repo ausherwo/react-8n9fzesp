@@ -179,7 +179,7 @@ async function fetchAdvisories(token, platformConfig, version) {
 // Returns structured EoL/EoS dates
 // ─────────────────────────────────────────────
 async function fetchEoX(token, pid) {
-  const url = `${CISCO_EOX_BASE}/EOXByProductID/1/${encodeURIComponent(pid)}?responseencoding=json`;
+  const url = `${CISCO_EOX_BASE}/EOXByProductID/5/${encodeURIComponent(pid)}?responseencoding=json`;
 
   const response = await fetch(url, {
     headers: {
