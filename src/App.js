@@ -3,8 +3,8 @@ import { useState, useEffect, useRef } from "react";
 
 const C = {
   bg:"#080806", surface:"#0E0D0A", hi:"#141310",
-  border:"#272318", amber:"#0099FF", amberB:"#FFCA28",
-  amberG:"#0099FF15", green:"#22C55E", greenG:"#22C55E15",
+  border:"#272318", amber:"#D4A000", amberB:"#FFCA28",
+  amberG:"#D4A000", green:"#22C55E", greenG:"#22C55E15",
   red:"#EF4444", orange:"#F97316", yellow:"#EAB308",
   text:"#EDE8DC", dim:"#9C9278", muted:"#524B3A", faint:"#1A1810",
 };
