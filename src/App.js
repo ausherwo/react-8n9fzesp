@@ -1,4 +1,4 @@
-// v3.0 — EoL/EoS integration, ACI fabric detection, isAciSwitch flag
+// test: verify PSIRT API on main
 import { useState, useEffect, useRef } from "react";
 
 const C = {
