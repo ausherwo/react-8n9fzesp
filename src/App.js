@@ -1,4 +1,4 @@
-// v2.9 — signup gate, email capture, Airtable integration
+// v3.0 — EoL/EoS integration, ACI fabric detection, isAciSwitch flag
 import { useState, useEffect, useRef } from "react";
 
 const C = {
@@ -23,6 +23,93 @@ const getCount = () => parseInt(localStorage.getItem("nw_count") || "0");
 const incCount = () => localStorage.setItem("nw_count", getCount() + 1);
 const isRegistered = () => localStorage.getItem("nw_registered") === "true";
 const setRegistered = () => localStorage.setItem("nw_registered", "true");
+
+// ── ACI FABRIC DETECTION ─────────────────────────────────────────
+// Returns true if the device list contains an APIC — indicating an ACI fabric
+function isAciFabric(deviceList) {
+  return deviceList.some(d => d.name && d.name.toUpperCase().includes("APIC"));
+}
+
+// Returns true if a device is a Nexus switch in an ACI fabric context
+function isAciManagedSwitch(device, aciFabric) {
+  if (!aciFabric) return false;
+  const upper = (device.name || "").toUpperCase();
+  return (
+    upper.includes("NEXUS") ||
+    upper.includes("N9K") ||
+    upper.includes("N7K") ||
+    upper.includes("N5K") ||
+    upper.includes("N3K")
+  );
+}
+
+// ── EOL HELPERS ──────────────────────────────────────────────────
+function EolStatus({ eol }) {
+  if (!eol) return null;
+  const today = new Date();
+
+  const dates = [
+    { label: "End of Sale",            value: eol.endOfSaleDate,            warnDays: 180 },
+    { label: "End of SW Maintenance",  value: eol.endOfSwMaintenanceDate,   warnDays: 365 },
+    { label: "End of Security Support",value: eol.endOfSecuritySupportDate, warnDays: 365 },
+    { label: "Last Date of Support",   value: eol.endOfSupportDate,         warnDays: 365 },
+  ];
+
+  const rendered = dates.filter(d => d.value).map(d => {
+    const dt = new Date(d.value);
+    const past = dt < today;
+    const soon = !past && (dt - today) / 86400000 < d.warnDays;
+    const color = past ? C.red : soon ? C.orange : C.dim;
+    return { ...d, dt, past, soon, color };
+  });
+
+  if (rendered.length === 0) return null;
+
+  return (
+    <div style={{marginTop:8,padding:"8px 10px",background:"#1A0A0020",border:`1px solid ${C.border}`,borderRadius:6}}>
+      <div style={{fontFamily:mono,fontSize:10,color:C.muted,marginBottom:6,letterSpacing:"0.08em"}}>// END OF LIFE STATUS</div>
+      <div style={{display:"flex",flexDirection:"column",gap:3}}>
+        {rendered.map((d,i) => (
+          <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <span style={{fontFamily:mono,fontSize:10,color:C.muted}}>{d.label}</span>
+            <span style={{fontFamily:mono,fontSize:10,color:d.color,fontWeight:d.past||d.soon?700:400}}>
+              {d.past ? "⚠ " : d.soon ? "→ " : ""}{d.value}
+            </span>
+          </div>
+        ))}
+        {eol.migrationProduct && (
+          <div style={{marginTop:4,paddingTop:4,borderTop:`1px solid ${C.border}`,fontFamily:mono,fontSize:10,color:C.amber}}>
+            → Recommended migration: {eol.migrationProduct} {eol.migrationProductPID ? `(${eol.migrationProductPID})` : ""}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Returns the worst EoL risk level for a device given its eol data
+function getEolRisk(eol) {
+  if (!eol) return null;
+  const today = new Date();
+  const check = (dateStr) => {
+    if (!dateStr) return null;
+    const dt = new Date(dateStr);
+    if (dt < today) return "HIGH";
+    const days = (dt - today) / 86400000;
+    if (days < 365) return "MEDIUM";
+    return "LOW";
+  };
+  const risks = [
+    check(eol.endOfSecuritySupportDate),
+    check(eol.endOfSupportDate),
+    check(eol.endOfSwMaintenanceDate),
+    check(eol.endOfSaleDate),
+  ].filter(Boolean);
+  if (risks.includes("HIGH")) return "HIGH";
+  if (risks.includes("MEDIUM")) return "MEDIUM";
+  if (risks.length > 0) return "LOW";
+  return null;
+}
 
 function Pill({ children, color=C.amber }) {
   return <span style={{fontFamily:mono,fontSize:10,color,background:color+"18",border:`1px solid ${color}30`,padding:"2px 8px",borderRadius:3,letterSpacing:"0.04em"}}>{children}</span>;
@@ -62,7 +149,7 @@ function Cur() {
 
 // ── SIGNUP GATE MODAL ────────────────────────────────────────────
 function SignupGate({ onComplete, onDismiss }) {
-  const [step, setStep] = useState("form"); // form | success
+  const [step, setStep] = useState("form");
   const [form, setForm] = useState({ firstName:"", lastName:"", email:"", title:"", company:"" });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -258,7 +345,8 @@ const GLOSSARY = [
   { section:"Risk levels", terms:[
     { term:"Fabric risk", def:"A score reflecting how much a device's observed topology and version data contributes to instability in the fabric. Based only on facts from your submitted inventory — version mismatches, tier conflicts, consistency issues. Never includes bug or advisory data." },
     { term:"Intel risk", def:"A score reflecting the potential security and software risk for a device based on known advisories and AI training knowledge. May include unverified findings — always check the verified indicator on each card." },
-    { term:"LOW / MEDIUM / HIGH", def:"The three risk levels used across fabric and intel scores. LOW means no significant issues found. MEDIUM means issues worth monitoring. HIGH means issues requiring attention before the next maintenance window. CRITICAL is only used for verified, confirmed fabric-impacting bugs in the enterprise tier." },
+    { term:"EoL risk", def:"A score reflecting the hardware end-of-life status of a device. HIGH means past end of security support or last day of support. MEDIUM means within 12 months of a support milestone. LOW means no immediate concern. EoL data is sourced from the Cisco EoX API." },
+    { term:"LOW / MEDIUM / HIGH", def:"The three risk levels used across fabric, intel, and EoL scores. LOW means no significant issues found. MEDIUM means issues worth monitoring. HIGH means issues requiring attention before the next maintenance window. CRITICAL is only used for verified, confirmed fabric-impacting bugs in the enterprise tier." },
   ]},
   { section:"Finding labels", terms:[
     { term:"[observed]", def:"This finding comes directly from data you submitted. For example, two devices of the same platform running different versions — that is a fact from your inventory, not an inference." },
@@ -271,6 +359,12 @@ const GLOSSARY = [
     { term:"Unverified — AI knowledge only", def:"This advisory is based on AI training knowledge and has not been confirmed against the live Cisco database. It may be accurate but should be treated as a prompt to investigate, not a confirmed finding." },
     { term:"CSC ID", def:"A Cisco bug identifier, for example cisco-sa-apic-dos-rNus8EFw. CSC IDs on verified cards are real identifiers from Cisco's security advisory database. You can look them up directly on tools.cisco.com." },
     { term:"PSIRT", def:"Cisco Product Security Incident Response Team. The team responsible for publishing security advisories for Cisco products. netwrkr.ai queries the PSIRT openVuln API to retrieve verified advisory data." },
+  ]},
+  { section:"End of life", terms:[
+    { term:"End of Sale", def:"The last date on which Cisco accepted orders for the product. After this date the hardware can no longer be purchased new." },
+    { term:"End of SW Maintenance", def:"The last date on which Cisco will release software maintenance releases or bug fixes for the product. After this date no new software fixes will be issued." },
+    { term:"End of Security / Vulnerability Support", def:"The last date on which Cisco will release security advisory patches for the product. This is a critical milestone — after this date known CVEs may not be patched." },
+    { term:"Last Date of Support", def:"The final date on which Cisco will provide any form of support for the product. After this date TAC cases cannot be opened." },
   ]},
   { section:"Infrastructure roles", terms:[
     { term:"Controller (Tier 1)", def:"A management and policy controller such as APIC, DNAC, or NSO. Controllers sit at the top of the infrastructure hierarchy because their software version shapes the upgrade path for the entire fabric. Always shown first in the device breakdown." },
@@ -521,8 +615,8 @@ Firepower 4140, 7.0.1, Firewall`;
 const STEPS = [
   {l:"Parsing inventory",           d:600},
   {l:"Identifying platforms",        d:700},
-  {l:"Checking bug patterns",        d:900},
-  {l:"Cross-referencing advisories", d:800},
+  {l:"Querying Cisco PSIRT API",     d:900},
+  {l:"Checking EoL / EoS status",    d:800},
   {l:"Running AI analysis",          d:1200},
   {l:"Generating remediation plan",  d:700},
 ];
@@ -553,7 +647,7 @@ function Overlay({step}) {
   );
 }
 
-function Results({data,reset,go,onShowSignup,showNudge,onDismissNudge}) {
+function Results({data,advisoryMap,reset,go,onShowSignup,showNudge,onDismissNudge}) {
   if(!data) return (
     <div style={{textAlign:"center",padding:"40px"}}>
       <div style={{fontFamily:mono,fontSize:14,color:C.red,marginBottom:12}}>// analysis error</div>
@@ -568,6 +662,9 @@ function Results({data,reset,go,onShowSignup,showNudge,onDismissNudge}) {
   const faRisk = SEV[fa.risk]||SEV.LOW;
   const hasVerified = ni.items?.some(i=>i.verified);
   const GlossaryLink = () => <InfoIcon onClick={()=>go("glossary")}/>;
+
+  // Check if any device has EoL data
+  const hasEolData = Object.values(advisoryMap).some(v => v.eol);
 
   return (
     <div>
@@ -670,6 +767,13 @@ function Results({data,reset,go,onShowSignup,showNudge,onDismissNudge}) {
       <div style={{display:"flex",flexDirection:"column",gap:9,marginBottom:16}}>
         {devices.map((d,di)=>{
           const fds=SEV[d.fabricRisk]||SEV.LOW;
+          // Look up advisory data for this device to get EoL info
+          const advKey = `${d.name}__${d.ver}`;
+          const advData = advisoryMap[advKey];
+          const eol = advData?.eol || null;
+          const eolRisk = getEolRisk(eol);
+          const eolSev = eolRisk ? SEV[eolRisk] : null;
+
           return (
             <div key={di} style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:10,padding:"13px 18px"}}>
               <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
@@ -680,6 +784,7 @@ function Results({data,reset,go,onShowSignup,showNudge,onDismissNudge}) {
                       <span style={{fontWeight:600,fontSize:14}}>{d.name}</span>
                       <span style={{fontFamily:mono,fontSize:11,color:C.muted}}>v{d.ver}</span>
                       <span style={{fontFamily:mono,fontSize:10,color:C.muted,background:C.faint,padding:"1px 7px",borderRadius:3}}>{d.role}</span>
+                      {advData?.pid && <span style={{fontFamily:mono,fontSize:10,color:C.faint,background:C.faint,padding:"1px 7px",borderRadius:3}}>{advData.pid}</span>}
                     </div>
                     <div style={{fontSize:12,color:C.muted,marginTop:2}}>{d.rec}</div>
                   </div>
@@ -687,8 +792,20 @@ function Results({data,reset,go,onShowSignup,showNudge,onDismissNudge}) {
                 <div style={{display:"flex",alignItems:"center",gap:9}}>
                   <div style={{textAlign:"right"}}><div style={{fontFamily:mono,fontSize:10,color:C.muted,marginBottom:3}}>fabric</div><Badge level={d.fabricRisk||"LOW"}/></div>
                   <div style={{textAlign:"right"}}><div style={{fontFamily:mono,fontSize:10,color:C.muted,marginBottom:3}}>intel</div><Badge level={d.intelRisk||"LOW"}/></div>
+                  {eolRisk && (
+                    <div style={{textAlign:"right"}}><div style={{fontFamily:mono,fontSize:10,color:C.muted,marginBottom:3}}>eol</div><Badge level={eolRisk}/></div>
+                  )}
+                  {hasEolData && !eol && (
+                    <div style={{textAlign:"right"}}><div style={{fontFamily:mono,fontSize:10,color:C.muted,marginBottom:3}}>eol</div><span style={{fontFamily:mono,fontSize:10,color:C.faint}}>—</span></div>
+                  )}
                 </div>
               </div>
+              {eol && <EolStatus eol={eol}/>}
+              {advData?.warnings?.length > 0 && (
+                <div style={{marginTop:6,fontFamily:mono,fontSize:10,color:C.muted}}>
+                  {advData.warnings.map((w,wi)=><div key={wi}>⚠ {w}</div>)}
+                </div>
+              )}
             </div>
           );
         })}
@@ -708,16 +825,17 @@ function Results({data,reset,go,onShowSignup,showNudge,onDismissNudge}) {
 }
 
 function Analyse({go}) {
-  const [screen,setScreen]       = useState("paste");
-  const [rawInput,setRawInput]   = useState("");
-  const [ctx,setCtx]             = useState("");
-  const [parsing,setParsing]     = useState(false);
-  const [devices,setDevices]     = useState([]);
-  const [step,setStep]           = useState(0);
-  const [results,setResults]     = useState(null);
-  const [showGate,setShowGate]   = useState(false);
-  const [showNudge,setShowNudge] = useState(false);
-  const [pendingRun,setPendingRun] = useState(false);
+  const [screen,setScreen]           = useState("paste");
+  const [rawInput,setRawInput]       = useState("");
+  const [ctx,setCtx]                 = useState("");
+  const [parsing,setParsing]         = useState(false);
+  const [devices,setDevices]         = useState([]);
+  const [step,setStep]               = useState(0);
+  const [results,setResults]         = useState(null);
+  const [advisoryMap,setAdvisoryMap] = useState({});
+  const [showGate,setShowGate]       = useState(false);
+  const [showNudge,setShowNudge]     = useState(false);
+  const [pendingRun,setPendingRun]   = useState(false);
   const ref = useRef();
 
   const apiKey = () => process.env.REACT_APP_ANTHROPIC_API_KEY || "";
@@ -739,9 +857,9 @@ function Analyse({go}) {
       const text = await callClaude(`You are a data extraction engine for a Cisco network analysis tool.
 
 Extract all network devices from the text below. For each device return:
-- name: the Cisco platform name (e.g. "Nexus 9336C-FX2", "Catalyst 9500")
-- ver: the exact software version string if explicitly present (e.g. "9.3(9)", "17.9.4") — if NOT present in the text set to ""
-- role: the device role if present (e.g. "Spine", "Leaf", "Border Leaf", "Distribution") — if not present set to ""
+- name: the Cisco platform name (e.g. "Nexus 9336C-FX2", "Catalyst 9500", "APIC")
+- ver: the exact software version string if explicitly present (e.g. "9.3(9)", "17.9.4", "6.1(5e)") — if NOT present in the text set to ""
+- role: the device role if present (e.g. "Spine", "Leaf", "Border Leaf", "Distribution", "Controller") — if not present set to ""
 
 IMPORTANT: Only extract versions that are explicitly written in the text. Do not guess or infer versions from platform names.
 
@@ -763,26 +881,36 @@ ${rawInput}`);
   const missingVersions = devices.filter(d=>d.verMissing).length;
   const canAnalyse = devices.length > 0;
 
-  const fetchAdvisories = async (devList) => {
-    const results = {};
+  const fetchAdvisoriesForDevices = async (devList) => {
+    const aciFabric = isAciFabric(devList);
+    const resultMap = {};
+
     await Promise.all(devList.map(async (d) => {
       if (!d.ver || d.ver === "not provided") return;
       try {
+        const aciSwitch = isAciManagedSwitch(d, aciFabric);
         const res = await fetch("/api/advisories", {
-          method:"POST", headers:{"Content-Type":"application/json"},
-          body:JSON.stringify({platform:d.name,version:d.ver,impact:""})
+          method:"POST",
+          headers:{"Content-Type":"application/json"},
+          body:JSON.stringify({
+            platform: d.name,
+            version: d.ver,
+            isAciSwitch: aciSwitch,
+          })
         });
         const data = await res.json();
-        if (data.advisories?.length > 0) results[`${d.name}__${d.ver}`] = data.advisories;
-      } catch(e) { console.error("Advisory fetch failed for", d.name, e); }
+        resultMap[`${d.name}__${d.ver}`] = data;
+      } catch(e) {
+        console.error("Advisory fetch failed for", d.name, e);
+      }
     }));
-    return results;
+
+    return resultMap;
   };
 
   const attemptAnalysis = () => {
     const count = getCount();
     const registered = isRegistered();
-    // Analysis 2+ for unregistered users — show gate
     if (count >= 1 && !registered) {
       setPendingRun(true);
       setShowGate(true);
@@ -799,13 +927,30 @@ ${rawInput}`);
     const timer = setInterval(()=>{ if(s<STEPS.length-1){s++;setStep(s);} },900);
 
     const inventoryCsv = "Platform, Version, Role\n" + devices.map(d=>`${d.name}, ${d.ver||"not provided"}, ${d.role||"unknown"}`).join("\n");
-    const advisoryData = await fetchAdvisories(devices);
-    const advisorySummary = Object.entries(advisoryData).map(([key,advisories])=>{
-      const [platform,version] = key.split("__");
-      const high = advisories.filter(a=>a.impact==="High");
-      const med = advisories.filter(a=>a.impact==="Medium");
-      return `${platform} v${version}: ${advisories.length} advisories (${high.length} High, ${med.length} Medium). Top issues: ${advisories.slice(0,3).map(a=>`${a.id} — ${a.title} [fixed in ${a.firstFixed}]`).join("; ")}`;
-    }).join("\n") || "No Cisco advisory data retrieved.";
+
+    // Detect ACI fabric for context in prompt
+    const aciFabric = isAciFabric(devices);
+
+    // Fetch all advisory + EoL data
+    const advMap = await fetchAdvisoriesForDevices(devices);
+    setAdvisoryMap(advMap);
+
+    // Build advisory summary for Claude prompt
+    const advisorySummary = Object.entries(advMap).map(([key, data]) => {
+      const [platform, version] = key.split("__");
+      if (!data.advisories?.length) return null;
+      const high = data.advisories.filter(a=>a.impact==="High");
+      const med  = data.advisories.filter(a=>a.impact==="Medium");
+      return `${platform} v${version} [${data.family||""}]: ${data.advisories.length} advisories (${high.length} High, ${med.length} Medium). Top issues: ${data.advisories.slice(0,3).map(a=>`${a.id} — ${a.title}`).join("; ")}${data.queryVersion !== version ? ` [ACI NX-OS version queried: ${data.queryVersion}]` : ""}`;
+    }).filter(Boolean).join("\n") || "No Cisco advisory data retrieved.";
+
+    // Build EoL summary for Claude prompt
+    const eolSummary = Object.entries(advMap).map(([key, data]) => {
+      const [platform] = key.split("__");
+      if (!data.eol) return null;
+      const eol = data.eol;
+      return `${platform} (PID: ${data.pid||"unknown"}): EndOfSale=${eol.endOfSaleDate||"N/A"}, EndOfSwMaint=${eol.endOfSwMaintenanceDate||"N/A"}, EndOfSecuritySupport=${eol.endOfSecuritySupportDate||"N/A"}, LastDateOfSupport=${eol.endOfSupportDate||"N/A"}`;
+    }).filter(Boolean).join("\n") || "No EoL data retrieved.";
 
     try {
       const text = await callClaude(`You are netwrkr.ai, an expert Cisco data centre network engineer.
@@ -818,33 +963,41 @@ ABSOLUTE RULES:
 5. [observed] = directly from the data. [inferred] = logical conclusion. [assumed] = no evidence, low confidence only.
 6. CRITICAL or HIGH severity requires explicit version evidence. No version = maximum MEDIUM risk.
 7. If any device has ver="not provided", include this finding: "Software version not provided for X device(s) — bug and CVE analysis unavailable for those devices [observed]"
-8. NEVER add devices that are not in the submitted inventory. The devices array must contain EXACTLY the same devices as the submitted inventory — no additions, no omissions. Every device in the inventory must appear exactly once.
+8. NEVER add devices that are not in the submitted inventory. The devices array must contain EXACTLY the same devices as the submitted inventory — no additions, no omissions.
 9. Sort devices in the output by infrastructure tier in this strict order: Controllers (APIC, DNAC, NSO) → Spine → Border Leaf → Leaf → Distribution/Firewall/Edge.
-10. Identify Border Leaf from: device name or role containing "BORDER-LEAF", "BORDER_LEAF", "Border Leaf", "border-leaf", or "BL-". Border Leaf sits between Spine and regular Leaf in the sort order. Assign tier:2 to Border Leaf (same numeric tier as Spine but sort after Spine).
-11. Border Leaf devices must have intelRisk "HIGH" minimum — they handle external routing, BGP adjacency, and WAN-facing traffic. Do not cap Border Leaf at MEDIUM.
+10. Identify Border Leaf from: device name or role containing "BORDER-LEAF", "BORDER_LEAF", "Border Leaf", "border-leaf", or "BL-". Assign tier:2 to Border Leaf.
+11. Border Leaf devices must have intelRisk "HIGH" minimum.
 12. Tier 4 devices (Distribution, Firewall, Catalyst, Firepower) must never exceed intelRisk "MEDIUM".
 13. APIC controllers always appear first in the devices array, before Spines.
-14. Controllers (APIC, DNAC, NSO) must have fabricRisk "LOW" unless there is a version mismatch between the controllers themselves. A version mismatch elsewhere in the fabric (e.g. spine vs leaf) does not elevate controller fabricRisk.
-15. Border Leaf device recommendations must never use directive upgrade language (e.g. "Upgrade to match spine version"). Instead use advisory language such as "Review upgrade target against current fabric baseline" or "Assess version alignment before next maintenance window".
-16. P1/P2/P3 priority assessment titles must never contain the word "Critical" — use "High priority", "Significant", "Security advisory", or similar instead.
+14. Controllers (APIC, DNAC, NSO) must have fabricRisk "LOW" unless there is a version mismatch between the controllers themselves.
+15. Border Leaf device recommendations must never use directive upgrade language. Use advisory language such as "Review upgrade target against current fabric baseline".
+16. P1/P2/P3 priority assessment titles must never contain the word "Critical".
 17. fabricAnalysis findings must never reference advisory counts, CVEs, or bug data — topology facts from the submitted inventory only.
+18. If EoL data shows a device is past End of Security Support or Last Date of Support, this MUST be surfaced as a fabric finding labelled [observed].
+${aciFabric ? "19. This is an ACI fabric (APIC detected). APIC version uses ACI release numbering. Nexus switches in this fabric run NX-OS with major version = APIC major version + 10 (e.g. APIC 6.1(5e) → NX-OS 16.1(5e)). Note this version relationship in fabric analysis findings." : ""}
 
 INFRASTRUCTURE TIER GUIDE:
-- Tier 1: Controllers — APIC, DNAC, NSO (always first, shapes entire upgrade path)
+- Tier 1: Controllers — APIC, DNAC, NSO
 - Tier 2a: Spine — core fabric stability
-- Tier 2b: Border Leaf — external routing, BGP, WAN-facing (MORE sensitive than regular leaf, HIGH intel minimum)
+- Tier 2b: Border Leaf — external routing, BGP, WAN-facing (HIGH intel minimum)
 - Tier 3: Leaf — forwarding fabric
 - Tier 4: Distribution, Firewall, Catalyst, Firepower (cap intel at MEDIUM)
 
 Validated device inventory (engineer-confirmed):
 ${inventoryCsv}
 
+${aciFabric ? "FABRIC TYPE: ACI (APIC-managed fabric detected)\n" : "FABRIC TYPE: Standalone NX-OS or unknown\n"}
 Additional context: ${ctx||"None provided"}
 
-VERIFIED CISCO SECURITY ADVISORIES (real data from Cisco PSIRT API):
+VERIFIED CISCO SECURITY ADVISORIES (live Cisco PSIRT API data):
 ${advisorySummary}
 
-CRITICAL: Use the VERIFIED CISCO SECURITY ADVISORIES above to populate netwrkrIntel items. For ANY platform that appears in that section, you MUST set verified: true and use the exact advisory ID provided. Only set verified: false for platforms where NO advisory data was retrieved. Setting verified: false for a platform that appears in the advisory data above is an error.
+HARDWARE END OF LIFE DATA (live Cisco EoX API data):
+${eolSummary}
+
+CRITICAL: Use the VERIFIED CISCO SECURITY ADVISORIES above to populate netwrkrIntel items. For ANY platform that appears in that section, set verified: true and use the exact advisory ID provided. Setting verified: false for a platform that appears in the advisory data above is an error.
+
+If EoL data shows past-support dates, include findings in fabricAnalysis labelled [observed] — these are hard facts, not inferences.
 
 Respond ONLY with valid JSON (no markdown):
 {
@@ -857,12 +1010,15 @@ Respond ONLY with valid JSON (no markdown):
       const clean = text.replace(/```json|```/g,"").trim();
       const parsed = JSON.parse(clean);
 
-      const realIds = new Set(Object.values(advisoryData).flat().map(a=>a.id).filter(Boolean));
+      // Cross-check verified flags against real advisory IDs
+      const realIds = new Set(Object.values(advMap).flatMap(d => (d.advisories||[]).map(a=>a.id)).filter(Boolean));
       if (parsed.netwrkrIntel?.items) {
-        parsed.netwrkrIntel.items = parsed.netwrkrIntel.items.map(item=>({...item, verified: realIds.has(item.id)?true:item.verified}));
+        parsed.netwrkrIntel.items = parsed.netwrkrIntel.items.map(item=>({
+          ...item,
+          verified: realIds.has(item.id) ? true : item.verified
+        }));
       }
 
-      // Increment counter and show nudge after first analysis for unregistered users
       incCount();
       const newCount = getCount();
       clearInterval(timer);
@@ -870,7 +1026,6 @@ Respond ONLY with valid JSON (no markdown):
       setResults(parsed);
       setScreen("results");
 
-      // Show nudge after first analysis if not registered
       if (newCount === 1 && !isRegistered()) {
         setShowNudge(true);
       }
@@ -883,7 +1038,7 @@ Respond ONLY with valid JSON (no markdown):
     }
   };
 
-  const reset = () => { setScreen("paste"); setRawInput(""); setDevices([]); setCtx(""); setResults(null); setStep(0); setShowNudge(false); };
+  const reset = () => { setScreen("paste"); setRawInput(""); setDevices([]); setCtx(""); setResults(null); setStep(0); setShowNudge(false); setAdvisoryMap({}); };
 
   const inp = {fontFamily:mono,fontSize:13,background:C.hi,border:`1px solid ${C.border}`,color:C.text,borderRadius:8,padding:"11px 13px",width:"100%",outline:"none",lineHeight:1.7};
 
@@ -897,7 +1052,6 @@ Respond ONLY with valid JSON (no markdown):
           onDismiss={()=>{
             setShowGate(false);
             setPendingRun(false);
-            // Allow one more as "last free"
             runAnalysis();
           }}
         />
@@ -925,7 +1079,7 @@ Respond ONLY with valid JSON (no markdown):
             </div>
             <div style={{marginBottom:14}}>
               <label style={{fontFamily:mono,fontSize:11,color:C.muted,display:"block",marginBottom:6,letterSpacing:"0.08em"}}>CONTEXT <span style={{color:C.faint}}> // optional — improves accuracy</span></label>
-              <textarea value={ctx} onChange={e=>setCtx(e.target.value)} rows={2} placeholder="e.g. VXLAN/EVPN fabric, vPC pairs on leaf layer, maintenance window Saturday 02:00 UTC" style={{...inp,resize:"none"}}/>
+              <textarea value={ctx} onChange={e=>setCtx(e.target.value)} rows={2} placeholder="e.g. ACI fabric, VXLAN/EVPN, vPC pairs on leaf layer, maintenance window Saturday 02:00 UTC" style={{...inp,resize:"none"}}/>
             </div>
             <button onClick={parseInput} disabled={!rawInput.trim()||parsing}
               style={{background:rawInput.trim()&&!parsing?C.amber:"#5A4800",color:"#000",border:"none",borderRadius:8,fontFamily:mono,fontWeight:700,fontSize:14,padding:"13px",cursor:rawInput.trim()&&!parsing?"pointer":"not-allowed",width:"100%",opacity:rawInput.trim()&&!parsing?1:.5,display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
@@ -958,6 +1112,15 @@ Respond ONLY with valid JSON (no markdown):
             <h1 style={{fontSize:24,fontWeight:300,letterSpacing:"-0.03em",marginBottom:4}}>Confirm your devices</h1>
             <p style={{fontSize:13,color:C.dim,lineHeight:1.7}}>We found {devices.length} device{devices.length!==1?"s":""}. Check the details are correct — especially software versions — then run the analysis.</p>
           </div>
+          {isAciFabric(devices) && (
+            <div style={{background:"#001A2A",border:`1px solid ${C.amber}44`,borderRadius:8,padding:"12px 16px",marginBottom:16,display:"flex",gap:12,alignItems:"flex-start"}}>
+              <span style={{color:C.amber,fontSize:16,flexShrink:0}}>ℹ</span>
+              <div>
+                <div style={{fontFamily:mono,fontSize:12,color:C.amber,marginBottom:3}}>// ACI fabric detected</div>
+                <div style={{fontSize:13,color:C.dim,lineHeight:1.6}}>APIC found in inventory. Nexus switches will be queried using their ACI NX-OS version (APIC major version + 10). APIC advisory lookup uses ACI release versioning.</div>
+              </div>
+            </div>
+          )}
           {missingVersions>0&&(
             <div style={{background:"#2A1400",border:`1px solid ${C.orange}44`,borderRadius:8,padding:"12px 16px",marginBottom:16,display:"flex",gap:12,alignItems:"flex-start"}}>
               <span style={{color:C.orange,fontSize:16,flexShrink:0}}>⚠</span>
@@ -1000,7 +1163,11 @@ Respond ONLY with valid JSON (no markdown):
       )}
 
       {screen==="results" && results && (
-        <Results data={results} reset={reset} go={go}
+        <Results
+          data={results}
+          advisoryMap={advisoryMap}
+          reset={reset}
+          go={go}
           onShowSignup={()=>setShowGate(true)}
           showNudge={showNudge}
           onDismissNudge={()=>setShowNudge(false)}
