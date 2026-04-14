@@ -42,7 +42,8 @@ function getPlatformConfig(platformName) {
 
   // APIC — use product name search as no dedicated version endpoint
   if (upper.includes("APIC")) {
-    return { family: "APIC", endpoint: "product" };
+    //return { family: "APIC", endpoint: "product" };
+    return { family: "ACI", endpoint: "aci" };
   }
 
   return null;
