@@ -1,4 +1,4 @@
-// v1.1 — auth wired in
+// v1.2 — auth wired in
 import RinconChatPrototype from "./RinconChatPrototype";
 import { AuthProvider, AuthGuard, LoginPage, SignupPage, AcceptInvitePage } from './Auth';
 import { ForgotPasswordPage, SetNewPasswordPage } from './PasswordReset';
