@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import UserBadge from './UserBadge';
 
 const C = {
   bg: "#080806", surface: "#0E0D0A", hi: "#141310",
