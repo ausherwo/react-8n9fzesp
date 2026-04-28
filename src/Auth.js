@@ -55,7 +55,10 @@ export function AuthProvider({ children }) {
   }, []);
 
   // Bootstrap: check existing session on mount
-  useEffect(() => {
+    useEffect(() => {
+    // Safety fallback — never stay on authenticating screen more than 3 seconds
+    const fallback = setTimeout(() => setAuthLoading(false), 3000);
+  
     supabase.auth.getSession().then(async ({ data: { session } }) => {
       setSession(session);
       try {
@@ -63,6 +66,7 @@ export function AuthProvider({ children }) {
       } catch (e) {
         console.error('Profile load error:', e);
       } finally {
+        clearTimeout(fallback);
         setAuthLoading(false);
       }
     });
@@ -85,7 +89,10 @@ export function AuthProvider({ children }) {
       }
     );
   
-    return () => subscription.unsubscribe();
+    return () => {
+      clearTimeout(fallback);
+      subscription.unsubscribe();
+    };
   }, [loadMemberProfile]);
 
   const signOut = async () => {
@@ -595,6 +602,8 @@ export function AcceptInvitePage() {
   const token = new URLSearchParams(window.location.search).get('token');
 
   // Validate token on mount — fetch invite details
+
+  
   useEffect(() => {
     if (!token) { setTokenValid(false); return; }
 
