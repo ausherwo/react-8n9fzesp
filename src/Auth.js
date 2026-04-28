@@ -81,11 +81,17 @@ export function AuthProvider({ children }) {
   
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
+        console.log('auth event:', event, 'has session:', !!session);
+        
+        // Ignore these events — they fire during token refresh and wipe member state
+        if (event === 'TOKEN_REFRESHED') return;
+        if (event === 'INITIAL_SESSION') return;
+    
         setSession(session);
         try {
           if (session?.user) {
             await loadMemberProfile(session);
-          } else {
+          } else if (event === 'SIGNED_OUT') {
             setMember(null);
             setOrg(null);
           }
