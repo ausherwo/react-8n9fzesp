@@ -68,7 +68,7 @@ export function AuthProvider({ children }) {
         id:    payload.member_id,
         email: newSession.user?.email || '',
         name:  newSession.user?.user_metadata?.name || newSession.user?.email || '',
-        role:  payload.role || 'analyst',
+        role:  payload.user_role || 'analyst',
       });
       setOrg({
         id:   payload.org_id   || '',
