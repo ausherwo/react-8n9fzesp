@@ -48,7 +48,7 @@ export function AuthProvider({ children }) {
         name:  sessionParam.user.user_metadata?.name || sessionParam.user.email,
         role:  payload.role,
       });
-  
+      console.log('setMember called with:', payload.member_id, payload.role);
       setOrg({
         id:   payload.org_id,
         slug: payload.org_slug,
@@ -135,6 +135,7 @@ export function useAuth() {
 export function AuthGuard({ children, requiredRole = null }) {
   const { session, member, authLoading } = useAuth();
 
+  // Still loading — show spinner
   if (authLoading) {
     return (
       <div style={styles.loadingShell}>
@@ -146,25 +147,26 @@ export function AuthGuard({ children, requiredRole = null }) {
     );
   }
 
+  // No session — redirect to login
   if (!session) {
-    // Replace with your router's redirect, e.g. <Navigate to="/login" /> for React Router
     window.location.href = '/login';
     return null;
   }
 
+  // Session exists but member not loaded yet — keep showing spinner
+  // This handles the gap between authLoading:false and setMember propagating
   if (!member) {
-    console.log('AuthGuard: no member. session:', !!session, 'authLoading:', authLoading);
     return (
-      <div style={styles.errorShell}>
-        <p style={styles.errorText}>
-          Account error: no member record found for this user.
-          Please contact your organisation admin.
-        </p>
+      <div style={styles.loadingShell}>
+        <div style={styles.loadingMark}>
+          <LogoMark />
+        </div>
+        <p style={styles.loadingText}>Loading profile…</p>
       </div>
     );
   }
 
-  // Role-gated routes
+  // Role check
   if (requiredRole && member.role !== requiredRole) {
     window.location.href = '/app';
     return null;
