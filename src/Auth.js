@@ -35,6 +35,10 @@ export function AuthProvider({ children }) {
   
     const token = session.access_token;
     const payload = JSON.parse(atob(token.split('.')[1]));
+    console.log('JWT payload:', payload); // ← add this line
+    console.log('member_id:', payload.member_id);
+
+if (!payload.member_id) return null;
   
     if (!payload.member_id) return null;
   
@@ -139,6 +143,7 @@ export function AuthGuard({ children, requiredRole = null }) {
   }
 
   if (!member) {
+    console.log('AuthGuard: no member. session:', !!session, 'authLoading:', authLoading);
     return (
       <div style={styles.errorShell}>
         <p style={styles.errorText}>
