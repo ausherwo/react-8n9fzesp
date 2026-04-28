@@ -174,10 +174,7 @@ function roleColor(role) {
 // ─────────────────────────────────────────────
 const s = {
   wrapper: {
-    position:  'fixed',
-    top:       16,
-    right:     20,
-    zIndex:    1000,
+    position:  'relative',
     fontFamily: "'DM Sans', sans-serif",
   },
 

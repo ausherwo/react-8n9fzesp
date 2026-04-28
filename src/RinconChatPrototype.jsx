@@ -284,6 +284,8 @@ export default function RinconChatPrototype() {
             padding: "4px 11px", borderRadius: 4, cursor: "pointer",
           }}>export_report()</button>
         </div>
+        <div style={{ width: 1, height: 14, background: C.border }} />
+          <UserBadge />
       </div>
 
       {/* Messages */}
