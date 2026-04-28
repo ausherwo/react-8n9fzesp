@@ -29,29 +29,29 @@ export function AuthProvider({ children }) {
 
   // Fetch member + org from DB once we have a session
   const loadMemberProfile = useCallback(async (userId) => {
-    const { data, error } = await supabase
-      .from('members')
-      .select(`
-        id, email, name, role, joined_at,
-        organisations ( id, name, slug )
-      `)
-      .eq('user_id', userId)
-      .single();
-
-    if (error || !data) {
-      console.error('Failed to load member profile:', error);
-      return null;
-    }
-
+    // Read claims directly from the JWT — no extra DB call needed
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return null;
+  
+    const token = session.access_token;
+    const payload = JSON.parse(atob(token.split('.')[1]));
+  
+    if (!payload.member_id) return null;
+  
     setMember({
-      id:        data.id,
-      email:     data.email,
-      name:      data.name,
-      role:      data.role,
-      joined_at: data.joined_at,
+      id:    payload.member_id,
+      email: session.user.email,
+      name:  session.user.user_metadata?.name || session.user.email,
+      role:  payload.role,
     });
-    setOrg(data.organisations);
-    return data;
+  
+    setOrg({
+      id:   payload.org_id,
+      slug: payload.org_slug,
+      name: payload.org_slug, // org name not in JWT — use slug as fallback
+    });
+  
+    return payload;
   }, []);
 
   // Bootstrap: check existing session on mount
