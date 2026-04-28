@@ -58,23 +58,33 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     supabase.auth.getSession().then(async ({ data: { session } }) => {
       setSession(session);
-      if (session?.user) await loadMemberProfile(session.user.id);
-      setAuthLoading(false);
+      try {
+        if (session?.user) await loadMemberProfile(session.user.id);
+      } catch (e) {
+        console.error('Profile load error:', e);
+      } finally {
+        setAuthLoading(false);
+      }
     });
-
-    // Listen for auth state changes (login, logout, token refresh)
+  
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         setSession(session);
-        if (session?.user) {
-          await loadMemberProfile(session.user.id);
-        } else {
-          setMember(null);
-          setOrg(null);
+        try {
+          if (session?.user) {
+            await loadMemberProfile(session.user.id);
+          } else {
+            setMember(null);
+            setOrg(null);
+          }
+        } catch (e) {
+          console.error('Auth state change error:', e);
+        } finally {
+          setAuthLoading(false);
         }
       }
     );
-
+  
     return () => subscription.unsubscribe();
   }, [loadMemberProfile]);
 
