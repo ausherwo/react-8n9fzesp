@@ -28,34 +28,38 @@ export function AuthProvider({ children }) {
   const [authLoading, setAuthLoading] = useState(true);
 
   // Fetch member + org from DB once we have a session
-  const loadMemberProfile = useCallback(async (userId) => {
-    // Read claims directly from the JWT — no extra DB call needed
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) return null;
+  const loadMemberProfile = useCallback(async (sessionParam) => {
+    try {
+      // Use passed session directly — don't call getSession() again
+      const token = sessionParam.access_token;
+      const base64 = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+      const payload = JSON.parse(atob(base64));
   
-    const token = session.access_token;
-    const payload = JSON.parse(atob(token.split('.')[1]));
-    console.log('JWT payload:', payload); // ← add this line
-    console.log('member_id:', payload.member_id);
-
-if (!payload.member_id) return null;
+      console.log('payload:', payload);
   
-    if (!payload.member_id) return null;
+      if (!payload.member_id) {
+        console.warn('No member_id in JWT payload');
+        return null;
+      }
   
-    setMember({
-      id:    payload.member_id,
-      email: session.user.email,
-      name:  session.user.user_metadata?.name || session.user.email,
-      role:  payload.role,
-    });
+      setMember({
+        id:    payload.member_id,
+        email: sessionParam.user.email,
+        name:  sessionParam.user.user_metadata?.name || sessionParam.user.email,
+        role:  payload.role,
+      });
   
-    setOrg({
-      id:   payload.org_id,
-      slug: payload.org_slug,
-      name: payload.org_slug, // org name not in JWT — use slug as fallback
-    });
+      setOrg({
+        id:   payload.org_id,
+        slug: payload.org_slug,
+        name: payload.org_slug,
+      });
   
-    return payload;
+      return payload;
+    } catch (e) {
+      console.error('loadMemberProfile error:', e);
+      return null;
+    }
   }, []);
 
   // Bootstrap: check existing session on mount
@@ -66,7 +70,7 @@ if (!payload.member_id) return null;
     supabase.auth.getSession().then(async ({ data: { session } }) => {
       setSession(session);
       try {
-        if (session?.user) await loadMemberProfile(session.user.id);
+        if (session?.user) await loadMemberProfile(session);
       } catch (e) {
         console.error('Profile load error:', e);
       } finally {
@@ -80,7 +84,7 @@ if (!payload.member_id) return null;
         setSession(session);
         try {
           if (session?.user) {
-            await loadMemberProfile(session.user.id);
+            await loadMemberProfile(session);
           } else {
             setMember(null);
             setOrg(null);
