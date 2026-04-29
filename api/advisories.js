@@ -120,6 +120,7 @@ async function getAccessToken() {
 // ─────────────────────────────────────────────
 async function fetchAdvisories(token, platformConfig, version) {
   const url = `${CISCO_PSIRT_BASE}/${platformConfig.endpoint}?version=${encodeURIComponent(version)}`;
+  GET https://apix.cisco.com/bug/v2.0/bugs/products/product_id/WS-C3560-48PS-S/software_releases/12.2(25)SE?page_index=1&modified_date=5
 
   const response = await fetch(url, {
     headers: {

@@ -1,4 +1,4 @@
- // RinconChatPrototype.js — v4.0
+// RinconChatPrototype.js — v4.0
 // Rincon: Real Claude API, conversation persistence, file upload + drag-and-drop
 // File upload → device extraction → PSIRT API per device (parallel) → verified CVE context → Rincon response
 // Enterprise stub: APIC/Nexus direct integration placeholder
@@ -137,25 +137,16 @@ For each device return:
 - version: exact software version if present (e.g. "9.3(9)", "6.1(5e)") — empty string if not found
 - role: device role if determinable (e.g. "Spine", "Leaf", "Border Leaf", "Controller", "Firewall") — empty string if unknown
 - tier: infrastructure tier (1=Controller, 2=Spine/Border Leaf, 3=Leaf, 4=Distribution/Firewall)
-- isAciSwitch: boolean — true if this is a Nexus switch in an ACI fabric (APIC present in inventory)
-
-ACI VERSION RULES (critical for correct PSIRT queries):
-- If APIC is present in the inventory, this is an ACI fabric
-- APIC devices use ACI release versioning: e.g. "5.2(8e)", "6.0(3e)" — use the version exactly as written
-- Nexus switches IN an ACI fabric run NX-OS where major version = APIC major version + 10
-  Example: APIC 5.2(8e) → Nexus switches run 15.2(8e), APIC 6.0(3e) → Nexus switches run 16.0(3e)
-- If the file only lists APIC version but not switch versions, derive the switch NX-OS version using the +10 rule
-- If switch versions ARE explicitly listed, use those as-is
-- Non-ACI (standalone NX-OS) fabrics: use versions exactly as written
 
 IMPORTANT:
-- Only extract versions explicitly written in the text, OR derive NX-OS versions using the ACI +10 rule above
+- Only extract versions explicitly written in the text — never infer from platform names
+- Detect ACI fabric if APIC is present
 - Return ONLY valid JSON array, no markdown, no explanation
 
 Text:
 ${text.slice(0, 8000)}
 
-Return format: [{"name":"...","version":"...","role":"...","tier":3,"isAciSwitch":false}]`,
+Return format: [{"name":"...","version":"...","role":"...","tier":3}]`,
       }],
     }),
   });
@@ -674,17 +665,11 @@ async function queryPSIRTForDevices(devices, session, onProgress) {
       onProgress({ total: devicesWithVersions.length, done, results: [...results] });
 
       try {
-        // Use isAciSwitch from extraction if available, fallback to name-based detection
-        const isAciSwitch = device.isAciSwitch !== undefined
-          ? device.isAciSwitch
-          : (isAci && (
-              device.name.toUpperCase().includes("NEXUS") ||
-              device.name.toUpperCase().includes("N9K") ||
-              device.name.toUpperCase().includes("N7K") ||
-              device.name.toUpperCase().includes("N5K") ||
-              device.name.toUpperCase().includes("N3K") ||
-              device.name.toUpperCase().includes("MDS")
-            ));
+        const isAciSwitch = isAci && (
+          device.name.toUpperCase().includes("NEXUS") ||
+          device.name.toUpperCase().includes("N9K") ||
+          device.name.toUpperCase().includes("N7K")
+        );
 
         const res = await fetch("/api/advisories", {
           method: "POST",
@@ -706,7 +691,7 @@ async function queryPSIRTForDevices(devices, session, onProgress) {
         results[idx] = { ...results[idx], status: "done", count: advisoryCount };
         onProgress({ total: devicesWithVersions.length, done, results: [...results] });
 
-        return { device, data, advisoryCount, queryVersion: data.queryVersion || device.version };
+        return { device, data, advisoryCount };
       } catch (err) {
         done++;
         results[idx] = { ...results[idx], status: "error" };
@@ -720,7 +705,7 @@ async function queryPSIRTForDevices(devices, session, onProgress) {
   const lines = ["PSIRT ADVISORY RESULTS (live Cisco PSIRT API):"];
   let totalAdvisories = 0;
 
-  for (const { device, data, advisoryCount, queryVersion } of advisoryResults) {
+  for (const { device, data, advisoryCount } of advisoryResults) {
     if (!data || !data.verified) {
       lines.push(`${device.name} v${device.version}: API query failed or not supported`);
       continue;
@@ -731,10 +716,7 @@ async function queryPSIRTForDevices(devices, session, onProgress) {
     if (advisoryCount === 0) {
       lines.push(`${device.name} v${device.version} [${data.family || ""}]: No advisories found — VERIFIED CLEAN`);
     } else {
-      const versionNote = (queryVersion && queryVersion !== device.version)
-        ? ` (queried as v${queryVersion} — ACI NX-OS mapping)`
-        : "";
-      lines.push(`${device.name} v${device.version}${versionNote} [${data.family || ""}]: ${advisoryCount} advisories`);
+      lines.push(`${device.name} v${device.version} [${data.family || ""}]: ${advisoryCount} advisories`);
       const sorted = [...(data.advisories || [])].sort((a, b) => {
         const sev = { Critical: 4, High: 3, Medium: 2, Low: 1 };
         return (sev[b.impact] || 0) - (sev[a.impact] || 0);
