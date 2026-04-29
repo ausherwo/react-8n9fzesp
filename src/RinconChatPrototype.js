@@ -267,7 +267,7 @@ function SuggestionChips({ onSelect }) {
 // MAIN COMPONENT
 // ─────────────────────────────────────────────
 export default function RinconChatPrototype() {
-  const { member, session } = useAuth();
+  const { member, org, session } = useAuth();
 
   // Conversation state
   const [conversations, setConversations] = useState([]);
