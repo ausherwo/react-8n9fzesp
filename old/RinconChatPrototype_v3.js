@@ -1,6 +1,6 @@
-// RinconChatPrototype.js — v4.0
+// RinconChatPrototype.js — v3.0
 // Rincon: Real Claude API, conversation persistence, file upload + drag-and-drop
-// File upload → device extraction → PSIRT API per device (parallel) → verified CVE context → Rincon response
+// File upload → server-side extraction → fabric context → chat grounded on real data
 // Enterprise stub: APIC/Nexus direct integration placeholder
 
 import { useState, useEffect, useRef, useCallback } from "react";
@@ -400,28 +400,7 @@ function MessageBubble({ msg, member }) {
             <span style={{ fontFamily: mono, fontSize: 10, color: C.muted }}>DC Expert</span>
           </div>
         )}
-        {msg.type === "psirt-progress" || msg.type === "psirt-done" ? (
-          <div>
-            <PSIRTProgress progress={msg.psirtProgress} />
-            {msg.type === "psirt-done" && msg.psirtSummary && (
-              <div style={{
-                background: msg.psirtSummary.advisories > 0 ? "rgba(239,68,68,0.06)" : "rgba(34,197,94,0.06)",
-                border: `1px solid ${msg.psirtSummary.advisories > 0 ? "rgba(239,68,68,0.25)" : "rgba(34,197,94,0.25)"}`,
-                padding: "10px 14px", marginTop: 4,
-                display: "flex", alignItems: "center", gap: 10,
-              }}>
-                <span style={{ fontFamily: mono, fontSize: 12, color: msg.psirtSummary.advisories > 0 ? C.red : C.green }}>
-                  {msg.psirtSummary.advisories > 0 ? "⚠" : "✓"}
-                </span>
-                <span style={{ fontFamily: mono, fontSize: 11, color: C.dim }}>
-                  PSIRT complete — {msg.psirtSummary.advisories > 0
-                    ? `${msg.psirtSummary.advisories} advisories found across ${msg.psirtSummary.total} devices`
-                    : `All ${msg.psirtSummary.total} devices checked — no advisories found`}
-                </span>
-              </div>
-            )}
-          </div>
-        ) : isFile ? (
+        {isFile ? (
           <FileUploadCard {...msg.fileData} />
         ) : (
           <div style={{
@@ -562,187 +541,6 @@ function DragOverlay({ visible }) {
 // ─────────────────────────────────────────────
 // MAIN COMPONENT
 // ─────────────────────────────────────────────
-
-// ─────────────────────────────────────────────
-// PSIRT PROGRESS COMPONENT
-// Shows per-device query status while PSIRT API runs
-// ─────────────────────────────────────────────
-function PSIRTProgress({ progress }) {
-  if (!progress) return null;
-  const { total, done, results } = progress;
-  const pct = total > 0 ? Math.round((done / total) * 100) : 0;
-
-  return (
-    <div style={{
-      background: "#0A0E1A",
-      border: `1px solid ${C.amber}30`,
-      borderLeft: `3px solid ${C.amber}`,
-      padding: "14px 16px",
-      marginBottom: 8,
-      animation: "fadeUp 0.2s ease",
-    }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <span style={{ color: C.amber, fontFamily: mono, fontSize: 12, animation: done < total ? "spin 1s linear infinite" : "none", display: "inline-block" }}>
-            {done < total ? "⟳" : "✓"}
-          </span>
-          <span style={{ fontFamily: mono, fontSize: 11, color: C.amber }}>
-            {done < total ? `Querying Cisco PSIRT API… ${done}/${total} devices` : `PSIRT query complete — ${total} devices checked`}
-          </span>
-        </div>
-        <span style={{ fontFamily: mono, fontSize: 11, color: C.muted }}>{pct}%</span>
-      </div>
-
-      {/* Progress bar */}
-      <div style={{ height: 3, background: "rgba(212,160,0,0.1)", marginBottom: 10, overflow: "hidden" }}>
-        <div style={{ height: "100%", background: C.amber, width: `${pct}%`, transition: "width 0.4s ease" }} />
-      </div>
-
-      {/* Per-device results */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-        {results.map((r, i) => (
-          <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, fontFamily: mono, fontSize: 10 }}>
-            <span style={{
-              color: r.status === "done"    ? C.green
-                   : r.status === "error"   ? C.red
-                   : r.status === "querying" ? C.amber
-                   : C.muted,
-              width: 12, flexShrink: 0,
-            }}>
-              {r.status === "done"     ? "✓"
-               : r.status === "error"  ? "✕"
-               : r.status === "querying" ? "→"
-               : "○"}
-            </span>
-            <span style={{ color: r.status === "pending" ? C.muted : C.dim, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-              {r.name} {r.version ? `v${r.version}` : "(no version)"}
-            </span>
-            {r.status === "done" && r.count !== undefined && (
-              <span style={{ color: r.count > 0 ? C.orange : C.green, flexShrink: 0 }}>
-                {r.count > 0 ? `${r.count} advisory${r.count !== 1 ? "s" : ""}` : "clean"}
-              </span>
-            )}
-            {r.status === "skipped" && (
-              <span style={{ color: C.muted, flexShrink: 0 }}>skipped — no version</span>
-            )}
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────
-// PSIRT QUERY FUNCTION
-// Calls /api/advisories for each device in parallel
-// Returns structured results + formatted context string
-// ─────────────────────────────────────────────
-async function queryPSIRTForDevices(devices, session, onProgress) {
-  const devicesWithVersions = devices.filter(d => d.version && d.version.trim());
-  const devicesWithout = devices.filter(d => !d.version || !d.version.trim());
-
-  // Initialise progress state
-  const initialResults = devices.map(d => ({
-    name: d.name,
-    version: d.version,
-    status: d.version ? "pending" : "skipped",
-    count: undefined,
-  }));
-  onProgress({ total: devicesWithVersions.length, done: 0, results: initialResults });
-
-  // Detect ACI fabric
-  const isAci = devices.some(d => d.name && d.name.toUpperCase().includes("APIC"));
-
-  let done = 0;
-  const results = [...initialResults];
-
-  // Query all devices with versions in parallel
-  const advisoryResults = await Promise.all(
-    devicesWithVersions.map(async (device) => {
-      const idx = devices.indexOf(device);
-      // Mark as querying
-      results[idx] = { ...results[idx], status: "querying" };
-      onProgress({ total: devicesWithVersions.length, done, results: [...results] });
-
-      try {
-        const isAciSwitch = isAci && (
-          device.name.toUpperCase().includes("NEXUS") ||
-          device.name.toUpperCase().includes("N9K") ||
-          device.name.toUpperCase().includes("N7K")
-        );
-
-        const res = await fetch("/api/advisories", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${session?.access_token}`,
-          },
-          body: JSON.stringify({
-            platform: device.name,
-            version: device.version,
-            isAciSwitch,
-          }),
-        });
-
-        const data = await res.json();
-        done++;
-
-        const advisoryCount = data.advisories?.length || 0;
-        results[idx] = { ...results[idx], status: "done", count: advisoryCount };
-        onProgress({ total: devicesWithVersions.length, done, results: [...results] });
-
-        return { device, data, advisoryCount };
-      } catch (err) {
-        done++;
-        results[idx] = { ...results[idx], status: "error" };
-        onProgress({ total: devicesWithVersions.length, done, results: [...results] });
-        return { device, data: null, advisoryCount: 0, error: err.message };
-      }
-    })
-  );
-
-  // Build PSIRT context string for system prompt
-  const lines = ["PSIRT ADVISORY RESULTS (live Cisco PSIRT API):"];
-  let totalAdvisories = 0;
-
-  for (const { device, data, advisoryCount } of advisoryResults) {
-    if (!data || !data.verified) {
-      lines.push(`${device.name} v${device.version}: API query failed or not supported`);
-      continue;
-    }
-
-    totalAdvisories += advisoryCount;
-
-    if (advisoryCount === 0) {
-      lines.push(`${device.name} v${device.version} [${data.family || ""}]: No advisories found — VERIFIED CLEAN`);
-    } else {
-      lines.push(`${device.name} v${device.version} [${data.family || ""}]: ${advisoryCount} advisories`);
-      const sorted = [...(data.advisories || [])].sort((a, b) => {
-        const sev = { Critical: 4, High: 3, Medium: 2, Low: 1 };
-        return (sev[b.impact] || 0) - (sev[a.impact] || 0);
-      });
-      for (const adv of sorted.slice(0, 5)) {
-        lines.push(`  - [${adv.impact?.toUpperCase() || "UNKNOWN"}] ${adv.id} — ${adv.title}${adv.firstFixed ? ` | Fixed: ${adv.firstFixed}` : ""}`);
-      }
-      if (advisoryCount > 5) {
-        lines.push(`  - ... and ${advisoryCount - 5} more`);
-      }
-    }
-  }
-
-  if (devicesWithout.length > 0) {
-    lines.push(`Devices with no version data (not queried): ${devicesWithout.map(d => d.name).join(", ")}`);
-  }
-
-  lines.push(`SUMMARY: ${totalAdvisories} total advisories across ${devicesWithVersions.length} devices queried`);
-
-  return {
-    psirtContext: lines.join("\n"),
-    totalAdvisories,
-    results: advisoryResults,
-  };
-}
-
 export default function RinconChatPrototype() {
   const { member, org, session } = useAuth();
 
@@ -759,8 +557,6 @@ export default function RinconChatPrototype() {
   const [fabricContext, setFabricContext]   = useState(null); // text blob for system prompt
   const [fabricDevices, setFabricDevices]   = useState([]);  // structured device list
   const [fabricFile, setFabricFile]         = useState(null); // { name, size, storagePath }
-  const [psirtContext, setPsirtContext]     = useState(null);  // formatted PSIRT data for system prompt
-  const [psirtProgress, setPsirtProgress]   = useState(null); // { total, done, results: [] }
   const [uploading, setUploading]           = useState(false);
   const [dragOver, setDragOver]             = useState(false);
 
@@ -952,77 +748,12 @@ export default function RinconChatPrototype() {
         await saveMessage(convId, 'user', `[Uploaded fabric file: ${file.name}]`);
       }
 
-      // ── PSIRT QUERY ──
-      // Query Cisco PSIRT API for all devices in parallel
-      // Show live per-device progress indicator in chat
-      const devicesWithVersions = devices.filter(d => d.version && d.version.trim());
-      let resolvedPsirtContext = null;
-
-      if (devicesWithVersions.length > 0) {
-        // Add progress card to chat
-        const psirtCardId = `psirt-${Date.now()}`;
-        setMessages(prev => [...prev, {
-          id: psirtCardId,
-          role: "ai",
-          type: "psirt-progress",
-          created_at: new Date().toISOString(),
-        }]);
-
-        try {
-          const psirtResult = await queryPSIRTForDevices(
-            devices,
-            session,
-            (progress) => {
-              setPsirtProgress(progress);
-              // Update the progress card in place
-              setMessages(prev => prev.map(m =>
-                m.id === psirtCardId
-                  ? { ...m, psirtProgress: progress }
-                  : m
-              ));
-            }
-          );
-
-          resolvedPsirtContext = psirtResult.psirtContext;
-          setPsirtContext(resolvedPsirtContext);
-
-          // Replace progress card with final summary card
-          setMessages(prev => prev.map(m =>
-            m.id === psirtCardId
-              ? {
-                  ...m,
-                  type: "psirt-done",
-                  psirtSummary: {
-                    total: devicesWithVersions.length,
-                    advisories: psirtResult.totalAdvisories,
-                  },
-                  psirtProgress: psirtResult.results ? {
-                    total: devicesWithVersions.length,
-                    done: devicesWithVersions.length,
-                    results: psirtResult.results.map(r => ({
-                      name: r.device.name,
-                      version: r.device.version,
-                      status: r.error ? "error" : "done",
-                      count: r.advisoryCount,
-                    })),
-                  } : null,
-                }
-              : m
-          ));
-
-        } catch (psirtErr) {
-          console.warn("PSIRT query failed (non-fatal):", psirtErr);
-          setMessages(prev => prev.filter(m => m.id !== psirtCardId));
-        }
-      }
-
-      // Auto-send Rincon's initial assessment — now with PSIRT data
+      // Auto-send a Rincon analysis of the uploaded fabric
       await sendWithContext(
-        `Fabric file loaded: ${file.name}`,
+        `I've loaded ${file.name}. I can see ${devices.length} devices. Here's a quick fabric assessment:`,
         contextLines,
         convId,
-        true, // isAutoResponse
-        resolvedPsirtContext
+        true // isAutoResponse
       );
 
       loadConversations();
@@ -1040,8 +771,8 @@ export default function RinconChatPrototype() {
   // ─────────────────────────────────────────────
   // CLAUDE API CALL
   // ─────────────────────────────────────────────
-  const callClaude = async (conversationHistory, contextOverride, psirtOverride) => {
-    const systemPrompt = buildSystemPrompt(contextOverride || fabricContext, psirtOverride !== undefined ? psirtOverride : psirtContext);
+  const callClaude = async (conversationHistory, contextOverride) => {
+    const systemPrompt = buildSystemPrompt(contextOverride || fabricContext);
 
     const response = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
@@ -1072,28 +803,24 @@ export default function RinconChatPrototype() {
   // ─────────────────────────────────────────────
   // SEND WITH EXPLICIT CONTEXT (for auto-responses after file upload)
   // ─────────────────────────────────────────────
-  const sendWithContext = async (triggerPrompt, context, convId, isAutoResponse = false, psirtData = null) => {
+  const sendWithContext = async (triggerPrompt, context, convId, isAutoResponse = false) => {
     setAiTyping(true);
 
     try {
       const prompt = isAutoResponse
-        ? `The engineer has just uploaded a fabric inventory file.${psirtData ? " PSIRT advisory data from the live Cisco PSIRT API has been retrieved for all devices with known versions." : ""}
-
-Provide a concise initial assessment covering:
+        ? `The engineer has just uploaded a fabric inventory file. Provide a concise initial assessment covering:
 1. How many devices were found and what infrastructure tiers are present
-2. Any version mismatches visible in the inventory
-3. The most significant security advisories found (if PSIRT data is present, cite exact CSC IDs and severity)
-4. Top priority action — what the engineer should look at first
-5. Invite the engineer to ask specific questions about any device or finding
+2. Any version mismatches you can see
+3. The top 1-2 things worth examining further
+4. Invite the engineer to ask specific questions
 
 Fabric data:
-${context}${psirtData ? "\n\nPSIRT DATA:\n" + psirtData : ""}`
+${context}`
         : triggerPrompt;
 
       const aiResponse = await callClaude(
         [{ role: "user", content: prompt }],
-        context,
-        psirtData
+        context
       );
 
       setAiTyping(false);
@@ -1181,8 +908,6 @@ ${context}${psirtData ? "\n\nPSIRT DATA:\n" + psirtData : ""}`
     setFabricContext(null);
     setFabricDevices([]);
     setFabricFile(null);
-    setPsirtContext(null);
-    setPsirtProgress(null);
     inputRef.current?.focus();
   };
 
@@ -1442,7 +1167,7 @@ ${context}${psirtData ? "\n\nPSIRT DATA:\n" + psirtData : ""}`
                 <FabricContextBanner
                   fabricFile={fabricFile}
                   devices={fabricDevices}
-                  onClear={() => { setFabricContext(null); setFabricDevices([]); setFabricFile(null); setPsirtContext(null); setPsirtProgress(null); }}
+                  onClear={() => { setFabricContext(null); setFabricDevices([]); setFabricFile(null); }}
                 />
               )}
 
