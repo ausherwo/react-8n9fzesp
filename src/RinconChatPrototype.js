@@ -361,7 +361,7 @@ export default function RinconChatPrototype() {
   };
 
   // ─────────────────────────────────────────────
-  // SUPABASE: Save a message
+  // SUPABASE: Saves a message
   // ─────────────────────────────────────────────
   const saveMessage = async (convId, role, content) => {
     const { data: { session: activeSession } } = await supabase.auth.getSession();
