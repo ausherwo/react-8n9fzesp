@@ -333,7 +333,10 @@ export default function RinconChatPrototype() {
   const createConversation = async (firstMessage, isAnalysis = false) => {
     // Generate title from first message (first 60 chars)
     const title = firstMessage.slice(0, 60) + (firstMessage.length > 60 ? "…" : "");
-
+    const { data: { session: s } } = await supabase.auth.getSession();
+    console.log('supabase session user:', s?.user?.email);
+    console.log('org id being sent:', org?.id);
+    console.log('member id being sent:', member?.id);
     const { data, error } = await supabase
       .from('conversations')
       .insert({
