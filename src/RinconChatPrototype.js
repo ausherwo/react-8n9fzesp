@@ -331,24 +331,28 @@ export default function RinconChatPrototype() {
   // SUPABASE: Create new conversation
   // ─────────────────────────────────────────────
   const createConversation = async (firstMessage, isAnalysis = false) => {
-    // Generate title from first message (first 60 chars)
-    const title = firstMessage.slice(0, 60) + (firstMessage.length > 60 ? "…" : "");
-    const { data: { session: s } } = await supabase.auth.getSession();
-    console.log('supabase session user:', s?.user?.email);
-    console.log('org id being sent:', org?.id);
-    console.log('member id being sent:', member?.id);
+    // Read org_id directly from JWT to avoid stale closure
+    const { data: { session: activeSession } } = await supabase.auth.getSession();
+    const payload = JSON.parse(atob(
+      activeSession.access_token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')
+    ));
+    const orgId    = payload.org_id;
+    const memberId = payload.member_id;
+  
+    const title = firstMessage.slice(0, 60) + (firstMessage.length > 60 ? '…' : '');
+  
     const { data, error } = await supabase
       .from('conversations')
       .insert({
         title,
         is_analysis: isAnalysis,
         message_count: 0,
-        org_id: member?.org_id || session?.user?.app_metadata?.org_id,
-        member_id: member?.id,
+        org_id: orgId,
+        member_id: memberId,
       })
       .select('id')
       .single();
-
+  
     if (error || !data) {
       console.error('Failed to create conversation:', error);
       return null;
@@ -360,20 +364,23 @@ export default function RinconChatPrototype() {
   // SUPABASE: Save a message
   // ─────────────────────────────────────────────
   const saveMessage = async (convId, role, content) => {
+    const { data: { session: activeSession } } = await supabase.auth.getSession();
+    const payload = JSON.parse(atob(
+      activeSession.access_token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')
+    ));
+    const orgId = payload.org_id;
+  
     const { data, error } = await supabase
       .from('conversation_messages')
-      .insert({ conversation_id: convId, role, content, org_id: member?.org_id })
+      .insert({ conversation_id: convId, role, content, org_id: orgId })
       .select('id, role, content, created_at')
       .single();
-
+  
     if (error) { console.error('Failed to save message:', error); return null; }
-
-    // Increment message count
+  
     await supabase.rpc('increment_message_count', { p_conversation_id: convId });
-
     return data;
   };
-
   // ─────────────────────────────────────────────
   // CLAUDE API CALL
   // ─────────────────────────────────────────────
