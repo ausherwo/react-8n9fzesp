@@ -1,7 +1,7 @@
-// RinconChatPrototype.js — v2.0
-// Rincon: Real Claude API, Supabase conversation persistence, history sidebar
-// Modes: standalone chat + post-analysis deep dive
-// Persona: Full DC expert — Cisco platforms, bugs, upgrade sequencing
+// RinconChatPrototype.js — v3.0
+// Rincon: Real Claude API, conversation persistence, file upload + drag-and-drop
+// File upload → server-side extraction → fabric context → chat grounded on real data
+// Enterprise stub: APIC/Nexus direct integration placeholder
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useAuth } from './Auth';
@@ -36,9 +36,9 @@ const sans = "'DM Sans', system-ui, sans-serif";
 
 // ─────────────────────────────────────────────
 // RINCON SYSTEM PROMPT
-// Full DC expert persona
 // ─────────────────────────────────────────────
-const RINCON_SYSTEM = `You are Rincon, an expert Cisco data centre network engineer embedded in netwrkr.ai. You have deep knowledge of:
+function buildSystemPrompt(fabricContext) {
+  const base = `You are Rincon, an expert Cisco data centre network engineer embedded in netwrkr.ai. You have deep knowledge of:
 
 - Cisco ACI fabric architecture (APIC, Nexus 9000 series, spines, leafs, border leafs)
 - NX-OS and ACI software versions, known bugs, CVEs, and upgrade paths
@@ -54,19 +54,32 @@ BEHAVIOUR RULES:
 3. Never fabricate CSC IDs — if you don't know the exact ID, say so
 4. Upgrade recommendations must follow the tier order: Controllers first, then Spine, then Border Leaf, then Leaf
 5. Use cautious language for unverified findings: "may affect", "worth checking", "review recommended"
-6. When analysis data is provided in the conversation, ground your answers in that data first before drawing on general knowledge
-7. Keep responses focused — if an engineer asks a specific question, answer it specifically
-8. You can and should ask clarifying questions when the engineer's fabric context is ambiguous
+6. When fabric context is provided, ground your answers in that data first before drawing on general knowledge
+7. Keep responses focused and specific
+8. Ask clarifying questions when the engineer's fabric context is ambiguous
 
-TONE: Technical peer, not a customer service agent. Think senior network architect talking to another engineer.
+TONE: Technical peer, not a customer service agent. Senior network architect talking to another engineer.
 
-FORMAT: Use plain text. For lists use dashes. For version numbers use exact notation (e.g. 9.3(9), 16.1(5e)). No markdown headers — this is a chat interface.`;
+FORMAT: Use plain text. For lists use dashes. For version numbers use exact notation (e.g. 9.3(9), 16.1(5e)). No markdown headers.`;
+
+  if (!fabricContext) return base;
+
+  return `${base}
+
+─────────────────────────────────────────────
+FABRIC CONTEXT — loaded from engineer's file
+─────────────────────────────────────────────
+${fabricContext}
+
+When answering questions, treat this fabric data as ground truth. Reference specific devices, versions, and roles from this inventory in your answers.`;
+}
 
 // ─────────────────────────────────────────────
 // HELPERS
 // ─────────────────────────────────────────────
 function timeAgo(isoString) {
-  const diff = Date.now() - new Date(isoString).getTime();
+  if (!isoString) return "";
+  const diff  = Date.now() - new Date(isoString).getTime();
   const mins  = Math.floor(diff / 60000);
   const hours = Math.floor(diff / 3600000);
   const days  = Math.floor(diff / 86400000);
@@ -81,8 +94,101 @@ function getInitials(name, email) {
   return email?.[0]?.toUpperCase() || '?';
 }
 
+function getJwtClaims() {
+  try {
+    const raw = localStorage.getItem('netwrkr-auth');
+    if (!raw) return {};
+    const token = JSON.parse(raw)?.access_token;
+    if (!token) return {};
+    return JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+  } catch { return {}; }
+}
+
 // ─────────────────────────────────────────────
-// TYPING INDICATOR
+// SUPPORTED FILE TYPES
+// ─────────────────────────────────────────────
+const ACCEPTED_TYPES = [
+  '.txt', '.log', '.csv', '.conf', '.cfg', '.json', '.xlsx', '.xls'
+];
+const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+
+// ─────────────────────────────────────────────
+// FABRIC EXTRACTION via Claude
+// Parses uploaded file content into structured device list
+// ─────────────────────────────────────────────
+async function extractFabricFromText(text, apiKey) {
+  const response = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01",
+      "anthropic-dangerous-direct-browser-access": "true",
+    },
+    body: JSON.stringify({
+      model: "claude-sonnet-4-20250514",
+      max_tokens: 2000,
+      messages: [{
+        role: "user",
+        content: `You are a Cisco network inventory parser. Extract all network devices from the text below.
+
+For each device return:
+- name: platform/model name (e.g. "Nexus 9336C-FX2", "APIC-SERVER-M3")
+- version: exact software version if present (e.g. "9.3(9)", "6.1(5e)") — empty string if not found
+- role: device role if determinable (e.g. "Spine", "Leaf", "Border Leaf", "Controller", "Firewall") — empty string if unknown
+- tier: infrastructure tier (1=Controller, 2=Spine/Border Leaf, 3=Leaf, 4=Distribution/Firewall)
+
+IMPORTANT:
+- Only extract versions explicitly written in the text — never infer from platform names
+- Detect ACI fabric if APIC is present
+- Return ONLY valid JSON array, no markdown, no explanation
+
+Text:
+${text.slice(0, 8000)}
+
+Return format: [{"name":"...","version":"...","role":"...","tier":3}]`,
+      }],
+    }),
+  });
+
+  const data = await response.json();
+  if (data.error) throw new Error(data.error.message);
+
+  const raw = data.content[0].text.replace(/```json\n?|\n?```/g, '').trim();
+  return JSON.parse(raw);
+}
+
+// ─────────────────────────────────────────────
+// PRE-FLIGHT CHECK
+// Basic scan for sensitive data before storage
+// ─────────────────────────────────────────────
+function preflightCheck(text) {
+  const patterns = [
+    { re: /\b(?:password|passwd|secret|credential|api.?key)\s*[=:]\s*\S+/gi, label: "credential" },
+    { re: /\b(?:snmp.community|community.string)\s+\S+/gi, label: "SNMP community" },
+    { re: /\b(?:username|user)\s+\w+\s+(?:password|secret)\s+\S+/gi, label: "username/password" },
+  ];
+
+  const warnings = [];
+  for (const { re, label } of patterns) {
+    if (re.test(text)) warnings.push(label);
+  }
+  return warnings;
+}
+
+// ─────────────────────────────────────────────
+// TIER LABEL
+// ─────────────────────────────────────────────
+function tierLabel(tier) {
+  return {1: "Controller", 2: "Spine / Border Leaf", 3: "Leaf", 4: "Distribution / Firewall"}[tier] || "Unknown";
+}
+
+function tierColor(tier) {
+  return {1: C.amber, 2: C.orange, 3: C.green, 4: C.dim}[tier] || C.muted;
+}
+
+// ─────────────────────────────────────────────
+// TYPING DOTS
 // ─────────────────────────────────────────────
 function TypingDots() {
   return (
@@ -128,10 +234,158 @@ function UserAvatar({ member }) {
 }
 
 // ─────────────────────────────────────────────
+// FABRIC CONTEXT BANNER
+// Shows at top of chat when a file has been loaded
+// ─────────────────────────────────────────────
+function FabricContextBanner({ fabricFile, devices, onClear }) {
+  const [expanded, setExpanded] = useState(false);
+  if (!fabricFile) return null;
+
+  const tierGroups = {};
+  devices.forEach(d => {
+    const t = d.tier || 3;
+    if (!tierGroups[t]) tierGroups[t] = [];
+    tierGroups[t].push(d);
+  });
+
+  return (
+    <div style={{
+      background: `${C.amber}08`,
+      border: `1px solid ${C.amber}30`,
+      borderLeft: `3px solid ${C.amber}`,
+      margin: "0 24px 16px",
+      animation: "fadeUp 0.3s ease",
+    }}>
+      <div
+        style={{
+          display: "flex", alignItems: "center", justifyContent: "space-between",
+          padding: "10px 14px", cursor: "pointer",
+        }}
+        onClick={() => setExpanded(v => !v)}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <span style={{ color: C.amber, fontFamily: mono, fontSize: 12 }}>◈</span>
+          <div>
+            <div style={{ fontFamily: mono, fontSize: 11, color: C.amber, letterSpacing: "0.06em" }}>
+              Fabric context loaded
+            </div>
+            <div style={{ fontFamily: mono, fontSize: 10, color: C.muted, marginTop: 2 }}>
+              {fabricFile.name} · {devices.length} device{devices.length !== 1 ? "s" : ""} extracted
+            </div>
+          </div>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <span style={{ fontFamily: mono, fontSize: 10, color: C.muted }}>
+            {expanded ? "▲ hide" : "▼ show devices"}
+          </span>
+          <button
+            onClick={e => { e.stopPropagation(); onClear(); }}
+            style={{
+              background: "none", border: `1px solid rgba(192,57,43,0.3)`,
+              color: "#E07060", fontFamily: mono, fontSize: 10,
+              padding: "3px 8px", cursor: "pointer",
+            }}
+          >
+            clear
+          </button>
+        </div>
+      </div>
+
+      {expanded && (
+        <div style={{ borderTop: `1px solid ${C.amber}20`, padding: "12px 14px" }}>
+          <div style={{ fontFamily: mono, fontSize: 9, color: C.muted, letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 10 }}>
+            Extracted inventory
+          </div>
+          {Object.entries(tierGroups)
+            .sort(([a], [b]) => Number(a) - Number(b))
+            .map(([tier, devs]) => (
+              <div key={tier} style={{ marginBottom: 10 }}>
+                <div style={{ fontFamily: mono, fontSize: 9, color: tierColor(Number(tier)), marginBottom: 5, letterSpacing: "0.1em" }}>
+                  // {tierLabel(Number(tier))}
+                </div>
+                {devs.map((d, i) => (
+                  <div key={i} style={{
+                    display: "flex", alignItems: "center", gap: 10,
+                    padding: "4px 0", borderBottom: `1px solid ${C.faint}`,
+                  }}>
+                    <div style={{ width: 6, height: 6, borderRadius: "50%", background: tierColor(Number(tier)), flexShrink: 0 }} />
+                    <span style={{ fontFamily: mono, fontSize: 12, color: C.text, flex: 1 }}>{d.name}</span>
+                    {d.version && (
+                      <span style={{ fontFamily: mono, fontSize: 11, color: C.dim }}>v{d.version}</span>
+                    )}
+                    {d.role && (
+                      <span style={{ fontFamily: mono, fontSize: 10, color: C.muted, background: C.faint, padding: "1px 6px" }}>
+                        {d.role}
+                      </span>
+                    )}
+                    {!d.version && (
+                      <span style={{ fontFamily: mono, fontSize: 10, color: C.orange }}>no version</span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
+// FILE UPLOAD CARD
+// Shown as a message in the chat after upload
+// ─────────────────────────────────────────────
+function FileUploadCard({ fileName, fileSize, status, warnings }) {
+  const statusConfig = {
+    uploading:   { color: C.amber,  icon: "⟳", label: "Uploading…" },
+    extracting:  { color: C.amber,  icon: "◈", label: "Extracting fabric data…" },
+    done:        { color: C.green,  icon: "✓", label: "Fabric context loaded" },
+    error:       { color: C.red,    icon: "✕", label: "Upload failed" },
+    preflight:   { color: C.orange, icon: "⚠", label: "Sensitive data detected" },
+  }[status] || { color: C.muted, icon: "…", label: status };
+
+  const kb = fileSize ? `${(fileSize / 1024).toFixed(1)} KB` : "";
+
+  return (
+    <div style={{
+      background: C.surface, border: `1px solid ${statusConfig.color}30`,
+      borderLeft: `3px solid ${statusConfig.color}`,
+      padding: "12px 16px", maxWidth: 400,
+    }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
+        <span style={{ color: statusConfig.color, fontFamily: mono, fontSize: 14 }}>
+          {statusConfig.icon}
+        </span>
+        <div>
+          <div style={{ fontFamily: mono, fontSize: 11, color: statusConfig.color }}>
+            {statusConfig.label}
+          </div>
+          <div style={{ fontFamily: mono, fontSize: 10, color: C.muted, marginTop: 2 }}>
+            {fileName} {kb && `· ${kb}`}
+          </div>
+        </div>
+      </div>
+      {warnings?.length > 0 && (
+        <div style={{ marginTop: 8, padding: "8px 10px", background: `${C.orange}10`, border: `1px solid ${C.orange}30` }}>
+          <div style={{ fontFamily: mono, fontSize: 10, color: C.orange, marginBottom: 4 }}>
+            ⚠ Possible sensitive data detected — review before proceeding:
+          </div>
+          {warnings.map((w, i) => (
+            <div key={i} style={{ fontFamily: mono, fontSize: 10, color: C.dim }}>→ {w}</div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
 // MESSAGE BUBBLE
 // ─────────────────────────────────────────────
 function MessageBubble({ msg, member }) {
   const isUser = msg.role === "user";
+  const isFile = msg.type === "file";
+
   return (
     <div style={{
       display: "flex", gap: 14, marginTop: 20,
@@ -139,36 +393,37 @@ function MessageBubble({ msg, member }) {
       animation: "fadeUp 0.2s ease",
     }}>
       {isUser ? <UserAvatar member={member} /> : <RinconAvatar />}
-      <div style={{
-        maxWidth: "78%",
-        background: isUser ? `${C.amber}12` : C.surface,
-        border: `1px solid ${isUser ? `${C.amber}25` : C.border}`,
-        borderRadius: isUser ? "12px 2px 12px 12px" : "2px 12px 12px 12px",
-        padding: "12px 16px",
-      }}>
-        {!isUser && (
+      <div style={{ maxWidth: isFile ? "none" : "78%" }}>
+        {!isUser && !isFile && (
           <div style={{ marginBottom: 8, display: "flex", alignItems: "center", gap: 8 }}>
             <span style={{ fontFamily: mono, fontSize: 11, fontWeight: 600, color: C.amber }}>Rincon</span>
             <span style={{ fontFamily: mono, fontSize: 10, color: C.muted }}>DC Expert</span>
           </div>
         )}
-        <div style={{
-          fontSize: 14, lineHeight: 1.75,
-          whiteSpace: "pre-wrap", color: C.text,
-          fontFamily: sans,
-        }}>
-          {msg.content}
-        </div>
-        <div style={{ fontFamily: mono, fontSize: 10, color: C.muted, marginTop: 6, textAlign: isUser ? "left" : "right" }}>
-          {timeAgo(msg.created_at)}
-        </div>
+        {isFile ? (
+          <FileUploadCard {...msg.fileData} />
+        ) : (
+          <div style={{
+            background: isUser ? `${C.amber}12` : C.surface,
+            border: `1px solid ${isUser ? `${C.amber}25` : C.border}`,
+            borderRadius: isUser ? "12px 2px 12px 12px" : "2px 12px 12px 12px",
+            padding: "12px 16px",
+          }}>
+            <div style={{ fontSize: 14, lineHeight: 1.75, whiteSpace: "pre-wrap", color: C.text, fontFamily: sans }}>
+              {msg.content}
+            </div>
+            <div style={{ fontFamily: mono, fontSize: 10, color: C.muted, marginTop: 6, textAlign: isUser ? "left" : "right" }}>
+              {timeAgo(msg.created_at)}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
 // ─────────────────────────────────────────────
-// HISTORY SIDEBAR ITEM
+// CONVERSATION SIDEBAR ITEM
 // ─────────────────────────────────────────────
 function ConversationItem({ conv, active, onClick }) {
   const [hov, setHov] = useState(false);
@@ -181,8 +436,7 @@ function ConversationItem({ conv, active, onClick }) {
         padding: "11px 16px",
         background: active ? C.amberG : hov ? C.hi : "transparent",
         borderLeft: `2px solid ${active ? C.amber : "transparent"}`,
-        cursor: "pointer",
-        transition: "all 0.15s",
+        cursor: "pointer", transition: "all 0.15s",
       }}
     >
       <div style={{
@@ -198,17 +452,13 @@ function ConversationItem({ conv, active, onClick }) {
           {timeAgo(conv.created_at)}
         </span>
         {conv.is_analysis && (
-          <span style={{
-            fontFamily: mono, fontSize: 9, color: C.amber,
-            background: C.amberG, border: `1px solid ${C.amber}30`,
-            padding: "1px 5px",
-          }}>
+          <span style={{ fontFamily: mono, fontSize: 9, color: C.amber, background: C.amberG, border: `1px solid ${C.amber}30`, padding: "1px 5px" }}>
             analysis
           </span>
         )}
-        {conv.message_count > 0 && (
-          <span style={{ fontFamily: mono, fontSize: 10, color: C.muted }}>
-            {conv.message_count} msgs
+        {conv.has_fabric && (
+          <span style={{ fontFamily: mono, fontSize: 9, color: C.green, background: C.greenG, border: `1px solid ${C.green}30`, padding: "1px 5px" }}>
+            fabric
           </span>
         )}
       </div>
@@ -219,39 +469,37 @@ function ConversationItem({ conv, active, onClick }) {
 // ─────────────────────────────────────────────
 // SUGGESTION CHIPS
 // ─────────────────────────────────────────────
-const STANDALONE_SUGGESTIONS = [
-  "What's the safest upgrade path for a 9.3(x) fabric?",
-  "How do I check if CSCvz88341 affects my fabric?",
-  "What should I do before a major ACI upgrade?",
-  "Explain vPC peer-link failure scenarios",
+const SUGGESTIONS = [
+  "What's the safest upgrade path for a 9.3(x) ACI fabric?",
+  "How do I check if a CVE affects my fabric?",
+  "What should I do before a major APIC upgrade?",
   "Border leaf BGP best practices for ACI",
+  "Upload a config file to analyse your fabric →",
 ];
 
-function SuggestionChips({ onSelect }) {
+function SuggestionChips({ onSelect, onUpload }) {
   return (
     <div style={{ padding: "0 24px 16px" }}>
       <div style={{ maxWidth: 740, margin: "0 auto" }}>
         <div style={{ fontFamily: mono, fontSize: 10, color: C.muted, marginBottom: 10, letterSpacing: "0.08em" }}>
-          // suggested questions
+          // suggested
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          {STANDALONE_SUGGESTIONS.map(s => (
+          {SUGGESTIONS.map(s => (
             <button
               key={s}
-              onClick={() => onSelect(s)}
+              onClick={() => s.includes("Upload") ? onUpload() : onSelect(s)}
               style={{
-                background: "transparent", border: `1px solid ${C.border}`,
-                color: C.dim, fontFamily: mono, fontSize: 11,
-                padding: "6px 13px", cursor: "pointer",
-                transition: "all 0.15s",
+                background: s.includes("Upload") ? C.amberG : "transparent",
+                border: `1px solid ${s.includes("Upload") ? `${C.amber}44` : C.border}`,
+                color: s.includes("Upload") ? C.amber : C.dim,
+                fontFamily: mono, fontSize: 11,
+                padding: "6px 13px", cursor: "pointer", transition: "all 0.15s",
               }}
-              onMouseEnter={e => {
-                e.currentTarget.style.borderColor = `${C.amber}55`;
-                e.currentTarget.style.color = C.text;
-              }}
+              onMouseEnter={e => { e.currentTarget.style.borderColor = `${C.amber}55`; e.currentTarget.style.color = C.text; }}
               onMouseLeave={e => {
-                e.currentTarget.style.borderColor = C.border;
-                e.currentTarget.style.color = C.dim;
+                e.currentTarget.style.borderColor = s.includes("Upload") ? `${C.amber}44` : C.border;
+                e.currentTarget.style.color = s.includes("Upload") ? C.amber : C.dim;
               }}
             >
               {s}
@@ -264,31 +512,67 @@ function SuggestionChips({ onSelect }) {
 }
 
 // ─────────────────────────────────────────────
+// DRAG OVERLAY
+// ─────────────────────────────────────────────
+function DragOverlay({ visible }) {
+  if (!visible) return null;
+  return (
+    <div style={{
+      position: "absolute", inset: 0, zIndex: 50,
+      background: `${C.bg}E8`,
+      backdropFilter: "blur(4px)",
+      display: "flex", flexDirection: "column",
+      alignItems: "center", justifyContent: "center",
+      border: `2px dashed ${C.amber}`,
+      animation: "fadeUp 0.15s ease",
+      pointerEvents: "none",
+    }}>
+      <div style={{ fontSize: 32, marginBottom: 16, color: C.amber }}>↓</div>
+      <div style={{ fontFamily: mono, fontSize: 14, color: C.amber, letterSpacing: "0.08em" }}>
+        Drop file to load fabric context
+      </div>
+      <div style={{ fontFamily: mono, fontSize: 11, color: C.muted, marginTop: 8 }}>
+        .txt .log .csv .conf .cfg .json supported
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
 // MAIN COMPONENT
 // ─────────────────────────────────────────────
 export default function RinconChatPrototype() {
   const { member, org, session } = useAuth();
 
-  // Conversation state
-  const [conversations, setConversations] = useState([]);
-  const [activeConvId, setActiveConvId]   = useState(null);
-  const [messages, setMessages]           = useState([]);
-  const [input, setInput]                 = useState("");
-  const [aiTyping, setAiTyping]           = useState(false);
-  const [sidebarOpen, setSidebarOpen]     = useState(true);
+  // Chat state
+  const [conversations, setConversations]   = useState([]);
+  const [activeConvId, setActiveConvId]     = useState(null);
+  const [messages, setMessages]             = useState([]);
+  const [input, setInput]                   = useState("");
+  const [aiTyping, setAiTyping]             = useState(false);
+  const [sidebarOpen, setSidebarOpen]       = useState(true);
   const [loadingHistory, setLoadingHistory] = useState(true);
-  const [streamingText, setStreamingText]   = useState("");
 
-  const bottomRef = useRef(null);
-  const inputRef  = useRef(null);
-  const authHeader = { Authorization: `Bearer ${session?.access_token}` };
+  // File / fabric state
+  const [fabricContext, setFabricContext]   = useState(null); // text blob for system prompt
+  const [fabricDevices, setFabricDevices]   = useState([]);  // structured device list
+  const [fabricFile, setFabricFile]         = useState(null); // { name, size, storagePath }
+  const [uploading, setUploading]           = useState(false);
+  const [dragOver, setDragOver]             = useState(false);
 
-  // ── Scroll to bottom on new messages
+  const bottomRef  = useRef(null);
+  const inputRef   = useRef(null);
+  const fileRef    = useRef(null);
+  const chatAreaRef = useRef(null);
+
+  const apiKey = process.env.REACT_APP_ANTHROPIC_API_KEY;
+
+  // ── Scroll to bottom
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, aiTyping, streamingText]);
+  }, [messages, aiTyping]);
 
-  // ── Load conversation history on mount
+  // ── Load conversations on mount
   useEffect(() => {
     if (session) loadConversations();
   }, [session]);
@@ -300,113 +584,264 @@ export default function RinconChatPrototype() {
   }, [activeConvId]);
 
   // ─────────────────────────────────────────────
-  // SUPABASE: Load conversations list
+  // SUPABASE HELPERS
   // ─────────────────────────────────────────────
   const loadConversations = async () => {
     setLoadingHistory(true);
-    const { data, error } = await supabase
+    const { data } = await supabase
       .from('conversations')
-      .select('id, title, created_at, updated_at, is_analysis, message_count')
+      .select('id, title, created_at, updated_at, is_analysis, message_count, has_fabric')
       .order('updated_at', { ascending: false })
       .limit(50);
-
-    if (!error && data) setConversations(data);
+    if (data) setConversations(data);
     setLoadingHistory(false);
   };
 
-  // ─────────────────────────────────────────────
-  // SUPABASE: Load messages for a conversation
-  // ─────────────────────────────────────────────
   const loadMessages = async (convId) => {
-    const { data, error } = await supabase
+    const { data } = await supabase
       .from('conversation_messages')
       .select('id, role, content, created_at')
       .eq('conversation_id', convId)
       .order('created_at', { ascending: true });
-
-    if (!error && data) setMessages(data);
+    if (data) setMessages(data.map(m => ({ ...m, role: m.role === "assistant" ? "ai" : m.role })));
   };
 
-  // ─────────────────────────────────────────────
-  // SUPABASE: Create new conversation
-  // ─────────────────────────────────────────────
-  const createConversation = async (firstMessage, isAnalysis = false) => {
-    // Read org_id directly from JWT to avoid stale closure
-    const { data: { session: activeSession } } = await supabase.auth.getSession();
-    const payload = JSON.parse(atob(
-      activeSession.access_token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')
-    ));
-    const orgId    = payload.org_id;
-    const memberId = payload.member_id;
-  
-    const title = firstMessage.slice(0, 60) + (firstMessage.length > 60 ? '…' : '');
-  
+  const getOrgMemberIds = async () => {
+    const { data: { session: s } } = await supabase.auth.getSession();
+    const claims = getJwtClaims();
+    return {
+      orgId:    claims.org_id    || org?.id,
+      memberId: claims.member_id || member?.id,
+    };
+  };
+
+  const createConversation = async (firstMessage, opts = {}) => {
+    const { orgId, memberId } = await getOrgMemberIds();
+    const title = firstMessage.slice(0, 60) + (firstMessage.length > 60 ? "…" : "");
     const { data, error } = await supabase
       .from('conversations')
       .insert({
         title,
-        is_analysis: isAnalysis,
+        is_analysis:  opts.isAnalysis  || false,
+        has_fabric:   opts.hasFabric   || false,
         message_count: 0,
-        org_id: orgId,
+        org_id:    orgId,
         member_id: memberId,
       })
       .select('id')
       .single();
-  
-    if (error || !data) {
-      console.error('Failed to create conversation:', error);
-      return null;
-    }
+    if (error) { console.error('Failed to create conversation:', error); return null; }
     return data.id;
   };
 
-  // ─────────────────────────────────────────────
-  // SUPABASE: Saves a message
-  // ─────────────────────────────────────────────
   const saveMessage = async (convId, role, content) => {
-    const { data: { session: activeSession } } = await supabase.auth.getSession();
-    const payload = JSON.parse(atob(
-      activeSession.access_token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')
-    ));
-    const orgId = payload.org_id;
-  
+    const { orgId } = await getOrgMemberIds();
     const { data, error } = await supabase
       .from('conversation_messages')
       .insert({ conversation_id: convId, role, content, org_id: orgId })
       .select('id, role, content, created_at')
       .single();
-  
     if (error) { console.error('Failed to save message:', error); return null; }
-  
     await supabase.rpc('increment_message_count', { p_conversation_id: convId });
     return data;
   };
+
+  // ─────────────────────────────────────────────
+  // FILE UPLOAD HANDLER
+  // ─────────────────────────────────────────────
+  const handleFile = async (file) => {
+    if (!file) return;
+
+    // Size check
+    if (file.size > MAX_FILE_SIZE) {
+      addLocalMessage("system", `File too large. Maximum size is 5MB. Your file is ${(file.size / 1024 / 1024).toFixed(1)}MB.`);
+      return;
+    }
+
+    setUploading(true);
+
+    // Show upload card in chat
+    const uploadCardId = Date.now().toString();
+    setMessages(prev => [...prev, {
+      id: uploadCardId,
+      role: "user",
+      type: "file",
+      fileData: { fileName: file.name, fileSize: file.size, status: "uploading" },
+      created_at: new Date().toISOString(),
+    }]);
+
+    try {
+      // Read file content
+      const text = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = e => resolve(e.target.result);
+        reader.onerror = reject;
+        reader.readAsText(file);
+      });
+
+      // Pre-flight check for sensitive data
+      const warnings = preflightCheck(text);
+
+      // Update card to show pre-flight warnings if any
+      if (warnings.length > 0) {
+        setMessages(prev => prev.map(m => m.id === uploadCardId ? {
+          ...m, fileData: { ...m.fileData, status: "preflight", warnings }
+        } : m));
+        // Still proceed — engineer is warned
+      }
+
+      // Update card to extracting
+      setMessages(prev => prev.map(m => m.id === uploadCardId ? {
+        ...m, fileData: { ...m.fileData, status: "extracting", warnings }
+      } : m));
+
+      // Extract devices via Claude
+      const devices = await extractFabricFromText(text, apiKey);
+
+      // Upload raw file to Supabase Storage
+      const { orgId } = await getOrgMemberIds();
+      const storagePath = `${orgId}/${Date.now()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+
+      const { error: storageError } = await supabase.storage
+        .from('environment-files')
+        .upload(storagePath, file, { contentType: 'text/plain', upsert: false });
+
+      if (storageError) {
+        console.warn('Storage upload failed (non-fatal):', storageError.message);
+      }
+
+      // Build fabric context string for system prompt
+      const contextLines = [
+        `FILE: ${file.name}`,
+        `DEVICES EXTRACTED: ${devices.length}`,
+        "",
+        "FABRIC INVENTORY:",
+        ...devices.map(d =>
+          `- ${d.name}${d.version ? ` v${d.version}` : " (version unknown)"}${d.role ? ` | ${d.role}` : ""} | Tier ${d.tier}`
+        ),
+        "",
+        "RAW FILE EXCERPT (first 3000 chars):",
+        text.slice(0, 3000),
+      ].join("\n");
+
+      // Set fabric context
+      setFabricContext(contextLines);
+      setFabricDevices(devices);
+      setFabricFile({ name: file.name, size: file.size, storagePath });
+
+      // Update upload card to done
+      setMessages(prev => prev.map(m => m.id === uploadCardId ? {
+        ...m, fileData: { ...m.fileData, status: "done", warnings }
+      } : m));
+
+      // Create/update conversation with has_fabric flag
+      let convId = activeConvId;
+      if (!convId) {
+        convId = await createConversation(`Fabric analysis: ${file.name}`, { hasFabric: true });
+        if (convId) setActiveConvId(convId);
+      } else {
+        await supabase.from('conversations').update({ has_fabric: true }).eq('id', convId);
+      }
+
+      // Save file upload event as message
+      if (convId) {
+        await saveMessage(convId, 'user', `[Uploaded fabric file: ${file.name}]`);
+      }
+
+      // Auto-send a Rincon analysis of the uploaded fabric
+      await sendWithContext(
+        `I've loaded ${file.name}. I can see ${devices.length} devices. Here's a quick fabric assessment:`,
+        contextLines,
+        convId,
+        true // isAutoResponse
+      );
+
+      loadConversations();
+
+    } catch (err) {
+      console.error('File processing error:', err);
+      setMessages(prev => prev.map(m => m.id === uploadCardId ? {
+        ...m, fileData: { ...m.fileData, status: "error" }
+      } : m));
+    }
+
+    setUploading(false);
+  };
+
   // ─────────────────────────────────────────────
   // CLAUDE API CALL
   // ─────────────────────────────────────────────
-  const callClaude = async (conversationHistory) => {
+  const callClaude = async (conversationHistory, contextOverride) => {
+    const systemPrompt = buildSystemPrompt(contextOverride || fabricContext);
+
     const response = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "x-api-key": process.env.REACT_APP_ANTHROPIC_API_KEY,
+        "x-api-key": apiKey,
         "anthropic-version": "2023-06-01",
         "anthropic-dangerous-direct-browser-access": "true",
       },
       body: JSON.stringify({
         model: "claude-sonnet-4-20250514",
         max_tokens: 1500,
-        system: RINCON_SYSTEM,
-        messages: conversationHistory.map(m => ({
-          role: m.role === "ai" ? "assistant" : m.role,
-          content: m.content,
-        })),
+        system: systemPrompt,
+        messages: conversationHistory
+          .filter(m => m.type !== "file") // exclude file cards from API history
+          .map(m => ({
+            role: m.role === "ai" ? "assistant" : "user",
+            content: m.content,
+          })),
       }),
     });
 
     const data = await response.json();
     if (data.error) throw new Error(data.error.message);
     return data.content[0].text;
+  };
+
+  // ─────────────────────────────────────────────
+  // SEND WITH EXPLICIT CONTEXT (for auto-responses after file upload)
+  // ─────────────────────────────────────────────
+  const sendWithContext = async (triggerPrompt, context, convId, isAutoResponse = false) => {
+    setAiTyping(true);
+
+    try {
+      const prompt = isAutoResponse
+        ? `The engineer has just uploaded a fabric inventory file. Provide a concise initial assessment covering:
+1. How many devices were found and what infrastructure tiers are present
+2. Any version mismatches you can see
+3. The top 1-2 things worth examining further
+4. Invite the engineer to ask specific questions
+
+Fabric data:
+${context}`
+        : triggerPrompt;
+
+      const aiResponse = await callClaude(
+        [{ role: "user", content: prompt }],
+        context
+      );
+
+      setAiTyping(false);
+
+      const newMsg = {
+        id: Date.now().toString(),
+        role: "ai",
+        content: aiResponse,
+        created_at: new Date().toISOString(),
+      };
+      setMessages(prev => [...prev, newMsg]);
+
+      // Save to DB
+      if (convId) {
+        await saveMessage(convId, 'assistant', aiResponse);
+      }
+
+    } catch (err) {
+      console.error("Claude error:", err);
+      setAiTyping(false);
+    }
   };
 
   // ─────────────────────────────────────────────
@@ -418,61 +853,50 @@ export default function RinconChatPrototype() {
     setInput("");
 
     let convId = activeConvId;
-
-    // Create new conversation if none active
     if (!convId) {
-      convId = await createConversation(msg);
+      convId = await createConversation(msg, { hasFabric: !!fabricContext });
       if (!convId) return;
       setActiveConvId(convId);
     }
 
-    // Save user message to Supabase
-    const savedUserMsg = await saveMessage(convId, "user", msg);
-    if (!savedUserMsg) return;
-
-    // Optimistically add to UI
-    setMessages(prev => [...prev, savedUserMsg]);
+    const userMsg = await saveMessage(convId, "user", msg);
+    const localMsg = userMsg || { id: Date.now().toString(), role: "user", content: msg, created_at: new Date().toISOString() };
+    setMessages(prev => [...prev, localMsg]);
     setAiTyping(true);
 
     try {
-      // Build history for Claude (include new message)
-      const history = [
-        ...messages,
-        savedUserMsg,
-      ];
-
+      const history = [...messages, localMsg];
       const aiResponse = await callClaude(history);
 
-      // Save AI response to Supabase
       const savedAiMsg = await saveMessage(convId, "assistant", aiResponse);
-
       setAiTyping(false);
-
-      if (savedAiMsg) {
-        // Map assistant → ai for display consistency
-        setMessages(prev => [...prev, { ...savedAiMsg, role: "ai" }]);
-      } else {
-        setMessages(prev => [...prev, {
-          id: Date.now().toString(),
-          role: "ai",
-          content: aiResponse,
-          created_at: new Date().toISOString(),
-        }]);
-      }
-
-      // Refresh conversation list to update timestamps
+      setMessages(prev => [...prev, {
+        ...(savedAiMsg || {}),
+        id: savedAiMsg?.id || Date.now().toString(),
+        role: "ai",
+        content: aiResponse,
+        created_at: savedAiMsg?.created_at || new Date().toISOString(),
+      }]);
       loadConversations();
 
     } catch (err) {
-      console.error("Claude API error:", err);
+      console.error("Claude error:", err);
       setAiTyping(false);
       setMessages(prev => [...prev, {
         id: Date.now().toString(),
         role: "ai",
-        content: "I ran into an issue reaching the API. Please try again.",
+        content: "I ran into an issue. Please try again.",
         created_at: new Date().toISOString(),
       }]);
     }
+  };
+
+  // Helper: add a local-only system message (not saved to DB)
+  const addLocalMessage = (role, content) => {
+    setMessages(prev => [...prev, {
+      id: Date.now().toString(), role, content,
+      created_at: new Date().toISOString(),
+    }]);
   };
 
   // ─────────────────────────────────────────────
@@ -481,7 +905,22 @@ export default function RinconChatPrototype() {
   const newConversation = () => {
     setActiveConvId(null);
     setMessages([]);
+    setFabricContext(null);
+    setFabricDevices([]);
+    setFabricFile(null);
     inputRef.current?.focus();
+  };
+
+  // ─────────────────────────────────────────────
+  // DRAG AND DROP
+  // ─────────────────────────────────────────────
+  const handleDragOver = (e) => { e.preventDefault(); setDragOver(true); };
+  const handleDragLeave = (e) => { if (!chatAreaRef.current?.contains(e.relatedTarget)) setDragOver(false); };
+  const handleDrop = (e) => {
+    e.preventDefault();
+    setDragOver(false);
+    const file = e.dataTransfer.files[0];
+    if (file) handleFile(file);
   };
 
   const handleKey = (e) => {
@@ -494,11 +933,7 @@ export default function RinconChatPrototype() {
   // RENDER
   // ─────────────────────────────────────────────
   return (
-    <div style={{
-      background: C.bg, minHeight: "100vh",
-      display: "flex", flexDirection: "column",
-      fontFamily: sans, color: C.text,
-    }}>
+    <div style={{ background: C.bg, minHeight: "100vh", display: "flex", flexDirection: "column", fontFamily: sans, color: C.text }}>
 
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&display=swap');
@@ -509,7 +944,7 @@ export default function RinconChatPrototype() {
         input::placeholder, textarea::placeholder { color: ${C.muted}; }
         @keyframes fadeUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
         @keyframes dotPulse { 0%, 100% { transform: scale(1); opacity: 0.5; } 50% { transform: scale(1.4); opacity: 1; } }
-        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+        @keyframes spin { to { transform: rotate(360deg); } }
       `}</style>
 
       {/* ── TOPBAR ── */}
@@ -519,25 +954,14 @@ export default function RinconChatPrototype() {
         justifyContent: "space-between", flexShrink: 0, zIndex: 10,
       }}>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          {/* Sidebar toggle */}
           <button
             onClick={() => setSidebarOpen(v => !v)}
-            style={{
-              background: "none", border: `1px solid ${C.border}`,
-              color: C.muted, padding: "5px 8px", cursor: "pointer",
-              fontFamily: mono, fontSize: 11, transition: "all 0.15s",
-            }}
-            title={sidebarOpen ? "Hide history" : "Show history"}
+            style={{ background: "none", border: `1px solid ${C.border}`, color: C.muted, padding: "5px 8px", cursor: "pointer", fontFamily: mono, fontSize: 11 }}
           >
             {sidebarOpen ? "◧" : "▣"}
           </button>
-
-          {/* Logo */}
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <div style={{
-              width: 26, height: 26, background: C.amber,
-              display: "flex", alignItems: "center", justifyContent: "center",
-            }}>
+            <div style={{ width: 26, height: 26, background: C.amber, display: "flex", alignItems: "center", justifyContent: "center" }}>
               <span style={{ color: "#000", fontFamily: mono, fontSize: 13, fontWeight: 700 }}>◈</span>
             </div>
             <span style={{ fontFamily: mono, fontSize: 13, fontWeight: 600, color: C.text }}>
@@ -545,37 +969,32 @@ export default function RinconChatPrototype() {
             </span>
             <span style={{ color: C.muted, fontFamily: mono, fontSize: 11 }}>/ rincon</span>
           </div>
+          {fabricFile && (
+            <div style={{ display: "flex", alignItems: "center", gap: 6, background: C.amberG, border: `1px solid ${C.amber}30`, padding: "3px 10px" }}>
+              <span style={{ color: C.amber, fontSize: 10 }}>◈</span>
+              <span style={{ fontFamily: mono, fontSize: 10, color: C.amber }}>
+                {fabricFile.name} · {fabricDevices.length} devices
+              </span>
+            </div>
+          )}
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          {/* New conversation */}
           <button
             onClick={newConversation}
-            style={{
-              background: "transparent", border: `1px solid ${C.border}`,
-              color: C.dim, fontFamily: mono, fontSize: 10,
-              padding: "5px 12px", cursor: "pointer", transition: "all 0.15s",
-              letterSpacing: "0.05em",
-            }}
+            style={{ background: "transparent", border: `1px solid ${C.border}`, color: C.dim, fontFamily: mono, fontSize: 10, padding: "5px 12px", cursor: "pointer", letterSpacing: "0.05em" }}
             onMouseEnter={e => { e.currentTarget.style.borderColor = `${C.amber}55`; e.currentTarget.style.color = C.text; }}
             onMouseLeave={e => { e.currentTarget.style.borderColor = C.border; e.currentTarget.style.color = C.dim; }}
           >
             + new_chat()
           </button>
-
-          {/* Go to full analysis */}
           <button
-            onClick={() => window.location.href = '/analyse'}
-            style={{
-              background: `${C.amber}15`, border: `1px solid ${C.amber}35`,
-              color: C.amber, fontFamily: mono, fontSize: 10,
-              padding: "5px 12px", cursor: "pointer", transition: "all 0.15s",
-              letterSpacing: "0.05em",
-            }}
+            onClick={() => fileRef.current?.click()}
+            style={{ background: C.amberG, border: `1px solid ${C.amber}40`, color: C.amber, fontFamily: mono, fontSize: 10, padding: "5px 12px", cursor: "pointer", letterSpacing: "0.05em" }}
+            disabled={uploading}
           >
-            run_analysis() →
+            {uploading ? "uploading…" : "↑ upload_fabric()"}
           </button>
-
           <div style={{ width: 1, height: 20, background: C.border }} />
           <UserBadge />
         </div>
@@ -587,81 +1006,48 @@ export default function RinconChatPrototype() {
         {/* ── SIDEBAR ── */}
         {sidebarOpen && (
           <div style={{
-            width: 260, flexShrink: 0,
-            background: C.surface,
+            width: 260, flexShrink: 0, background: C.surface,
             borderRight: `1px solid ${C.border}`,
-            display: "flex", flexDirection: "column",
-            overflow: "hidden",
-            animation: "fadeUp 0.2s ease",
+            display: "flex", flexDirection: "column", overflow: "hidden",
           }}>
-            {/* Sidebar header */}
-            <div style={{
-              padding: "14px 16px 10px",
-              borderBottom: `1px solid ${C.border}`,
-            }}>
+            <div style={{ padding: "14px 16px 10px", borderBottom: `1px solid ${C.border}` }}>
               <div style={{ fontFamily: mono, fontSize: 9, color: C.muted, letterSpacing: "0.15em", textTransform: "uppercase", marginBottom: 10 }}>
                 // conversations
               </div>
               <button
                 onClick={newConversation}
-                style={{
-                  width: "100%", background: C.amberG,
-                  border: `1px solid ${C.amber}30`,
-                  color: C.amber, fontFamily: mono, fontSize: 11,
-                  padding: "8px", cursor: "pointer",
-                  transition: "all 0.15s", letterSpacing: "0.05em",
-                }}
-                onMouseEnter={e => e.currentTarget.style.background = `${C.amber}25`}
-                onMouseLeave={e => e.currentTarget.style.background = C.amberG}
+                style={{ width: "100%", background: C.amberG, border: `1px solid ${C.amber}30`, color: C.amber, fontFamily: mono, fontSize: 11, padding: "8px", cursor: "pointer" }}
               >
                 + new_chat()
               </button>
             </div>
 
-            {/* Conversation list */}
             <div style={{ flex: 1, overflowY: "auto" }}>
               {loadingHistory ? (
-                <div style={{ padding: "20px 16px", fontFamily: mono, fontSize: 11, color: C.muted }}>
-                  Loading…
-                </div>
+                <div style={{ padding: "20px 16px", fontFamily: mono, fontSize: 11, color: C.muted }}>Loading…</div>
               ) : conversations.length === 0 ? (
-                <div style={{ padding: "20px 16px" }}>
-                  <div style={{ fontFamily: mono, fontSize: 11, color: C.muted, lineHeight: 1.6 }}>
-                    // no conversations yet
-                  </div>
+                <div style={{ padding: "20px 16px", fontFamily: mono, fontSize: 11, color: C.muted }}>
+                  // no conversations yet
                 </div>
               ) : (
                 <>
-                  {/* Group: analyses */}
-                  {conversations.some(c => c.is_analysis) && (
+                  {conversations.some(c => c.has_fabric) && (
                     <>
                       <div style={{ padding: "12px 16px 6px", fontFamily: mono, fontSize: 9, color: C.muted, letterSpacing: "0.12em", textTransform: "uppercase" }}>
-                        Fabric analyses
+                        With fabric context
                       </div>
-                      {conversations.filter(c => c.is_analysis).map(conv => (
-                        <ConversationItem
-                          key={conv.id}
-                          conv={conv}
-                          active={conv.id === activeConvId}
-                          onClick={() => setActiveConvId(conv.id)}
-                        />
+                      {conversations.filter(c => c.has_fabric).map(conv => (
+                        <ConversationItem key={conv.id} conv={conv} active={conv.id === activeConvId} onClick={() => setActiveConvId(conv.id)} />
                       ))}
                     </>
                   )}
-
-                  {/* Group: chats */}
-                  {conversations.some(c => !c.is_analysis) && (
+                  {conversations.some(c => !c.has_fabric && !c.is_analysis) && (
                     <>
                       <div style={{ padding: "12px 16px 6px", fontFamily: mono, fontSize: 9, color: C.muted, letterSpacing: "0.12em", textTransform: "uppercase" }}>
                         Conversations
                       </div>
-                      {conversations.filter(c => !c.is_analysis).map(conv => (
-                        <ConversationItem
-                          key={conv.id}
-                          conv={conv}
-                          active={conv.id === activeConvId}
-                          onClick={() => setActiveConvId(conv.id)}
-                        />
+                      {conversations.filter(c => !c.has_fabric && !c.is_analysis).map(conv => (
+                        <ConversationItem key={conv.id} conv={conv} active={conv.id === activeConvId} onClick={() => setActiveConvId(conv.id)} />
                       ))}
                     </>
                   )}
@@ -669,20 +1055,30 @@ export default function RinconChatPrototype() {
               )}
             </div>
 
-            {/* Sidebar footer — link to full history */}
-            <div style={{
-              padding: "12px 16px",
-              borderTop: `1px solid ${C.border}`,
-            }}>
+            <div style={{ padding: "12px 16px", borderTop: `1px solid ${C.border}` }}>
+              {/* Enterprise APIC stub */}
+              <div style={{
+                background: `${C.amber}06`, border: `1px solid ${C.amber}20`,
+                padding: "10px 12px", marginBottom: 10,
+              }}>
+                <div style={{ fontFamily: mono, fontSize: 9, color: C.amber, marginBottom: 4, letterSpacing: "0.1em" }}>
+                  // enterprise
+                </div>
+                <div style={{ fontSize: 11, color: C.muted, lineHeight: 1.5, marginBottom: 8 }}>
+                  Connect directly to APIC or Nexus Dashboard — no file upload needed.
+                </div>
+                <button style={{
+                  width: "100%", background: "none", border: `1px solid ${C.amber}30`,
+                  color: C.amber, fontFamily: mono, fontSize: 10,
+                  padding: "5px", cursor: "not-allowed", opacity: 0.5,
+                }}>
+                  🔒 connect_apic() — enterprise
+                </button>
+              </div>
+
               <button
                 onClick={() => window.location.href = '/history'}
-                style={{
-                  width: "100%", background: "none",
-                  border: `1px solid ${C.border}`,
-                  color: C.muted, fontFamily: mono, fontSize: 10,
-                  padding: "7px", cursor: "pointer", transition: "all 0.15s",
-                  letterSpacing: "0.05em",
-                }}
+                style={{ width: "100%", background: "none", border: `1px solid ${C.border}`, color: C.muted, fontFamily: mono, fontSize: 10, padding: "7px", cursor: "pointer" }}
                 onMouseEnter={e => { e.currentTarget.style.borderColor = `${C.amber}44`; e.currentTarget.style.color = C.dim; }}
                 onMouseLeave={e => { e.currentTarget.style.borderColor = C.border; e.currentTarget.style.color = C.muted; }}
               >
@@ -693,7 +1089,14 @@ export default function RinconChatPrototype() {
         )}
 
         {/* ── CHAT AREA ── */}
-        <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minWidth: 0 }}>
+        <div
+          ref={chatAreaRef}
+          style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minWidth: 0, position: "relative" }}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+        >
+          <DragOverlay visible={dragOver} />
 
           {/* Messages */}
           <div style={{ flex: 1, overflowY: "auto", padding: "32px 24px 24px" }}>
@@ -702,81 +1105,82 @@ export default function RinconChatPrototype() {
               {/* Empty state */}
               {isEmpty && (
                 <div style={{ animation: "fadeUp 0.4s ease" }}>
-                  <div style={{ marginBottom: 40, paddingTop: 20 }}>
-                    <div style={{
-                      display: "inline-flex", alignItems: "center", gap: 10,
-                      background: C.amberG, border: `1px solid ${C.amber}30`,
-                      padding: "8px 16px", marginBottom: 24,
-                    }}>
+                  <div style={{ marginBottom: 32, paddingTop: 20 }}>
+                    <div style={{ display: "inline-flex", alignItems: "center", gap: 10, background: C.amberG, border: `1px solid ${C.amber}30`, padding: "8px 16px", marginBottom: 24 }}>
                       <span style={{ color: C.amber, fontSize: 16 }}>◈</span>
-                      <span style={{ fontFamily: mono, fontSize: 11, color: C.amber, letterSpacing: "0.08em" }}>
-                        Rincon · DC Expert
-                      </span>
+                      <span style={{ fontFamily: mono, fontSize: 11, color: C.amber, letterSpacing: "0.08em" }}>Rincon · DC Expert</span>
                     </div>
-                    <h1 style={{
-                      fontSize: 28, fontWeight: 300,
-                      letterSpacing: "-0.03em", lineHeight: 1.2,
-                      marginBottom: 14, color: C.text,
-                    }}>
+                    <h1 style={{ fontSize: 28, fontWeight: 300, letterSpacing: "-0.03em", lineHeight: 1.2, marginBottom: 14, color: C.text }}>
                       What does your fabric<br />
                       <span style={{ color: C.amber }}>need to know?</span>
                     </h1>
                     <p style={{ fontSize: 14, color: C.dim, lineHeight: 1.8, maxWidth: 480 }}>
-                      Ask me anything about your Cisco DC fabric — upgrade sequencing,
-                      known bugs, version compatibility, BGP, ACI architecture,
-                      maintenance planning. I know the platforms.
+                      Ask anything about your Cisco DC fabric, or upload a config file to ground the conversation in your actual inventory.
                     </p>
                   </div>
 
-                  {/* Capability hints */}
-                  <div style={{
-                    display: "grid", gridTemplateColumns: "1fr 1fr 1fr",
-                    gap: 10, marginBottom: 32,
-                  }}>
+                  {/* Upload CTA */}
+                  <div
+                    onClick={() => fileRef.current?.click()}
+                    style={{
+                      border: `1px dashed ${C.amber}40`, padding: "20px 24px",
+                      marginBottom: 24, cursor: "pointer", transition: "all 0.2s",
+                      background: `${C.amber}04`,
+                      display: "flex", alignItems: "center", gap: 16,
+                    }}
+                    onMouseEnter={e => e.currentTarget.style.borderColor = `${C.amber}80`}
+                    onMouseLeave={e => e.currentTarget.style.borderColor = `${C.amber}40`}
+                  >
+                    <div style={{ fontSize: 24, color: C.amber }}>↑</div>
+                    <div>
+                      <div style={{ fontFamily: mono, fontSize: 12, color: C.amber, marginBottom: 4 }}>
+                        upload_fabric_file()
+                      </div>
+                      <div style={{ fontSize: 13, color: C.muted }}>
+                        Drop a config file, show version output, or CSV inventory. Rincon will parse it and answer questions about your specific fabric.
+                      </div>
+                      <div style={{ fontFamily: mono, fontSize: 10, color: C.faint, marginTop: 6 }}>
+                        .txt .log .csv .conf .cfg .json · max 5MB · drag and drop supported
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Capability cards */}
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 24 }}>
                     {[
                       ["↑", "Upgrade sequencing", "Safe order for your fabric tier by tier"],
                       ["⚠", "Bug research", "Known issues for your platform + version"],
-                      ["⟳", "Version compatibility", "APIC ↔ leaf ↔ spine alignment rules"],
+                      ["⟳", "Version compatibility", "APIC ↔ leaf ↔ spine alignment"],
                     ].map(([icon, title, desc]) => (
-                      <div key={title} style={{
-                        background: C.surface, border: `1px solid ${C.border}`,
-                        padding: "14px 16px",
-                      }}>
-                        <div style={{ fontFamily: mono, fontSize: 16, color: C.amber, marginBottom: 8 }}>
-                          {icon}
-                        </div>
-                        <div style={{ fontSize: 13, fontWeight: 500, color: C.text, marginBottom: 4 }}>
-                          {title}
-                        </div>
-                        <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.5 }}>
-                          {desc}
-                        </div>
+                      <div key={title} style={{ background: C.surface, border: `1px solid ${C.border}`, padding: "14px 16px" }}>
+                        <div style={{ fontFamily: mono, fontSize: 16, color: C.amber, marginBottom: 8 }}>{icon}</div>
+                        <div style={{ fontSize: 13, fontWeight: 500, color: C.text, marginBottom: 4 }}>{title}</div>
+                        <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.5 }}>{desc}</div>
                       </div>
                     ))}
                   </div>
                 </div>
               )}
 
-              {/* Message list */}
-              {messages.map((msg) => (
-                <MessageBubble
-                  key={msg.id}
-                  msg={{ ...msg, role: msg.role === "assistant" ? "ai" : msg.role }}
-                  member={member}
+              {/* Fabric context banner */}
+              {fabricFile && (
+                <FabricContextBanner
+                  fabricFile={fabricFile}
+                  devices={fabricDevices}
+                  onClear={() => { setFabricContext(null); setFabricDevices([]); setFabricFile(null); }}
                 />
+              )}
+
+              {/* Messages */}
+              {messages.map(msg => (
+                <MessageBubble key={msg.id} msg={msg} member={member} />
               ))}
 
-              {/* AI typing indicator */}
               {aiTyping && (
                 <div style={{ display: "flex", gap: 14, marginTop: 20 }}>
                   <RinconAvatar />
-                  <div style={{
-                    background: C.surface, border: `1px solid ${C.border}`,
-                    borderRadius: "2px 12px 12px 12px", padding: "14px 18px",
-                  }}>
-                    <div style={{ fontFamily: mono, fontSize: 11, color: C.amber, marginBottom: 8 }}>
-                      Rincon · thinking
-                    </div>
+                  <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: "2px 12px 12px 12px", padding: "14px 18px" }}>
+                    <div style={{ fontFamily: mono, fontSize: 11, color: C.amber, marginBottom: 8 }}>Rincon · thinking</div>
                     <TypingDots />
                   </div>
                 </div>
@@ -786,45 +1190,59 @@ export default function RinconChatPrototype() {
             </div>
           </div>
 
-          {/* Suggestion chips — only on empty state */}
+          {/* Suggestion chips — empty state only */}
           {isEmpty && (
-            <SuggestionChips onSelect={(s) => { setInput(s); inputRef.current?.focus(); }} />
+            <SuggestionChips
+              onSelect={s => { setInput(s); inputRef.current?.focus(); }}
+              onUpload={() => fileRef.current?.click()}
+            />
           )}
 
           {/* ── INPUT BAR ── */}
-          <div style={{
-            background: C.hi, borderTop: `1px solid ${C.border}`,
-            padding: "14px 24px", flexShrink: 0,
-          }}>
+          <div style={{ background: C.hi, borderTop: `1px solid ${C.border}`, padding: "14px 24px", flexShrink: 0 }}>
             <div style={{ maxWidth: 740, margin: "0 auto" }}>
-              <div style={{
-                background: C.surface,
-                border: `1px solid ${C.border}`,
-                display: "flex", alignItems: "flex-end", gap: 8,
-                padding: "10px 14px",
-                transition: "border-color 0.15s",
-              }}>
+              <div style={{ background: C.surface, border: `1px solid ${C.border}`, display: "flex", alignItems: "flex-end", gap: 8, padding: "10px 14px" }}>
+
+                {/* Attach file button */}
+                <button
+                  onClick={() => fileRef.current?.click()}
+                  disabled={uploading}
+                  title="Upload fabric file"
+                  style={{
+                    background: "none", border: "none", color: uploading ? C.amber : C.muted,
+                    cursor: "pointer", padding: "4px", flexShrink: 0, fontSize: 16,
+                    transition: "color 0.15s",
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.color = C.amber}
+                  onMouseLeave={e => e.currentTarget.style.color = uploading ? C.amber : C.muted}
+                >
+                  {uploading ? (
+                    <span style={{ display: "inline-block", animation: "spin 0.7s linear infinite" }}>⟳</span>
+                  ) : "↑"}
+                </button>
+
                 <span style={{ color: C.muted, fontFamily: mono, fontSize: 12, flexShrink: 0, paddingBottom: 2 }}>→</span>
+
                 <textarea
                   ref={inputRef}
                   value={input}
                   onChange={e => setInput(e.target.value)}
                   onKeyDown={handleKey}
-                  placeholder="Ask Rincon anything about your Cisco DC fabric…"
+                  placeholder={fabricFile ? `Ask about ${fabricFile.name}…` : "Ask Rincon anything about your Cisco DC fabric…"}
                   disabled={aiTyping}
                   rows={1}
                   style={{
                     flex: 1, background: "transparent", border: "none",
                     outline: "none", color: C.text, fontSize: 14,
                     fontFamily: sans, resize: "none", lineHeight: 1.5,
-                    maxHeight: 120, overflowY: "auto",
-                    caretColor: C.amber,
+                    maxHeight: 120, overflowY: "auto", caretColor: C.amber,
                   }}
                   onInput={e => {
                     e.target.style.height = "auto";
                     e.target.style.height = Math.min(e.target.scrollHeight, 120) + "px";
                   }}
                 />
+
                 <button
                   onClick={() => send()}
                   disabled={!input.trim() || aiTyping}
@@ -839,15 +1257,16 @@ export default function RinconChatPrototype() {
                   <span style={{ color: "#000", fontSize: 15, fontWeight: 700 }}>↑</span>
                 </button>
               </div>
-              <div style={{
-                display: "flex", justifyContent: "space-between", alignItems: "center",
-                marginTop: 6, paddingLeft: 2,
-              }}>
+
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 6, paddingLeft: 2 }}>
                 <span style={{ fontFamily: mono, fontSize: 10, color: C.muted }}>
-                  Rincon · Cisco DC Expert · powered by Claude
+                  {fabricFile
+                    ? `◈ Fabric context: ${fabricFile.name} · ${fabricDevices.length} devices`
+                    : "Rincon · Cisco DC Expert · powered by Claude"
+                  }
                 </span>
                 <span style={{ fontFamily: mono, fontSize: 10, color: C.muted }}>
-                  ↵ send · shift+↵ newline
+                  ↑ attach file · ↵ send
                 </span>
               </div>
             </div>
@@ -855,6 +1274,15 @@ export default function RinconChatPrototype() {
 
         </div>
       </div>
+
+      {/* Hidden file input */}
+      <input
+        ref={fileRef}
+        type="file"
+        accept={ACCEPTED_TYPES.join(',')}
+        style={{ display: "none" }}
+        onChange={e => { const f = e.target.files[0]; if (f) handleFile(f); e.target.value = ""; }}
+      />
     </div>
   );
 }
