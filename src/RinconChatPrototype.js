@@ -1,9 +1,9 @@
- // RinconChatPrototype.js — v4.0
+// RinconChatPrototype.js — v4.1
 // Rincon: Real Claude API, conversation persistence, file upload + drag-and-drop
-// File upload → device extraction → PSIRT API per device (parallel) → verified CVE context → Rincon response
+// File upload → device extraction → PSIRT API per device (parallel) → chat greeting → full analysis
 // Enterprise stub: APIC/Nexus direct integration placeholder
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useAuth } from './Auth';
 import { supabase } from './supabaseClient';
 import UserBadge from './UserBadge';
@@ -114,7 +114,6 @@ const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
 
 // ─────────────────────────────────────────────
 // FABRIC EXTRACTION via Claude
-// Parses uploaded file content into structured device list
 // ─────────────────────────────────────────────
 async function extractFabricFromText(text, apiKey) {
   const response = await fetch("https://api.anthropic.com/v1/messages", {
@@ -162,14 +161,12 @@ Return format: [{"name":"...","version":"...","role":"...","tier":3,"isAciSwitch
 
   const data = await response.json();
   if (data.error) throw new Error(data.error.message);
-
   const raw = data.content[0].text.replace(/```json\n?|\n?```/g, '').trim();
   return JSON.parse(raw);
 }
 
 // ─────────────────────────────────────────────
 // PRE-FLIGHT CHECK
-// Basic scan for sensitive data before storage
 // ─────────────────────────────────────────────
 function preflightCheck(text) {
   const patterns = [
@@ -177,7 +174,6 @@ function preflightCheck(text) {
     { re: /\b(?:snmp.community|community.string)\s+\S+/gi, label: "SNMP community" },
     { re: /\b(?:username|user)\s+\w+\s+(?:password|secret)\s+\S+/gi, label: "username/password" },
   ];
-
   const warnings = [];
   for (const { re, label } of patterns) {
     if (re.test(text)) warnings.push(label);
@@ -186,7 +182,7 @@ function preflightCheck(text) {
 }
 
 // ─────────────────────────────────────────────
-// TIER LABEL
+// TIER HELPERS
 // ─────────────────────────────────────────────
 function tierLabel(tier) {
   return {1: "Controller", 2: "Spine / Border Leaf", 3: "Leaf", 4: "Distribution / Firewall"}[tier] || "Unknown";
@@ -244,7 +240,6 @@ function UserAvatar({ member }) {
 
 // ─────────────────────────────────────────────
 // FABRIC CONTEXT BANNER
-// Shows at top of chat when a file has been loaded
 // ─────────────────────────────────────────────
 function FabricContextBanner({ fabricFile, devices, onClear }) {
   const [expanded, setExpanded] = useState(false);
@@ -262,38 +257,27 @@ function FabricContextBanner({ fabricFile, devices, onClear }) {
       background: `${C.amber}08`,
       border: `1px solid ${C.amber}30`,
       borderLeft: `3px solid ${C.amber}`,
-      margin: "0 24px 16px",
+      margin: "0 0 16px",
       animation: "fadeUp 0.3s ease",
     }}>
       <div
-        style={{
-          display: "flex", alignItems: "center", justifyContent: "space-between",
-          padding: "10px 14px", cursor: "pointer",
-        }}
+        style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 14px", cursor: "pointer" }}
         onClick={() => setExpanded(v => !v)}
       >
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <span style={{ color: C.amber, fontFamily: mono, fontSize: 12 }}>◈</span>
           <div>
-            <div style={{ fontFamily: mono, fontSize: 11, color: C.amber, letterSpacing: "0.06em" }}>
-              Fabric context loaded
-            </div>
+            <div style={{ fontFamily: mono, fontSize: 11, color: C.amber, letterSpacing: "0.06em" }}>Fabric context loaded</div>
             <div style={{ fontFamily: mono, fontSize: 10, color: C.muted, marginTop: 2 }}>
               {fabricFile.name} · {devices.length} device{devices.length !== 1 ? "s" : ""} extracted
             </div>
           </div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <span style={{ fontFamily: mono, fontSize: 10, color: C.muted }}>
-            {expanded ? "▲ hide" : "▼ show devices"}
-          </span>
+          <span style={{ fontFamily: mono, fontSize: 10, color: C.muted }}>{expanded ? "▲ hide" : "▼ show devices"}</span>
           <button
             onClick={e => { e.stopPropagation(); onClear(); }}
-            style={{
-              background: "none", border: `1px solid rgba(192,57,43,0.3)`,
-              color: "#E07060", fontFamily: mono, fontSize: 10,
-              padding: "3px 8px", cursor: "pointer",
-            }}
+            style={{ background: "none", border: `1px solid rgba(192,57,43,0.3)`, color: "#E07060", fontFamily: mono, fontSize: 10, padding: "3px 8px", cursor: "pointer" }}
           >
             clear
           </button>
@@ -313,23 +297,12 @@ function FabricContextBanner({ fabricFile, devices, onClear }) {
                   // {tierLabel(Number(tier))}
                 </div>
                 {devs.map((d, i) => (
-                  <div key={i} style={{
-                    display: "flex", alignItems: "center", gap: 10,
-                    padding: "4px 0", borderBottom: `1px solid ${C.faint}`,
-                  }}>
+                  <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "4px 0", borderBottom: `1px solid ${C.faint}` }}>
                     <div style={{ width: 6, height: 6, borderRadius: "50%", background: tierColor(Number(tier)), flexShrink: 0 }} />
                     <span style={{ fontFamily: mono, fontSize: 12, color: C.text, flex: 1 }}>{d.name}</span>
-                    {d.version && (
-                      <span style={{ fontFamily: mono, fontSize: 11, color: C.dim }}>v{d.version}</span>
-                    )}
-                    {d.role && (
-                      <span style={{ fontFamily: mono, fontSize: 10, color: C.muted, background: C.faint, padding: "1px 6px" }}>
-                        {d.role}
-                      </span>
-                    )}
-                    {!d.version && (
-                      <span style={{ fontFamily: mono, fontSize: 10, color: C.orange }}>no version</span>
-                    )}
+                    {d.version && <span style={{ fontFamily: mono, fontSize: 11, color: C.dim }}>v{d.version}</span>}
+                    {d.role && <span style={{ fontFamily: mono, fontSize: 10, color: C.muted, background: C.faint, padding: "1px 6px" }}>{d.role}</span>}
+                    {!d.version && <span style={{ fontFamily: mono, fontSize: 10, color: C.orange }}>no version</span>}
                   </div>
                 ))}
               </div>
@@ -342,46 +315,31 @@ function FabricContextBanner({ fabricFile, devices, onClear }) {
 
 // ─────────────────────────────────────────────
 // FILE UPLOAD CARD
-// Shown as a message in the chat after upload
 // ─────────────────────────────────────────────
 function FileUploadCard({ fileName, fileSize, status, warnings }) {
   const statusConfig = {
-    uploading:   { color: C.amber,  icon: "⟳", label: "Uploading…" },
-    extracting:  { color: C.amber,  icon: "◈", label: "Extracting fabric data…" },
-    done:        { color: C.green,  icon: "✓", label: "Fabric context loaded" },
-    error:       { color: C.red,    icon: "✕", label: "Upload failed" },
-    preflight:   { color: C.orange, icon: "⚠", label: "Sensitive data detected" },
+    uploading:  { color: C.amber,  icon: "⟳", label: "Uploading…" },
+    extracting: { color: C.amber,  icon: "◈", label: "Extracting fabric data…" },
+    done:       { color: C.green,  icon: "✓", label: "Fabric context loaded" },
+    error:      { color: C.red,    icon: "✕", label: "Upload failed" },
+    preflight:  { color: C.orange, icon: "⚠", label: "Sensitive data detected" },
   }[status] || { color: C.muted, icon: "…", label: status };
 
   const kb = fileSize ? `${(fileSize / 1024).toFixed(1)} KB` : "";
 
   return (
-    <div style={{
-      background: C.surface, border: `1px solid ${statusConfig.color}30`,
-      borderLeft: `3px solid ${statusConfig.color}`,
-      padding: "12px 16px", maxWidth: 400,
-    }}>
+    <div style={{ background: C.surface, border: `1px solid ${statusConfig.color}30`, borderLeft: `3px solid ${statusConfig.color}`, padding: "12px 16px", maxWidth: 400 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
-        <span style={{ color: statusConfig.color, fontFamily: mono, fontSize: 14 }}>
-          {statusConfig.icon}
-        </span>
+        <span style={{ color: statusConfig.color, fontFamily: mono, fontSize: 14 }}>{statusConfig.icon}</span>
         <div>
-          <div style={{ fontFamily: mono, fontSize: 11, color: statusConfig.color }}>
-            {statusConfig.label}
-          </div>
-          <div style={{ fontFamily: mono, fontSize: 10, color: C.muted, marginTop: 2 }}>
-            {fileName} {kb && `· ${kb}`}
-          </div>
+          <div style={{ fontFamily: mono, fontSize: 11, color: statusConfig.color }}>{statusConfig.label}</div>
+          <div style={{ fontFamily: mono, fontSize: 10, color: C.muted, marginTop: 2 }}>{fileName} {kb && `· ${kb}`}</div>
         </div>
       </div>
       {warnings?.length > 0 && (
         <div style={{ marginTop: 8, padding: "8px 10px", background: `${C.orange}10`, border: `1px solid ${C.orange}30` }}>
-          <div style={{ fontFamily: mono, fontSize: 10, color: C.orange, marginBottom: 4 }}>
-            ⚠ Possible sensitive data detected — review before proceeding:
-          </div>
-          {warnings.map((w, i) => (
-            <div key={i} style={{ fontFamily: mono, fontSize: 10, color: C.dim }}>→ {w}</div>
-          ))}
+          <div style={{ fontFamily: mono, fontSize: 10, color: C.orange, marginBottom: 4 }}>⚠ Possible sensitive data detected — review before proceeding:</div>
+          {warnings.map((w, i) => <div key={i} style={{ fontFamily: mono, fontSize: 10, color: C.dim }}>→ {w}</div>)}
         </div>
       )}
     </div>
@@ -396,11 +354,7 @@ function MessageBubble({ msg, member }) {
   const isFile = msg.type === "file";
 
   return (
-    <div style={{
-      display: "flex", gap: 14, marginTop: 20,
-      flexDirection: isUser ? "row-reverse" : "row",
-      animation: "fadeUp 0.2s ease",
-    }}>
+    <div style={{ display: "flex", gap: 14, marginTop: 20, flexDirection: isUser ? "row-reverse" : "row", animation: "fadeUp 0.2s ease" }}>
       {isUser ? <UserAvatar member={member} /> : <RinconAvatar />}
       <div style={{ maxWidth: isFile ? "none" : "78%" }}>
         {!isUser && !isFile && (
@@ -416,8 +370,7 @@ function MessageBubble({ msg, member }) {
               <div style={{
                 background: msg.psirtSummary.advisories > 0 ? "rgba(239,68,68,0.06)" : "rgba(34,197,94,0.06)",
                 border: `1px solid ${msg.psirtSummary.advisories > 0 ? "rgba(239,68,68,0.25)" : "rgba(34,197,94,0.25)"}`,
-                padding: "10px 14px", marginTop: 4,
-                display: "flex", alignItems: "center", gap: 10,
+                padding: "10px 14px", marginTop: 4, display: "flex", alignItems: "center", gap: 10,
               }}>
                 <span style={{ fontFamily: mono, fontSize: 12, color: msg.psirtSummary.advisories > 0 ? C.red : C.green }}>
                   {msg.psirtSummary.advisories > 0 ? "⚠" : "✓"}
@@ -439,12 +392,8 @@ function MessageBubble({ msg, member }) {
             borderRadius: isUser ? "12px 2px 12px 12px" : "2px 12px 12px 12px",
             padding: "12px 16px",
           }}>
-            <div style={{ fontSize: 14, lineHeight: 1.75, whiteSpace: "pre-wrap", color: C.text, fontFamily: sans }}>
-              {msg.content}
-            </div>
-            <div style={{ fontFamily: mono, fontSize: 10, color: C.muted, marginTop: 6, textAlign: isUser ? "left" : "right" }}>
-              {timeAgo(msg.created_at)}
-            </div>
+            <div style={{ fontSize: 14, lineHeight: 1.75, whiteSpace: "pre-wrap", color: C.text, fontFamily: sans }}>{msg.content}</div>
+            <div style={{ fontFamily: mono, fontSize: 10, color: C.muted, marginTop: 6, textAlign: isUser ? "left" : "right" }}>{timeAgo(msg.created_at)}</div>
           </div>
         )}
       </div>
@@ -469,27 +418,16 @@ function ConversationItem({ conv, active, onClick }) {
         cursor: "pointer", transition: "all 0.15s",
       }}
     >
-      <div style={{
-        fontSize: 12, color: active ? C.text : C.dim,
-        fontWeight: active ? 500 : 400,
-        marginBottom: 3,
-        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-      }}>
+      <div style={{ fontSize: 12, color: active ? C.text : C.dim, fontWeight: active ? 500 : 400, marginBottom: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
         {conv.title || "New conversation"}
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        <span style={{ fontFamily: mono, fontSize: 10, color: C.muted }}>
-          {timeAgo(conv.created_at)}
-        </span>
+        <span style={{ fontFamily: mono, fontSize: 10, color: C.muted }}>{timeAgo(conv.created_at)}</span>
         {conv.is_analysis && (
-          <span style={{ fontFamily: mono, fontSize: 9, color: C.amber, background: C.amberG, border: `1px solid ${C.amber}30`, padding: "1px 5px" }}>
-            analysis
-          </span>
+          <span style={{ fontFamily: mono, fontSize: 9, color: C.amber, background: C.amberG, border: `1px solid ${C.amber}30`, padding: "1px 5px" }}>analysis</span>
         )}
         {conv.has_fabric && (
-          <span style={{ fontFamily: mono, fontSize: 9, color: C.green, background: C.greenG, border: `1px solid ${C.green}30`, padding: "1px 5px" }}>
-            fabric
-          </span>
+          <span style={{ fontFamily: mono, fontSize: 9, color: C.green, background: C.greenG, border: `1px solid ${C.green}30`, padding: "1px 5px" }}>fabric</span>
         )}
       </div>
     </div>
@@ -511,9 +449,7 @@ function SuggestionChips({ onSelect, onUpload }) {
   return (
     <div style={{ padding: "0 24px 16px" }}>
       <div style={{ maxWidth: 740, margin: "0 auto" }}>
-        <div style={{ fontFamily: mono, fontSize: 10, color: C.muted, marginBottom: 10, letterSpacing: "0.08em" }}>
-          // suggested
-        </div>
+        <div style={{ fontFamily: mono, fontSize: 10, color: C.muted, marginBottom: 10, letterSpacing: "0.08em" }}>// suggested</div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           {SUGGESTIONS.map(s => (
             <button
@@ -523,8 +459,7 @@ function SuggestionChips({ onSelect, onUpload }) {
                 background: s.includes("Upload") ? C.amberG : "transparent",
                 border: `1px solid ${s.includes("Upload") ? `${C.amber}44` : C.border}`,
                 color: s.includes("Upload") ? C.amber : C.dim,
-                fontFamily: mono, fontSize: 11,
-                padding: "6px 13px", cursor: "pointer", transition: "all 0.15s",
+                fontFamily: mono, fontSize: 11, padding: "6px 13px", cursor: "pointer", transition: "all 0.15s",
               }}
               onMouseEnter={e => { e.currentTarget.style.borderColor = `${C.amber}55`; e.currentTarget.style.color = C.text; }}
               onMouseLeave={e => {
@@ -549,32 +484,19 @@ function DragOverlay({ visible }) {
   return (
     <div style={{
       position: "absolute", inset: 0, zIndex: 50,
-      background: `${C.bg}E8`,
-      backdropFilter: "blur(4px)",
-      display: "flex", flexDirection: "column",
-      alignItems: "center", justifyContent: "center",
-      border: `2px dashed ${C.amber}`,
-      animation: "fadeUp 0.15s ease",
-      pointerEvents: "none",
+      background: `${C.bg}E8`, backdropFilter: "blur(4px)",
+      display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+      border: `2px dashed ${C.amber}`, animation: "fadeUp 0.15s ease", pointerEvents: "none",
     }}>
       <div style={{ fontSize: 32, marginBottom: 16, color: C.amber }}>↓</div>
-      <div style={{ fontFamily: mono, fontSize: 14, color: C.amber, letterSpacing: "0.08em" }}>
-        Drop file to load fabric context
-      </div>
-      <div style={{ fontFamily: mono, fontSize: 11, color: C.muted, marginTop: 8 }}>
-        .txt .log .csv .conf .cfg .json supported
-      </div>
+      <div style={{ fontFamily: mono, fontSize: 14, color: C.amber, letterSpacing: "0.08em" }}>Drop file to load fabric context</div>
+      <div style={{ fontFamily: mono, fontSize: 11, color: C.muted, marginTop: 8 }}>.txt .log .csv .conf .cfg .json supported</div>
     </div>
   );
 }
 
 // ─────────────────────────────────────────────
-// MAIN COMPONENT
-// ─────────────────────────────────────────────
-
-// ─────────────────────────────────────────────
 // PSIRT PROGRESS COMPONENT
-// Shows per-device query status while PSIRT API runs
 // ─────────────────────────────────────────────
 function PSIRTProgress({ progress }) {
   if (!progress) return null;
@@ -582,14 +504,7 @@ function PSIRTProgress({ progress }) {
   const pct = total > 0 ? Math.round((done / total) * 100) : 0;
 
   return (
-    <div style={{
-      background: "#0A0E1A",
-      border: `1px solid ${C.amber}30`,
-      borderLeft: `3px solid ${C.amber}`,
-      padding: "14px 16px",
-      marginBottom: 8,
-      animation: "fadeUp 0.2s ease",
-    }}>
+    <div style={{ background: "#0A0E1A", border: `1px solid ${C.amber}30`, borderLeft: `3px solid ${C.amber}`, padding: "14px 16px", marginBottom: 8, animation: "fadeUp 0.2s ease" }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <span style={{ color: C.amber, fontFamily: mono, fontSize: 12, animation: done < total ? "spin 1s linear infinite" : "none", display: "inline-block" }}>
@@ -601,27 +516,14 @@ function PSIRTProgress({ progress }) {
         </div>
         <span style={{ fontFamily: mono, fontSize: 11, color: C.muted }}>{pct}%</span>
       </div>
-
-      {/* Progress bar */}
       <div style={{ height: 3, background: "rgba(212,160,0,0.1)", marginBottom: 10, overflow: "hidden" }}>
         <div style={{ height: "100%", background: C.amber, width: `${pct}%`, transition: "width 0.4s ease" }} />
       </div>
-
-      {/* Per-device results */}
       <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
         {results.map((r, i) => (
           <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, fontFamily: mono, fontSize: 10 }}>
-            <span style={{
-              color: r.status === "done"    ? C.green
-                   : r.status === "error"   ? C.red
-                   : r.status === "querying" ? C.amber
-                   : C.muted,
-              width: 12, flexShrink: 0,
-            }}>
-              {r.status === "done"     ? "✓"
-               : r.status === "error"  ? "✕"
-               : r.status === "querying" ? "→"
-               : "○"}
+            <span style={{ color: r.status === "done" ? C.green : r.status === "error" ? C.red : r.status === "querying" ? C.amber : C.muted, width: 12, flexShrink: 0 }}>
+              {r.status === "done" ? "✓" : r.status === "error" ? "✕" : r.status === "querying" ? "→" : "○"}
             </span>
             <span style={{ color: r.status === "pending" ? C.muted : C.dim, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
               {r.name} {r.version ? `v${r.version}` : "(no version)"}
@@ -631,9 +533,7 @@ function PSIRTProgress({ progress }) {
                 {r.count > 0 ? `${r.count} advisory${r.count !== 1 ? "s" : ""}` : "clean"}
               </span>
             )}
-            {r.status === "skipped" && (
-              <span style={{ color: C.muted, flexShrink: 0 }}>skipped — no version</span>
-            )}
+            {r.status === "skipped" && <span style={{ color: C.muted, flexShrink: 0 }}>skipped — no version</span>}
           </div>
         ))}
       </div>
@@ -643,38 +543,29 @@ function PSIRTProgress({ progress }) {
 
 // ─────────────────────────────────────────────
 // PSIRT QUERY FUNCTION
-// Calls /api/advisories for each device in parallel
-// Returns structured results + formatted context string
 // ─────────────────────────────────────────────
 async function queryPSIRTForDevices(devices, session, onProgress) {
   const devicesWithVersions = devices.filter(d => d.version && d.version.trim());
   const devicesWithout = devices.filter(d => !d.version || !d.version.trim());
 
-  // Initialise progress state
   const initialResults = devices.map(d => ({
-    name: d.name,
-    version: d.version,
+    name: d.name, version: d.version,
     status: d.version ? "pending" : "skipped",
     count: undefined,
   }));
   onProgress({ total: devicesWithVersions.length, done: 0, results: initialResults });
 
-  // Detect ACI fabric
   const isAci = devices.some(d => d.name && d.name.toUpperCase().includes("APIC"));
-
   let done = 0;
   const results = [...initialResults];
 
-  // Query all devices with versions in parallel
   const advisoryResults = await Promise.all(
     devicesWithVersions.map(async (device) => {
       const idx = devices.indexOf(device);
-      // Mark as querying
       results[idx] = { ...results[idx], status: "querying" };
       onProgress({ total: devicesWithVersions.length, done, results: [...results] });
 
       try {
-        // Use isAciSwitch from extraction if available, fallback to name-based detection
         const isAciSwitch = device.isAciSwitch !== undefined
           ? device.isAciSwitch
           : (isAci && (
@@ -688,24 +579,15 @@ async function queryPSIRTForDevices(devices, session, onProgress) {
 
         const res = await fetch("/api/advisories", {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${session?.access_token}`,
-          },
-          body: JSON.stringify({
-            platform: device.name,
-            version: device.version,
-            isAciSwitch,
-          }),
+          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${session?.access_token}` },
+          body: JSON.stringify({ platform: device.name, version: device.version, isAciSwitch }),
         });
 
         const data = await res.json();
         done++;
-
         const advisoryCount = data.advisories?.length || 0;
         results[idx] = { ...results[idx], status: "done", count: advisoryCount };
         onProgress({ total: devicesWithVersions.length, done, results: [...results] });
-
         return { device, data, advisoryCount, queryVersion: data.queryVersion || device.version };
       } catch (err) {
         done++;
@@ -716,7 +598,6 @@ async function queryPSIRTForDevices(devices, session, onProgress) {
     })
   );
 
-  // Build PSIRT context string for system prompt
   const lines = ["PSIRT ADVISORY RESULTS (live Cisco PSIRT API):"];
   let totalAdvisories = 0;
 
@@ -725,15 +606,11 @@ async function queryPSIRTForDevices(devices, session, onProgress) {
       lines.push(`${device.name} v${device.version}: API query failed or not supported`);
       continue;
     }
-
     totalAdvisories += advisoryCount;
-
     if (advisoryCount === 0) {
       lines.push(`${device.name} v${device.version} [${data.family || ""}]: No advisories found — VERIFIED CLEAN`);
     } else {
-      const versionNote = (queryVersion && queryVersion !== device.version)
-        ? ` (queried as v${queryVersion} — ACI NX-OS mapping)`
-        : "";
+      const versionNote = (queryVersion && queryVersion !== device.version) ? ` (queried as v${queryVersion} — ACI NX-OS mapping)` : "";
       lines.push(`${device.name} v${device.version}${versionNote} [${data.family || ""}]: ${advisoryCount} advisories`);
       const sorted = [...(data.advisories || [])].sort((a, b) => {
         const sev = { Critical: 4, High: 3, Medium: 2, Low: 1 };
@@ -742,278 +619,255 @@ async function queryPSIRTForDevices(devices, session, onProgress) {
       for (const adv of sorted.slice(0, 5)) {
         lines.push(`  - [${adv.impact?.toUpperCase() || "UNKNOWN"}] ${adv.id} — ${adv.title}${adv.firstFixed ? ` | Fixed: ${adv.firstFixed}` : ""}`);
       }
-      if (advisoryCount > 5) {
-        lines.push(`  - ... and ${advisoryCount - 5} more`);
-      }
+      if (advisoryCount > 5) lines.push(`  - ... and ${advisoryCount - 5} more`);
     }
   }
 
   if (devicesWithout.length > 0) {
     lines.push(`Devices with no version data (not queried): ${devicesWithout.map(d => d.name).join(", ")}`);
   }
-
   lines.push(`SUMMARY: ${totalAdvisories} total advisories across ${devicesWithVersions.length} devices queried`);
 
-  return {
-    psirtContext: lines.join("\n"),
-    totalAdvisories,
-    results: advisoryResults,
-  };
+  return { psirtContext: lines.join("\n"), totalAdvisories, results: advisoryResults };
 }
 
-function ChatGreeting({ member, greetingData, onAsk, onViewFull }) {
-    const [input, setInput] = useState('');
-    const [chatMsgs, setChatMsgs] = useState([]);
-    const [loading, setLoading] = useState(false);
-    const bottomRef = useRef(null);
-    const apiKey = process.env.REACT_APP_ANTHROPIC_API_KEY;
-  
-    const firstName = member?.name ? member.name.trim().split(' ')[0] : 'there';
-  
-    useEffect(() => {
-      bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-    }, [chatMsgs, loading]);
-  
-    // Derive top 3 findings from PSIRT results for badge prompts
-    const badges = [];
-    if (greetingData?.psirtResult) {
-      const { results } = greetingData.psirtResult;
-      const withAdvisories = results
-        .filter(r => r.advisoryCount > 0)
-        .sort((a, b) => b.advisoryCount - a.advisoryCount);
-  
-      if (withAdvisories.length > 0) {
-        badges.push({
-          label: 'HIGHEST EXPOSURE',
-          color: C.red,
-          title: withAdvisories[0].device.name,
-          sub: `${withAdvisories[0].advisoryCount} advisories · ${withAdvisories[0].device.role || tierLabel(withAdvisories[0].device.tier)}`,
-          question: `Tell me about the advisories affecting ${withAdvisories[0].device.name} v${withAdvisories[0].device.version}`,
-        });
-      }
-      if (withAdvisories.length > 1) {
-        badges.push({
-          label: 'ALSO AFFECTED',
-          color: C.orange,
-          title: withAdvisories[1].device.name,
-          sub: `${withAdvisories[1].advisoryCount} advisories`,
-          question: `What advisories affect ${withAdvisories[1].device.name} v${withAdvisories[1].device.version}?`,
-        });
-      }
-      const versionMismatch = greetingData.devices?.some((d, _, arr) =>
-        d.tier === 3 && arr.find(s => s.tier === 2 && s.version !== d.version)
-      );
-      if (versionMismatch) {
-        badges.push({
-          label: 'VERSION DRIFT',
-          color: C.yellow,
-          title: 'Spine / leaf mismatch',
-          sub: 'Version inconsistency detected',
-          question: 'Are there version mismatches between my spine and leaf layers?',
-        });
-      } else if (withAdvisories.length === 0) {
-        badges.push({
-          label: 'FABRIC STATUS',
-          color: C.green,
-          title: 'No advisories found',
-          sub: `${greetingData.devices?.length || 0} devices checked`,
-          question: 'Give me a summary of my fabric health',
-        });
-      }
+// ─────────────────────────────────────────────
+// CHAT GREETING SCREEN
+// Shown after PSIRT completes — before full chat
+// ─────────────────────────────────────────────
+function ChatGreeting({ member, greetingData, onViewFull }) {
+  const [input, setInput] = useState('');
+  const [chatMsgs, setChatMsgs] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const bottomRef = useRef(null);
+  const apiKey = process.env.REACT_APP_ANTHROPIC_API_KEY;
+
+  const firstName = member?.name ? member.name.trim().split(' ')[0] : 'there';
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [chatMsgs, loading]);
+
+  // Derive badge prompts from PSIRT results
+  const badges = [];
+  if (greetingData?.psirtResult?.results) {
+    const { results } = greetingData.psirtResult;
+    const withAdvisories = results
+      .filter(r => r.advisoryCount > 0)
+      .sort((a, b) => b.advisoryCount - a.advisoryCount);
+
+    if (withAdvisories.length > 0) {
+      badges.push({
+        label: 'HIGHEST EXPOSURE',
+        color: C.red,
+        title: withAdvisories[0].device.name,
+        sub: `${withAdvisories[0].advisoryCount} advisories · ${withAdvisories[0].device.role || tierLabel(withAdvisories[0].device.tier)}`,
+        question: `Tell me about the advisories affecting ${withAdvisories[0].device.name} v${withAdvisories[0].device.version}`,
+      });
     }
-  
-    const sendGreetingMessage = async (text) => {
-      if (!text.trim() || loading) return;
-      const userMsg = { role: 'user', content: text };
-      const newMsgs = [...chatMsgs, userMsg];
-      setChatMsgs(newMsgs);
-      setInput('');
-      setLoading(true);
-  
-      try {
-        const systemPrompt = `You are Rincon, an expert Cisco DC network engineer embedded in netwrkr.ai.
-  The engineer has just had their fabric analysed. Answer their questions concisely and directly.
-  Use cautious language for unverified findings. Never say "upgrade immediately" or "critical patch required".
-  Use "priority review recommended" for unverified findings. Cite exact CSC IDs when available from PSIRT data.
-  Keep responses to 4-6 sentences. PSIRT-verified findings can use stronger language.
-  
-  PSIRT DATA:
-  ${greetingData?.psirtContext || 'No PSIRT data available.'}
-  
-  FABRIC INVENTORY:
-  ${greetingData?.fabricContext || 'No fabric data.'}`;
-  
-        const response = await fetch('https://api.anthropic.com/v1/messages', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-api-key': apiKey,
-            'anthropic-version': '2023-06-01',
-            'anthropic-dangerous-direct-browser-access': 'true',
-          },
-          body: JSON.stringify({
-            model: 'claude-sonnet-4-20250514',
-            max_tokens: 1000,
-            system: systemPrompt,
-            messages: newMsgs.map(m => ({ role: m.role, content: m.content })),
-          }),
-        });
-  
-        const data = await response.json();
-        const reply = data.content?.[0]?.text || 'Unable to retrieve response.';
-        setChatMsgs(prev => [...prev, { role: 'assistant', content: reply }]);
-      } catch {
-        setChatMsgs(prev => [...prev, { role: 'assistant', content: 'Error — please try again.' }]);
-      }
-      setLoading(false);
-    };
-  
-    return (
-      <div style={{
-        flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden',
-        background: C.bg,
-      }}>
-        {/* Scrollable body */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: '40px 24px 16px' }}>
-          <div style={{ maxWidth: 680, margin: '0 auto' }}>
-  
-            {/* Greeting */}
-            <div style={{ marginBottom: 32, animation: 'fadeUp 0.3s ease' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
-                <div style={{ width: 26, height: 26, background: C.amber, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <span style={{ color: '#000', fontFamily: mono, fontSize: 13, fontWeight: 700 }}>◈</span>
-                </div>
-                <span style={{ fontFamily: mono, fontSize: 11, color: C.amber }}>Rincon · DC Expert</span>
+    if (withAdvisories.length > 1) {
+      badges.push({
+        label: 'ALSO AFFECTED',
+        color: C.orange,
+        title: withAdvisories[1].device.name,
+        sub: `${withAdvisories[1].advisoryCount} advisories`,
+        question: `What advisories affect ${withAdvisories[1].device.name} v${withAdvisories[1].device.version}?`,
+      });
+    }
+    const versionMismatch = greetingData.devices?.some((d, _, arr) =>
+      d.tier === 3 && arr.find(s => s.tier === 2 && s.version !== d.version)
+    );
+    if (versionMismatch) {
+      badges.push({
+        label: 'VERSION DRIFT',
+        color: C.yellow,
+        title: 'Spine / leaf mismatch',
+        sub: 'Version inconsistency detected',
+        question: 'Are there version mismatches between my spine and leaf layers?',
+      });
+    } else if (withAdvisories.length === 0) {
+      badges.push({
+        label: 'FABRIC STATUS',
+        color: C.green,
+        title: 'No advisories found',
+        sub: `${greetingData.devices?.length || 0} devices checked`,
+        question: 'Give me a summary of my fabric health',
+      });
+    }
+  }
+
+  const sendGreetingMessage = async (text) => {
+    if (!text.trim() || loading) return;
+    const userMsg = { role: 'user', content: text };
+    const newMsgs = [...chatMsgs, userMsg];
+    setChatMsgs(newMsgs);
+    setInput('');
+    setLoading(true);
+
+    try {
+      const systemPrompt = `You are Rincon, an expert Cisco DC network engineer embedded in netwrkr.ai.
+The engineer has just had their fabric analysed. Answer their questions concisely and directly.
+Use cautious language for unverified findings. Never say "upgrade immediately" or "critical patch required".
+Use "priority review recommended" for unverified findings. Cite exact CSC IDs when available from PSIRT data.
+Keep responses to 4-6 sentences. PSIRT-verified findings can use stronger language.
+
+PSIRT DATA:
+${greetingData?.psirtContext || 'No PSIRT data available.'}
+
+FABRIC INVENTORY:
+${greetingData?.fabricContext || 'No fabric data.'}`;
+
+      const response = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01',
+          'anthropic-dangerous-direct-browser-access': 'true',
+        },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-20250514',
+          max_tokens: 1000,
+          system: systemPrompt,
+          messages: newMsgs.map(m => ({ role: m.role, content: m.content })),
+        }),
+      });
+
+      const data = await response.json();
+      const reply = data.content?.[0]?.text || 'Unable to retrieve response.';
+      setChatMsgs(prev => [...prev, { role: 'assistant', content: reply }]);
+    } catch {
+      setChatMsgs(prev => [...prev, { role: 'assistant', content: 'Error — please try again.' }]);
+    }
+    setLoading(false);
+  };
+
+  return (
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: C.bg }}>
+
+      {/* Scrollable body */}
+      <div style={{ flex: 1, overflowY: 'auto', padding: '40px 24px 16px' }}>
+        <div style={{ maxWidth: 680, margin: '0 auto' }}>
+
+          {/* Greeting */}
+          <div style={{ marginBottom: 32, animation: 'fadeUp 0.3s ease' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+              <div style={{ width: 26, height: 26, background: C.amber, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <span style={{ color: '#000', fontFamily: mono, fontSize: 13, fontWeight: 700 }}>◈</span>
               </div>
-              <p style={{ fontSize: 24, fontWeight: 300, color: C.text, letterSpacing: '-0.02em', lineHeight: 1.3, marginBottom: 8 }}>
-                Hey <span style={{ color: C.amber }}>{firstName}</span>, your fabric analysis is ready.
-              </p>
-              <p style={{ fontFamily: mono, fontSize: 12, color: C.muted }}>
-                // {greetingData?.devices?.length || 0} devices queried · what would you like to know?
-              </p>
+              <span style={{ fontFamily: mono, fontSize: 11, color: C.amber }}>Rincon · DC Expert</span>
             </div>
-  
-            {/* Badges */}
-            {badges.length > 0 && chatMsgs.length === 0 && (
-              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 28, animation: 'fadeUp 0.4s ease' }}>
-                {badges.map((b, i) => (
-                  <button
-                    key={i}
-                    onClick={() => sendGreetingMessage(b.question)}
-                    style={{
-                      background: 'transparent',
-                      border: `1px solid ${C.border}`,
-                      padding: '12px 16px', cursor: 'pointer',
-                      flex: 1, minWidth: 160, textAlign: 'left',
-                      transition: 'border-color 0.15s',
-                    }}
-                    onMouseEnter={e => e.currentTarget.style.borderColor = b.color}
-                    onMouseLeave={e => e.currentTarget.style.borderColor = C.border}
-                  >
-                    <div style={{ fontFamily: mono, fontSize: 9, color: b.color, letterSpacing: '0.1em', marginBottom: 6 }}>
-                      {b.label}
-                    </div>
-                    <div style={{ fontSize: 12, color: C.text, marginBottom: 4, fontWeight: 500 }}>
-                      {b.title}
-                    </div>
-                    <div style={{ fontFamily: mono, fontSize: 10, color: C.muted }}>
-                      {b.sub}
-                    </div>
-                    <div style={{ fontFamily: mono, fontSize: 9, color: C.faint, marginTop: 8 }}>
-                      tap to ask ↗
-                    </div>
-                  </button>
-                ))}
+            <p style={{ fontSize: 24, fontWeight: 300, color: C.text, letterSpacing: '-0.02em', lineHeight: 1.3, marginBottom: 8 }}>
+              Hey <span style={{ color: C.amber }}>{firstName}</span>, your fabric analysis is ready.
+            </p>
+            <p style={{ fontFamily: mono, fontSize: 12, color: C.muted }}>
+              // {greetingData?.devices?.length || 0} devices queried · what would you like to know?
+            </p>
+          </div>
+
+          {/* Badges — only shown before any messages */}
+          {badges.length > 0 && chatMsgs.length === 0 && (
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 28, animation: 'fadeUp 0.4s ease' }}>
+              {badges.map((b, i) => (
+                <button
+                  key={i}
+                  onClick={() => sendGreetingMessage(b.question)}
+                  style={{
+                    background: 'transparent', border: `1px solid ${C.border}`,
+                    padding: '12px 16px', cursor: 'pointer',
+                    flex: 1, minWidth: 160, textAlign: 'left', transition: 'border-color 0.15s',
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.borderColor = b.color}
+                  onMouseLeave={e => e.currentTarget.style.borderColor = C.border}
+                >
+                  <div style={{ fontFamily: mono, fontSize: 9, color: b.color, letterSpacing: '0.1em', marginBottom: 6 }}>{b.label}</div>
+                  <div style={{ fontSize: 12, color: C.text, marginBottom: 4, fontWeight: 500 }}>{b.title}</div>
+                  <div style={{ fontFamily: mono, fontSize: 10, color: C.muted }}>{b.sub}</div>
+                  <div style={{ fontFamily: mono, fontSize: 9, color: C.faint, marginTop: 8 }}>tap to ask ↗</div>
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Chat messages */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            {chatMsgs.map((msg, i) => (
+              <div key={i} style={{
+                alignSelf: msg.role === 'user' ? 'flex-end' : 'flex-start',
+                maxWidth: '85%',
+                background: msg.role === 'user' ? `${C.amber}12` : C.surface,
+                border: `1px solid ${msg.role === 'user' ? `${C.amber}25` : C.border}`,
+                borderRadius: msg.role === 'user' ? '12px 2px 12px 12px' : '2px 12px 12px 12px',
+                padding: '12px 16px', fontSize: 14, color: C.text,
+                lineHeight: 1.75, whiteSpace: 'pre-wrap', fontFamily: sans,
+                animation: 'fadeUp 0.2s ease',
+              }}>
+                {msg.role === 'assistant' && (
+                  <div style={{ fontFamily: mono, fontSize: 10, color: C.amber, marginBottom: 6 }}>Rincon · DC Expert</div>
+                )}
+                {msg.content}
+              </div>
+            ))}
+            {loading && (
+              <div style={{ alignSelf: 'flex-start', background: C.surface, border: `1px solid ${C.border}`, borderRadius: '2px 12px 12px 12px', padding: '14px 18px' }}>
+                <div style={{ fontFamily: mono, fontSize: 10, color: C.amber, marginBottom: 8 }}>Rincon · thinking</div>
+                <TypingDots />
               </div>
             )}
-  
-            {/* Chat messages */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-              {chatMsgs.map((msg, i) => (
-                <div key={i} style={{
-                  alignSelf: msg.role === 'user' ? 'flex-end' : 'flex-start',
-                  maxWidth: '85%',
-                  background: msg.role === 'user' ? `${C.amber}12` : C.surface,
-                  border: `1px solid ${msg.role === 'user' ? `${C.amber}25` : C.border}`,
-                  borderRadius: msg.role === 'user' ? '12px 2px 12px 12px' : '2px 12px 12px 12px',
-                  padding: '12px 16px',
-                  fontSize: 14, color: C.text, lineHeight: 1.75,
-                  whiteSpace: 'pre-wrap', fontFamily: sans,
-                  animation: 'fadeUp 0.2s ease',
-                }}>
-                  {msg.role === 'assistant' && (
-                    <div style={{ fontFamily: mono, fontSize: 10, color: C.amber, marginBottom: 6 }}>
-                      Rincon · DC Expert
-                    </div>
-                  )}
-                  {msg.content}
-                </div>
-              ))}
-              {loading && (
-                <div style={{
-                  alignSelf: 'flex-start', background: C.surface,
-                  border: `1px solid ${C.border}`, borderRadius: '2px 12px 12px 12px',
-                  padding: '14px 18px',
-                }}>
-                  <div style={{ fontFamily: mono, fontSize: 10, color: C.amber, marginBottom: 8 }}>Rincon · thinking</div>
-                  <TypingDots />
-                </div>
-              )}
-            </div>
-            <div ref={bottomRef} />
           </div>
+          <div ref={bottomRef} />
         </div>
-  
-        {/* Input row */}
-        <div style={{ background: C.hi, borderTop: `1px solid ${C.border}`, padding: '14px 24px', flexShrink: 0 }}>
-          <div style={{ maxWidth: 680, margin: '0 auto' }}>
-            <div style={{ background: C.surface, border: `1px solid ${C.border}`, display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px' }}>
-              <span style={{ color: C.muted, fontFamily: mono, fontSize: 12, flexShrink: 0 }}>→</span>
-              <input
-                value={input}
-                onChange={e => setInput(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && sendGreetingMessage(input)}
-                placeholder="Ask anything about your fabric…"
-                style={{
-                  flex: 1, background: 'transparent', border: 'none', outline: 'none',
-                  color: C.text, fontSize: 14, fontFamily: sans, caretColor: C.amber,
-                }}
-              />
-              <button
-                onClick={() => sendGreetingMessage(input)}
-                disabled={!input.trim() || loading}
-                style={{
-                  width: 36, height: 36, border: 'none', flexShrink: 0,
-                  background: input.trim() && !loading ? C.amber : C.muted,
-                  cursor: input.trim() && !loading ? 'pointer' : 'default',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                }}
-              >
-                <span style={{ color: '#000', fontSize: 15, fontWeight: 700 }}>↑</span>
-              </button>
-              <button
-                onClick={onViewFull}
-                style={{
-                  background: 'transparent', border: `1px solid ${C.border}`,
-                  color: C.muted, fontFamily: mono, fontSize: 10,
-                  padding: '8px 12px', cursor: 'pointer', whiteSpace: 'nowrap',
-                  transition: 'all 0.15s',
-                }}
-                onMouseEnter={e => { e.currentTarget.style.borderColor = `${C.amber}55`; e.currentTarget.style.color = C.amber; }}
-                onMouseLeave={e => { e.currentTarget.style.borderColor = C.border; e.currentTarget.style.color = C.muted; }}
-              >
-                view full analysis →
-              </button>
-            </div>
-            <div style={{ fontFamily: mono, fontSize: 10, color: C.muted, marginTop: 6 }}>
-              ◈ {greetingData?.devices?.length || 0} devices · PSIRT verified · ↵ send · or view full analysis above
-            </div>
+      </div>
+
+      {/* Input row */}
+      <div style={{ background: C.hi, borderTop: `1px solid ${C.border}`, padding: '14px 24px', flexShrink: 0 }}>
+        <div style={{ maxWidth: 680, margin: '0 auto' }}>
+          <div style={{ background: C.surface, border: `1px solid ${C.border}`, display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px' }}>
+            <span style={{ color: C.muted, fontFamily: mono, fontSize: 12, flexShrink: 0 }}>→</span>
+            <input
+              value={input}
+              onChange={e => setInput(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && sendGreetingMessage(input)}
+              placeholder="Ask anything about your fabric…"
+              style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', color: C.text, fontSize: 14, fontFamily: sans, caretColor: C.amber }}
+            />
+            <button
+              onClick={() => sendGreetingMessage(input)}
+              disabled={!input.trim() || loading}
+              style={{
+                width: 36, height: 36, border: 'none', flexShrink: 0,
+                background: input.trim() && !loading ? C.amber : C.muted,
+                cursor: input.trim() && !loading ? 'pointer' : 'default',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}
+            >
+              <span style={{ color: '#000', fontSize: 15, fontWeight: 700 }}>↑</span>
+            </button>
+            <button
+              onClick={onViewFull}
+              style={{
+                background: 'transparent', border: `1px solid ${C.border}`,
+                color: C.muted, fontFamily: mono, fontSize: 10,
+                padding: '8px 12px', cursor: 'pointer', whiteSpace: 'nowrap', transition: 'all 0.15s',
+              }}
+              onMouseEnter={e => { e.currentTarget.style.borderColor = `${C.amber}55`; e.currentTarget.style.color = C.amber; }}
+              onMouseLeave={e => { e.currentTarget.style.borderColor = C.border; e.currentTarget.style.color = C.muted; }}
+            >
+              view full analysis →
+            </button>
+          </div>
+          <div style={{ fontFamily: mono, fontSize: 10, color: C.muted, marginTop: 6 }}>
+            ◈ {greetingData?.devices?.length || 0} devices · PSIRT verified · ↵ send · or view full analysis above
           </div>
         </div>
       </div>
-    );
-  }
+    </div>
+  );
+}
 
+// ─────────────────────────────────────────────
+// MAIN COMPONENT
+// ─────────────────────────────────────────────
 export default function RinconChatPrototype() {
   const { member, org, session } = useAuth();
 
@@ -1027,38 +881,28 @@ export default function RinconChatPrototype() {
   const [loadingHistory, setLoadingHistory] = useState(true);
 
   // File / fabric state
-  const [fabricContext, setFabricContext]   = useState(null); // text blob for system prompt
-  const [fabricDevices, setFabricDevices]   = useState([]);  // structured device list
-  const [fabricFile, setFabricFile]         = useState(null); // { name, size, storagePath }
-  const [psirtContext, setPsirtContext]     = useState(null);  // formatted PSIRT data for system prompt
-  const [psirtProgress, setPsirtProgress]   = useState(null); // { total, done, results: [] }
+  const [fabricContext, setFabricContext]   = useState(null);
+  const [fabricDevices, setFabricDevices]   = useState([]);
+  const [fabricFile, setFabricFile]         = useState(null);
+  const [psirtContext, setPsirtContext]     = useState(null);
+  const [psirtProgress, setPsirtProgress]   = useState(null);
   const [uploading, setUploading]           = useState(false);
   const [dragOver, setDragOver]             = useState(false);
-  const [showChatGreeting, setShowChatGreeting] = useState(false);
-  const [greetingData, setGreetingData]         = useState(null); // { devices, psirtResult }
 
-  const bottomRef  = useRef(null);
-  const inputRef   = useRef(null);
-  const fileRef    = useRef(null);
+  // Greeting state
+  const [showChatGreeting, setShowChatGreeting] = useState(false);
+  const [greetingData, setGreetingData]         = useState(null);
+
+  const bottomRef   = useRef(null);
+  const inputRef    = useRef(null);
+  const fileRef     = useRef(null);
   const chatAreaRef = useRef(null);
 
   const apiKey = process.env.REACT_APP_ANTHROPIC_API_KEY;
 
-  // ── Scroll to bottom
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, aiTyping]);
-
-  // ── Load conversations on mount
-  useEffect(() => {
-    if (session) loadConversations();
-  }, [session]);
-
-  // ── Load messages when active conversation changes
-  useEffect(() => {
-    if (activeConvId) loadMessages(activeConvId);
-    else setMessages([]);
-  }, [activeConvId]);
+  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages, aiTyping]);
+  useEffect(() => { if (session) loadConversations(); }, [session]);
+  useEffect(() => { if (activeConvId) loadMessages(activeConvId); else setMessages([]); }, [activeConvId]);
 
   // ─────────────────────────────────────────────
   // SUPABASE HELPERS
@@ -1086,10 +930,7 @@ export default function RinconChatPrototype() {
   const getOrgMemberIds = async () => {
     const { data: { session: s } } = await supabase.auth.getSession();
     const claims = getJwtClaims();
-    return {
-      orgId:    claims.org_id    || org?.id,
-      memberId: claims.member_id || member?.id,
-    };
+    return { orgId: claims.org_id || org?.id, memberId: claims.member_id || member?.id };
   };
 
   const createConversation = async (firstMessage, opts = {}) => {
@@ -1097,16 +938,8 @@ export default function RinconChatPrototype() {
     const title = firstMessage.slice(0, 60) + (firstMessage.length > 60 ? "…" : "");
     const { data, error } = await supabase
       .from('conversations')
-      .insert({
-        title,
-        is_analysis:  opts.isAnalysis  || false,
-        has_fabric:   opts.hasFabric   || false,
-        message_count: 0,
-        org_id:    orgId,
-        member_id: memberId,
-      })
-      .select('id')
-      .single();
+      .insert({ title, is_analysis: opts.isAnalysis || false, has_fabric: opts.hasFabric || false, message_count: 0, org_id: orgId, member_id: memberId })
+      .select('id').single();
     if (error) { console.error('Failed to create conversation:', error); return null; }
     return data.id;
   };
@@ -1116,8 +949,7 @@ export default function RinconChatPrototype() {
     const { data, error } = await supabase
       .from('conversation_messages')
       .insert({ conversation_id: convId, role, content, org_id: orgId })
-      .select('id, role, content, created_at')
-      .single();
+      .select('id, role, content, created_at').single();
     if (error) { console.error('Failed to save message:', error); return null; }
     await supabase.rpc('increment_message_count', { p_conversation_id: convId });
     return data;
@@ -1129,7 +961,6 @@ export default function RinconChatPrototype() {
   const handleFile = async (file) => {
     if (!file) return;
 
-    // Size check
     if (file.size > MAX_FILE_SIZE) {
       addLocalMessage("system", `File too large. Maximum size is 5MB. Your file is ${(file.size / 1024 / 1024).toFixed(1)}MB.`);
       return;
@@ -1137,18 +968,14 @@ export default function RinconChatPrototype() {
 
     setUploading(true);
 
-    // Show upload card in chat
     const uploadCardId = Date.now().toString();
     setMessages(prev => [...prev, {
-      id: uploadCardId,
-      role: "user",
-      type: "file",
+      id: uploadCardId, role: "user", type: "file",
       fileData: { fileName: file.name, fileSize: file.size, status: "uploading" },
       created_at: new Date().toISOString(),
     }]);
 
     try {
-      // Read file content
       const text = await new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = e => resolve(e.target.result);
@@ -1156,62 +983,40 @@ export default function RinconChatPrototype() {
         reader.readAsText(file);
       });
 
-      // Pre-flight check for sensitive data
       const warnings = preflightCheck(text);
 
-      // Update card to show pre-flight warnings if any
       if (warnings.length > 0) {
-        setMessages(prev => prev.map(m => m.id === uploadCardId ? {
-          ...m, fileData: { ...m.fileData, status: "preflight", warnings }
-        } : m));
-        // Still proceed — engineer is warned
+        setMessages(prev => prev.map(m => m.id === uploadCardId ? { ...m, fileData: { ...m.fileData, status: "preflight", warnings } } : m));
       }
 
-      // Update card to extracting
-      setMessages(prev => prev.map(m => m.id === uploadCardId ? {
-        ...m, fileData: { ...m.fileData, status: "extracting", warnings }
-      } : m));
+      setMessages(prev => prev.map(m => m.id === uploadCardId ? { ...m, fileData: { ...m.fileData, status: "extracting", warnings } } : m));
 
-      // Extract devices via Claude
       const devices = await extractFabricFromText(text, apiKey);
 
-      // Upload raw file to Supabase Storage
       const { orgId } = await getOrgMemberIds();
       const storagePath = `${orgId}/${Date.now()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
-
       const { error: storageError } = await supabase.storage
         .from('environment-files')
         .upload(storagePath, file, { contentType: 'text/plain', upsert: false });
+      if (storageError) console.warn('Storage upload failed (non-fatal):', storageError.message);
 
-      if (storageError) {
-        console.warn('Storage upload failed (non-fatal):', storageError.message);
-      }
-
-      // Build fabric context string for system prompt
       const contextLines = [
         `FILE: ${file.name}`,
         `DEVICES EXTRACTED: ${devices.length}`,
         "",
         "FABRIC INVENTORY:",
-        ...devices.map(d =>
-          `- ${d.name}${d.version ? ` v${d.version}` : " (version unknown)"}${d.role ? ` | ${d.role}` : ""} | Tier ${d.tier}`
-        ),
+        ...devices.map(d => `- ${d.name}${d.version ? ` v${d.version}` : " (version unknown)"}${d.role ? ` | ${d.role}` : ""} | Tier ${d.tier}`),
         "",
         "RAW FILE EXCERPT (first 3000 chars):",
         text.slice(0, 3000),
       ].join("\n");
 
-      // Set fabric context
       setFabricContext(contextLines);
       setFabricDevices(devices);
       setFabricFile({ name: file.name, size: file.size, storagePath });
 
-      // Update upload card to done
-      setMessages(prev => prev.map(m => m.id === uploadCardId ? {
-        ...m, fileData: { ...m.fileData, status: "done", warnings }
-      } : m));
+      setMessages(prev => prev.map(m => m.id === uploadCardId ? { ...m, fileData: { ...m.fileData, status: "done", warnings } } : m));
 
-      // Create/update conversation with has_fabric flag
       let convId = activeConvId;
       if (!convId) {
         convId = await createConversation(`Fabric analysis: ${file.name}`, { hasFabric: true });
@@ -1220,67 +1025,47 @@ export default function RinconChatPrototype() {
         await supabase.from('conversations').update({ has_fabric: true }).eq('id', convId);
       }
 
-      // Save file upload event as message
-      if (convId) {
-        await saveMessage(convId, 'user', `[Uploaded fabric file: ${file.name}]`);
-      }
+      if (convId) await saveMessage(convId, 'user', `[Uploaded fabric file: ${file.name}]`);
 
       // ── PSIRT QUERY ──
-      // Query Cisco PSIRT API for all devices in parallel
-      // Show live per-device progress indicator in chat
       const devicesWithVersions = devices.filter(d => d.version && d.version.trim());
       let resolvedPsirtContext = null;
       let psirtResult = null;
+
       if (devicesWithVersions.length > 0) {
-        // Add progress card to chat
         const psirtCardId = `psirt-${Date.now()}`;
         setMessages(prev => [...prev, {
-          id: psirtCardId,
-          role: "ai",
-          type: "psirt-progress",
+          id: psirtCardId, role: "ai", type: "psirt-progress",
           created_at: new Date().toISOString(),
         }]);
 
         try {
-            psirtResult = await queryPSIRTForDevices(
+          psirtResult = await queryPSIRTForDevices(
             devices,
             session,
             (progress) => {
               setPsirtProgress(progress);
-              // Update the progress card in place
-              setMessages(prev => prev.map(m =>
-                m.id === psirtCardId
-                  ? { ...m, psirtProgress: progress }
-                  : m
-              ));
+              setMessages(prev => prev.map(m => m.id === psirtCardId ? { ...m, psirtProgress: progress } : m));
             }
           );
 
           resolvedPsirtContext = psirtResult.psirtContext;
           setPsirtContext(resolvedPsirtContext);
 
-          // Replace progress card with final summary card
           setMessages(prev => prev.map(m =>
-            m.id === psirtCardId
-              ? {
-                  ...m,
-                  type: "psirt-done",
-                  psirtSummary: {
-                    total: devicesWithVersions.length,
-                    advisories: psirtResult.totalAdvisories,
-                  },
-                  psirtProgress: psirtResult.results ? {
-                    total: devicesWithVersions.length,
-                    done: devicesWithVersions.length,
-                    results: psirtResult.results.map(r => ({
-                      name: r.device.name,
-                      version: r.device.version,
-                      status: r.error ? "error" : "done",
-                      count: r.advisoryCount,
-                    })),
-                  } : null,
-                }
-              : m
+            m.id === psirtCardId ? {
+              ...m,
+              type: "psirt-done",
+              psirtSummary: { total: devicesWithVersions.length, advisories: psirtResult.totalAdvisories },
+              psirtProgress: {
+                total: devicesWithVersions.length,
+                done: devicesWithVersions.length,
+                results: psirtResult.results.map(r => ({
+                  name: r.device.name, version: r.device.version,
+                  status: r.error ? "error" : "done", count: r.advisoryCount,
+                })),
+              },
+            } : m
           ));
 
         } catch (psirtErr) {
@@ -1289,10 +1074,10 @@ export default function RinconChatPrototype() {
         }
       }
 
-      // Auto-send Rincon's initial assessment — now with PSIRT data
+      // ── SHOW GREETING SCREEN ──
       setGreetingData({
         devices,
-        psirtResult: psirtResult || null,
+        psirtResult: psirtResult,
         psirtContext: resolvedPsirtContext,
         fabricContext: contextLines,
       });
@@ -1302,9 +1087,7 @@ export default function RinconChatPrototype() {
 
     } catch (err) {
       console.error('File processing error:', err);
-      setMessages(prev => prev.map(m => m.id === uploadCardId ? {
-        ...m, fileData: { ...m.fileData, status: "error" }
-      } : m));
+      setMessages(prev => prev.map(m => m.id === uploadCardId ? { ...m, fileData: { ...m.fileData, status: "error" } } : m));
     }
 
     setUploading(false);
@@ -1329,65 +1112,14 @@ export default function RinconChatPrototype() {
         max_tokens: 1500,
         system: systemPrompt,
         messages: conversationHistory
-          .filter(m => m.type !== "file") // exclude file cards from API history
-          .map(m => ({
-            role: m.role === "ai" ? "assistant" : "user",
-            content: m.content,
-          })),
+          .filter(m => m.type !== "file")
+          .map(m => ({ role: m.role === "ai" ? "assistant" : "user", content: m.content })),
       }),
     });
 
     const data = await response.json();
     if (data.error) throw new Error(data.error.message);
     return data.content[0].text;
-  };
-
-  // ─────────────────────────────────────────────
-  // SEND WITH EXPLICIT CONTEXT (for auto-responses after file upload)
-  // ─────────────────────────────────────────────
-  const sendWithContext = async (triggerPrompt, context, convId, isAutoResponse = false, psirtData = null) => {
-    setAiTyping(true);
-
-    try {
-      const prompt = isAutoResponse
-        ? `The engineer has just uploaded a fabric inventory file.${psirtData ? " PSIRT advisory data from the live Cisco PSIRT API has been retrieved for all devices with known versions." : ""}
-
-Provide a concise initial assessment covering:
-1. How many devices were found and what infrastructure tiers are present
-2. Any version mismatches visible in the inventory
-3. The most significant security advisories found (if PSIRT data is present, cite exact CSC IDs and severity)
-4. Top priority action — what the engineer should look at first
-5. Invite the engineer to ask specific questions about any device or finding
-
-Fabric data:
-${context}${psirtData ? "\n\nPSIRT DATA:\n" + psirtData : ""}`
-        : triggerPrompt;
-
-      const aiResponse = await callClaude(
-        [{ role: "user", content: prompt }],
-        context,
-        psirtData
-      );
-
-      setAiTyping(false);
-
-      const newMsg = {
-        id: Date.now().toString(),
-        role: "ai",
-        content: aiResponse,
-        created_at: new Date().toISOString(),
-      };
-      setMessages(prev => [...prev, newMsg]);
-
-      // Save to DB
-      if (convId) {
-        await saveMessage(convId, 'assistant', aiResponse);
-      }
-
-    } catch (err) {
-      console.error("Claude error:", err);
-      setAiTyping(false);
-    }
   };
 
   // ─────────────────────────────────────────────
@@ -1413,7 +1145,6 @@ ${context}${psirtData ? "\n\nPSIRT DATA:\n" + psirtData : ""}`
     try {
       const history = [...messages, localMsg];
       const aiResponse = await callClaude(history);
-
       const savedAiMsg = await saveMessage(convId, "assistant", aiResponse);
       setAiTyping(false);
       setMessages(prev => [...prev, {
@@ -1424,25 +1155,15 @@ ${context}${psirtData ? "\n\nPSIRT DATA:\n" + psirtData : ""}`
         created_at: savedAiMsg?.created_at || new Date().toISOString(),
       }]);
       loadConversations();
-
     } catch (err) {
       console.error("Claude error:", err);
       setAiTyping(false);
-      setMessages(prev => [...prev, {
-        id: Date.now().toString(),
-        role: "ai",
-        content: "I ran into an issue. Please try again.",
-        created_at: new Date().toISOString(),
-      }]);
+      setMessages(prev => [...prev, { id: Date.now().toString(), role: "ai", content: "I ran into an issue. Please try again.", created_at: new Date().toISOString() }]);
     }
   };
 
-  // Helper: add a local-only system message (not saved to DB)
   const addLocalMessage = (role, content) => {
-    setMessages(prev => [...prev, {
-      id: Date.now().toString(), role, content,
-      created_at: new Date().toISOString(),
-    }]);
+    setMessages(prev => [...prev, { id: Date.now().toString(), role, content, created_at: new Date().toISOString() }]);
   };
 
   // ─────────────────────────────────────────────
@@ -1456,6 +1177,8 @@ ${context}${psirtData ? "\n\nPSIRT DATA:\n" + psirtData : ""}`
     setFabricFile(null);
     setPsirtContext(null);
     setPsirtProgress(null);
+    setShowChatGreeting(false);
+    setGreetingData(null);
     inputRef.current?.focus();
   };
 
@@ -1464,16 +1187,8 @@ ${context}${psirtData ? "\n\nPSIRT DATA:\n" + psirtData : ""}`
   // ─────────────────────────────────────────────
   const handleDragOver = (e) => { e.preventDefault(); setDragOver(true); };
   const handleDragLeave = (e) => { if (!chatAreaRef.current?.contains(e.relatedTarget)) setDragOver(false); };
-  const handleDrop = (e) => {
-    e.preventDefault();
-    setDragOver(false);
-    const file = e.dataTransfer.files[0];
-    if (file) handleFile(file);
-  };
-
-  const handleKey = (e) => {
-    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
-  };
+  const handleDrop = (e) => { e.preventDefault(); setDragOver(false); const file = e.dataTransfer.files[0]; if (file) handleFile(file); };
+  const handleKey = (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } };
 
   const isEmpty = messages.length === 0;
 
@@ -1496,11 +1211,7 @@ ${context}${psirtData ? "\n\nPSIRT DATA:\n" + psirtData : ""}`
       `}</style>
 
       {/* ── TOPBAR ── */}
-      <div style={{
-        background: C.hi, borderBottom: `1px solid ${C.border}`,
-        padding: "11px 20px", display: "flex", alignItems: "center",
-        justifyContent: "space-between", flexShrink: 0, zIndex: 10,
-      }}>
+      <div style={{ background: C.hi, borderBottom: `1px solid ${C.border}`, padding: "11px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0, zIndex: 10 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <button
             onClick={() => setSidebarOpen(v => !v)}
@@ -1512,21 +1223,16 @@ ${context}${psirtData ? "\n\nPSIRT DATA:\n" + psirtData : ""}`
             <div style={{ width: 26, height: 26, background: C.amber, display: "flex", alignItems: "center", justifyContent: "center" }}>
               <span style={{ color: "#000", fontFamily: mono, fontSize: 13, fontWeight: 700 }}>◈</span>
             </div>
-            <span style={{ fontFamily: mono, fontSize: 13, fontWeight: 600, color: C.text }}>
-              netwrkr<span style={{ color: C.amber }}>.ai</span>
-            </span>
+            <span style={{ fontFamily: mono, fontSize: 13, fontWeight: 600, color: C.text }}>netwrkr<span style={{ color: C.amber }}>.ai</span></span>
             <span style={{ color: C.muted, fontFamily: mono, fontSize: 11 }}>/ rincon</span>
           </div>
           {fabricFile && (
             <div style={{ display: "flex", alignItems: "center", gap: 6, background: C.amberG, border: `1px solid ${C.amber}30`, padding: "3px 10px" }}>
               <span style={{ color: C.amber, fontSize: 10 }}>◈</span>
-              <span style={{ fontFamily: mono, fontSize: 10, color: C.amber }}>
-                {fabricFile.name} · {fabricDevices.length} devices
-              </span>
+              <span style={{ fontFamily: mono, fontSize: 10, color: C.amber }}>{fabricFile.name} · {fabricDevices.length} devices</span>
             </div>
           )}
         </div>
-
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <button
             onClick={newConversation}
@@ -1553,19 +1259,10 @@ ${context}${psirtData ? "\n\nPSIRT DATA:\n" + psirtData : ""}`
 
         {/* ── SIDEBAR ── */}
         {sidebarOpen && (
-          <div style={{
-            width: 260, flexShrink: 0, background: C.surface,
-            borderRight: `1px solid ${C.border}`,
-            display: "flex", flexDirection: "column", overflow: "hidden",
-          }}>
+          <div style={{ width: 260, flexShrink: 0, background: C.surface, borderRight: `1px solid ${C.border}`, display: "flex", flexDirection: "column", overflow: "hidden" }}>
             <div style={{ padding: "14px 16px 10px", borderBottom: `1px solid ${C.border}` }}>
-              <div style={{ fontFamily: mono, fontSize: 9, color: C.muted, letterSpacing: "0.15em", textTransform: "uppercase", marginBottom: 10 }}>
-                // conversations
-              </div>
-              <button
-                onClick={newConversation}
-                style={{ width: "100%", background: C.amberG, border: `1px solid ${C.amber}30`, color: C.amber, fontFamily: mono, fontSize: 11, padding: "8px", cursor: "pointer" }}
-              >
+              <div style={{ fontFamily: mono, fontSize: 9, color: C.muted, letterSpacing: "0.15em", textTransform: "uppercase", marginBottom: 10 }}>// conversations</div>
+              <button onClick={newConversation} style={{ width: "100%", background: C.amberG, border: `1px solid ${C.amber}30`, color: C.amber, fontFamily: mono, fontSize: 11, padding: "8px", cursor: "pointer" }}>
                 + new_chat()
               </button>
             </div>
@@ -1574,29 +1271,20 @@ ${context}${psirtData ? "\n\nPSIRT DATA:\n" + psirtData : ""}`
               {loadingHistory ? (
                 <div style={{ padding: "20px 16px", fontFamily: mono, fontSize: 11, color: C.muted }}>Loading…</div>
               ) : conversations.length === 0 ? (
-                <div style={{ padding: "20px 16px", fontFamily: mono, fontSize: 11, color: C.muted }}>
-                  // no conversations yet
-                </div>
+                <div style={{ padding: "20px 16px", fontFamily: mono, fontSize: 11, color: C.muted }}>// no conversations yet</div>
               ) : (
                 <>
                   {conversations.some(c => c.has_fabric) && (
                     <>
-                      <div style={{ padding: "12px 16px 6px", fontFamily: mono, fontSize: 9, color: C.muted, letterSpacing: "0.12em", textTransform: "uppercase" }}>
-                        With fabric context
-                      </div>
+                      <div style={{ padding: "12px 16px 6px", fontFamily: mono, fontSize: 9, color: C.muted, letterSpacing: "0.12em", textTransform: "uppercase" }}>With fabric context</div>
                       {conversations.filter(c => c.has_fabric).map(conv => (
-                        <ConversationItem key={conv.id} conv={conv} active={conv.id === activeConvId} onClick={() => { 
-  console.log('sidebar click:', conv.id); 
-  setActiveConvId(conv.id); 
-}} />
+                        <ConversationItem key={conv.id} conv={conv} active={conv.id === activeConvId} onClick={() => setActiveConvId(conv.id)} />
                       ))}
                     </>
                   )}
                   {conversations.some(c => !c.has_fabric && !c.is_analysis) && (
                     <>
-                      <div style={{ padding: "12px 16px 6px", fontFamily: mono, fontSize: 9, color: C.muted, letterSpacing: "0.12em", textTransform: "uppercase" }}>
-                        Conversations
-                      </div>
+                      <div style={{ padding: "12px 16px 6px", fontFamily: mono, fontSize: 9, color: C.muted, letterSpacing: "0.12em", textTransform: "uppercase" }}>Conversations</div>
                       {conversations.filter(c => !c.has_fabric && !c.is_analysis).map(conv => (
                         <ConversationItem key={conv.id} conv={conv} active={conv.id === activeConvId} onClick={() => setActiveConvId(conv.id)} />
                       ))}
@@ -1607,26 +1295,13 @@ ${context}${psirtData ? "\n\nPSIRT DATA:\n" + psirtData : ""}`
             </div>
 
             <div style={{ padding: "12px 16px", borderTop: `1px solid ${C.border}` }}>
-              {/* Enterprise APIC stub */}
-              <div style={{
-                background: `${C.amber}06`, border: `1px solid ${C.amber}20`,
-                padding: "10px 12px", marginBottom: 10,
-              }}>
-                <div style={{ fontFamily: mono, fontSize: 9, color: C.amber, marginBottom: 4, letterSpacing: "0.1em" }}>
-                  // enterprise
-                </div>
-                <div style={{ fontSize: 11, color: C.muted, lineHeight: 1.5, marginBottom: 8 }}>
-                  Connect directly to APIC or Nexus Dashboard — no file upload needed.
-                </div>
-                <button style={{
-                  width: "100%", background: "none", border: `1px solid ${C.amber}30`,
-                  color: C.amber, fontFamily: mono, fontSize: 10,
-                  padding: "5px", cursor: "not-allowed", opacity: 0.5,
-                }}>
+              <div style={{ background: `${C.amber}06`, border: `1px solid ${C.amber}20`, padding: "10px 12px", marginBottom: 10 }}>
+                <div style={{ fontFamily: mono, fontSize: 9, color: C.amber, marginBottom: 4, letterSpacing: "0.1em" }}>// enterprise</div>
+                <div style={{ fontSize: 11, color: C.muted, lineHeight: 1.5, marginBottom: 8 }}>Connect directly to APIC or Nexus Dashboard — no file upload needed.</div>
+                <button style={{ width: "100%", background: "none", border: `1px solid ${C.amber}30`, color: C.amber, fontFamily: mono, fontSize: 10, padding: "5px", cursor: "not-allowed", opacity: 0.5 }}>
                   🔒 connect_apic() — enterprise
                 </button>
               </div>
-
               <button
                 onClick={() => window.location.href = '/history'}
                 style={{ width: "100%", background: "none", border: `1px solid ${C.border}`, color: C.muted, fontFamily: mono, fontSize: 10, padding: "7px", cursor: "pointer" }}
@@ -1681,26 +1356,15 @@ ${context}${psirtData ? "\n\nPSIRT DATA:\n" + psirtData : ""}`
                       {/* Upload CTA */}
                       <div
                         onClick={() => fileRef.current?.click()}
-                        style={{
-                          border: `1px dashed ${C.amber}40`, padding: "20px 24px",
-                          marginBottom: 24, cursor: "pointer", transition: "all 0.2s",
-                          background: `${C.amber}04`,
-                          display: "flex", alignItems: "center", gap: 16,
-                        }}
+                        style={{ border: `1px dashed ${C.amber}40`, padding: "20px 24px", marginBottom: 24, cursor: "pointer", transition: "all 0.2s", background: `${C.amber}04`, display: "flex", alignItems: "center", gap: 16 }}
                         onMouseEnter={e => e.currentTarget.style.borderColor = `${C.amber}80`}
                         onMouseLeave={e => e.currentTarget.style.borderColor = `${C.amber}40`}
                       >
                         <div style={{ fontSize: 24, color: C.amber }}>↑</div>
                         <div>
-                          <div style={{ fontFamily: mono, fontSize: 12, color: C.amber, marginBottom: 4 }}>
-                            upload_fabric_file()
-                          </div>
-                          <div style={{ fontSize: 13, color: C.muted }}>
-                            Drop a config file, show version output, or CSV inventory. Rincon will parse it and answer questions about your specific fabric.
-                          </div>
-                          <div style={{ fontFamily: mono, fontSize: 10, color: C.faint, marginTop: 6 }}>
-                            .txt .log .csv .conf .cfg .json · max 5MB · drag and drop supported
-                          </div>
+                          <div style={{ fontFamily: mono, fontSize: 12, color: C.amber, marginBottom: 4 }}>upload_fabric_file()</div>
+                          <div style={{ fontSize: 13, color: C.muted }}>Drop a config file, show version output, or CSV inventory. Rincon will parse it and answer questions about your specific fabric.</div>
+                          <div style={{ fontFamily: mono, fontSize: 10, color: C.faint, marginTop: 6 }}>.txt .log .csv .conf .cfg .json · max 5MB · drag and drop supported</div>
                         </div>
                       </div>
 
@@ -1726,13 +1390,7 @@ ${context}${psirtData ? "\n\nPSIRT DATA:\n" + psirtData : ""}`
                     <FabricContextBanner
                       fabricFile={fabricFile}
                       devices={fabricDevices}
-                      onClear={() => {
-                        setFabricContext(null);
-                        setFabricDevices([]);
-                        setFabricFile(null);
-                        setPsirtContext(null);
-                        setPsirtProgress(null);
-                      }}
+                      onClear={() => { setFabricContext(null); setFabricDevices([]); setFabricFile(null); setPsirtContext(null); setPsirtProgress(null); }}
                     />
                   )}
 
@@ -1767,23 +1425,15 @@ ${context}${psirtData ? "\n\nPSIRT DATA:\n" + psirtData : ""}`
               <div style={{ background: C.hi, borderTop: `1px solid ${C.border}`, padding: "14px 24px", flexShrink: 0 }}>
                 <div style={{ maxWidth: 740, margin: "0 auto" }}>
                   <div style={{ background: C.surface, border: `1px solid ${C.border}`, display: "flex", alignItems: "flex-end", gap: 8, padding: "10px 14px" }}>
-
-                    {/* Attach file button */}
                     <button
                       onClick={() => fileRef.current?.click()}
                       disabled={uploading}
                       title="Upload fabric file"
-                      style={{
-                        background: "none", border: "none", color: uploading ? C.amber : C.muted,
-                        cursor: "pointer", padding: "4px", flexShrink: 0, fontSize: 16,
-                        transition: "color 0.15s",
-                      }}
+                      style={{ background: "none", border: "none", color: uploading ? C.amber : C.muted, cursor: "pointer", padding: "4px", flexShrink: 0, fontSize: 16, transition: "color 0.15s" }}
                       onMouseEnter={e => e.currentTarget.style.color = C.amber}
                       onMouseLeave={e => e.currentTarget.style.color = uploading ? C.amber : C.muted}
                     >
-                      {uploading ? (
-                        <span style={{ display: "inline-block", animation: "spin 0.7s linear infinite" }}>⟳</span>
-                      ) : "↑"}
+                      {uploading ? <span style={{ display: "inline-block", animation: "spin 0.7s linear infinite" }}>⟳</span> : "↑"}
                     </button>
 
                     <span style={{ color: C.muted, fontFamily: mono, fontSize: 12, flexShrink: 0, paddingBottom: 2 }}>→</span>
@@ -1796,28 +1446,14 @@ ${context}${psirtData ? "\n\nPSIRT DATA:\n" + psirtData : ""}`
                       placeholder={fabricFile ? `Ask about ${fabricFile.name}…` : "Ask Rincon anything about your Cisco DC fabric…"}
                       disabled={aiTyping}
                       rows={1}
-                      style={{
-                        flex: 1, background: "transparent", border: "none",
-                        outline: "none", color: C.text, fontSize: 14,
-                        fontFamily: sans, resize: "none", lineHeight: 1.5,
-                        maxHeight: 120, overflowY: "auto", caretColor: C.amber,
-                      }}
-                      onInput={e => {
-                        e.target.style.height = "auto";
-                        e.target.style.height = Math.min(e.target.scrollHeight, 120) + "px";
-                      }}
+                      style={{ flex: 1, background: "transparent", border: "none", outline: "none", color: C.text, fontSize: 14, fontFamily: sans, resize: "none", lineHeight: 1.5, maxHeight: 120, overflowY: "auto", caretColor: C.amber }}
+                      onInput={e => { e.target.style.height = "auto"; e.target.style.height = Math.min(e.target.scrollHeight, 120) + "px"; }}
                     />
 
                     <button
                       onClick={() => send()}
                       disabled={!input.trim() || aiTyping}
-                      style={{
-                        width: 36, height: 36, border: "none", flexShrink: 0,
-                        background: input.trim() && !aiTyping ? C.amber : C.muted,
-                        cursor: input.trim() && !aiTyping ? "pointer" : "default",
-                        display: "flex", alignItems: "center", justifyContent: "center",
-                        transition: "background 0.15s",
-                      }}
+                      style={{ width: 36, height: 36, border: "none", flexShrink: 0, background: input.trim() && !aiTyping ? C.amber : C.muted, cursor: input.trim() && !aiTyping ? "pointer" : "default", display: "flex", alignItems: "center", justifyContent: "center", transition: "background 0.15s" }}
                     >
                       <span style={{ color: "#000", fontSize: 15, fontWeight: 700 }}>↑</span>
                     </button>
@@ -1825,20 +1461,15 @@ ${context}${psirtData ? "\n\nPSIRT DATA:\n" + psirtData : ""}`
 
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 6, paddingLeft: 2 }}>
                     <span style={{ fontFamily: mono, fontSize: 10, color: C.muted }}>
-                      {fabricFile
-                        ? `◈ Fabric context: ${fabricFile.name} · ${fabricDevices.length} devices`
-                        : "Rincon · Cisco DC Expert · powered by Claude"
-                      }
+                      {fabricFile ? `◈ Fabric context: ${fabricFile.name} · ${fabricDevices.length} devices` : "Rincon · Cisco DC Expert · powered by Claude"}
                     </span>
-                    <span style={{ fontFamily: mono, fontSize: 10, color: C.muted }}>
-                      ↑ attach file · ↵ send
-                    </span>
-                  </div>    
+                    <span style={{ fontFamily: mono, fontSize: 10, color: C.muted }}>↑ attach file · ↵ send</span>
+                  </div>
                 </div>
               </div>
             </>
           )}
-    </div>
+        </div>
         {/* end chatAreaRef div */}
 
       </div>
