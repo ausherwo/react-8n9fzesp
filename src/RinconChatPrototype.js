@@ -1242,7 +1242,7 @@ export default function RinconChatPrototype() {
         }]);
 
         try {
-          const psirtResult = await queryPSIRTForDevices(
+            psirtResult = await queryPSIRTForDevices(
             devices,
             session,
             (progress) => {
