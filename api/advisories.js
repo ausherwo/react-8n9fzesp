@@ -408,7 +408,7 @@ export default async function handler(req, res) {
   // ─────────────────────────────────────────────
   if (platform && version && !devices) {
     //const platformConfig = getPlatformConfig(platform);
-    const platformConfig = getPlatformConfig(d.platform, d.version, isAciSwitch);
+    const platformConfig = getPlatformConfig(platform, version, isAciSwitch);
 
     if (!platformConfig) {
       return res.status(200).json({
