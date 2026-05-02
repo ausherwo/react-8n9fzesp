@@ -761,6 +761,259 @@ async function queryPSIRTForDevices(devices, session, onProgress) {
   };
 }
 
+function ChatGreeting({ member, greetingData, onAsk, onViewFull }) {
+    const [input, setInput] = useState('');
+    const [chatMsgs, setChatMsgs] = useState([]);
+    const [loading, setLoading] = useState(false);
+    const bottomRef = useRef(null);
+    const apiKey = process.env.REACT_APP_ANTHROPIC_API_KEY;
+  
+    const firstName = member?.name ? member.name.trim().split(' ')[0] : 'there';
+  
+    useEffect(() => {
+      bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }, [chatMsgs, loading]);
+  
+    // Derive top 3 findings from PSIRT results for badge prompts
+    const badges = [];
+    if (greetingData?.psirtResult) {
+      const { results } = greetingData.psirtResult;
+      const withAdvisories = results
+        .filter(r => r.advisoryCount > 0)
+        .sort((a, b) => b.advisoryCount - a.advisoryCount);
+  
+      if (withAdvisories.length > 0) {
+        badges.push({
+          label: 'HIGHEST EXPOSURE',
+          color: C.red,
+          title: withAdvisories[0].device.name,
+          sub: `${withAdvisories[0].advisoryCount} advisories · ${withAdvisories[0].device.role || tierLabel(withAdvisories[0].device.tier)}`,
+          question: `Tell me about the advisories affecting ${withAdvisories[0].device.name} v${withAdvisories[0].device.version}`,
+        });
+      }
+      if (withAdvisories.length > 1) {
+        badges.push({
+          label: 'ALSO AFFECTED',
+          color: C.orange,
+          title: withAdvisories[1].device.name,
+          sub: `${withAdvisories[1].advisoryCount} advisories`,
+          question: `What advisories affect ${withAdvisories[1].device.name} v${withAdvisories[1].device.version}?`,
+        });
+      }
+      const versionMismatch = greetingData.devices?.some((d, _, arr) =>
+        d.tier === 3 && arr.find(s => s.tier === 2 && s.version !== d.version)
+      );
+      if (versionMismatch) {
+        badges.push({
+          label: 'VERSION DRIFT',
+          color: C.yellow,
+          title: 'Spine / leaf mismatch',
+          sub: 'Version inconsistency detected',
+          question: 'Are there version mismatches between my spine and leaf layers?',
+        });
+      } else if (withAdvisories.length === 0) {
+        badges.push({
+          label: 'FABRIC STATUS',
+          color: C.green,
+          title: 'No advisories found',
+          sub: `${greetingData.devices?.length || 0} devices checked`,
+          question: 'Give me a summary of my fabric health',
+        });
+      }
+    }
+  
+    const sendGreetingMessage = async (text) => {
+      if (!text.trim() || loading) return;
+      const userMsg = { role: 'user', content: text };
+      const newMsgs = [...chatMsgs, userMsg];
+      setChatMsgs(newMsgs);
+      setInput('');
+      setLoading(true);
+  
+      try {
+        const systemPrompt = `You are Rincon, an expert Cisco DC network engineer embedded in netwrkr.ai.
+  The engineer has just had their fabric analysed. Answer their questions concisely and directly.
+  Use cautious language for unverified findings. Never say "upgrade immediately" or "critical patch required".
+  Use "priority review recommended" for unverified findings. Cite exact CSC IDs when available from PSIRT data.
+  Keep responses to 4-6 sentences. PSIRT-verified findings can use stronger language.
+  
+  PSIRT DATA:
+  ${greetingData?.psirtContext || 'No PSIRT data available.'}
+  
+  FABRIC INVENTORY:
+  ${greetingData?.fabricContext || 'No fabric data.'}`;
+  
+        const response = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': apiKey,
+            'anthropic-version': '2023-06-01',
+            'anthropic-dangerous-direct-browser-access': 'true',
+          },
+          body: JSON.stringify({
+            model: 'claude-sonnet-4-20250514',
+            max_tokens: 1000,
+            system: systemPrompt,
+            messages: newMsgs.map(m => ({ role: m.role, content: m.content })),
+          }),
+        });
+  
+        const data = await response.json();
+        const reply = data.content?.[0]?.text || 'Unable to retrieve response.';
+        setChatMsgs(prev => [...prev, { role: 'assistant', content: reply }]);
+      } catch {
+        setChatMsgs(prev => [...prev, { role: 'assistant', content: 'Error — please try again.' }]);
+      }
+      setLoading(false);
+    };
+  
+    return (
+      <div style={{
+        flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden',
+        background: C.bg,
+      }}>
+        {/* Scrollable body */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: '40px 24px 16px' }}>
+          <div style={{ maxWidth: 680, margin: '0 auto' }}>
+  
+            {/* Greeting */}
+            <div style={{ marginBottom: 32, animation: 'fadeUp 0.3s ease' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+                <div style={{ width: 26, height: 26, background: C.amber, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <span style={{ color: '#000', fontFamily: mono, fontSize: 13, fontWeight: 700 }}>◈</span>
+                </div>
+                <span style={{ fontFamily: mono, fontSize: 11, color: C.amber }}>Rincon · DC Expert</span>
+              </div>
+              <p style={{ fontSize: 24, fontWeight: 300, color: C.text, letterSpacing: '-0.02em', lineHeight: 1.3, marginBottom: 8 }}>
+                Hey <span style={{ color: C.amber }}>{firstName}</span>, your fabric analysis is ready.
+              </p>
+              <p style={{ fontFamily: mono, fontSize: 12, color: C.muted }}>
+                // {greetingData?.devices?.length || 0} devices queried · what would you like to know?
+              </p>
+            </div>
+  
+            {/* Badges */}
+            {badges.length > 0 && chatMsgs.length === 0 && (
+              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 28, animation: 'fadeUp 0.4s ease' }}>
+                {badges.map((b, i) => (
+                  <button
+                    key={i}
+                    onClick={() => sendGreetingMessage(b.question)}
+                    style={{
+                      background: 'transparent',
+                      border: `1px solid ${C.border}`,
+                      padding: '12px 16px', cursor: 'pointer',
+                      flex: 1, minWidth: 160, textAlign: 'left',
+                      transition: 'border-color 0.15s',
+                    }}
+                    onMouseEnter={e => e.currentTarget.style.borderColor = b.color}
+                    onMouseLeave={e => e.currentTarget.style.borderColor = C.border}
+                  >
+                    <div style={{ fontFamily: mono, fontSize: 9, color: b.color, letterSpacing: '0.1em', marginBottom: 6 }}>
+                      {b.label}
+                    </div>
+                    <div style={{ fontSize: 12, color: C.text, marginBottom: 4, fontWeight: 500 }}>
+                      {b.title}
+                    </div>
+                    <div style={{ fontFamily: mono, fontSize: 10, color: C.muted }}>
+                      {b.sub}
+                    </div>
+                    <div style={{ fontFamily: mono, fontSize: 9, color: C.faint, marginTop: 8 }}>
+                      tap to ask ↗
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+  
+            {/* Chat messages */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              {chatMsgs.map((msg, i) => (
+                <div key={i} style={{
+                  alignSelf: msg.role === 'user' ? 'flex-end' : 'flex-start',
+                  maxWidth: '85%',
+                  background: msg.role === 'user' ? `${C.amber}12` : C.surface,
+                  border: `1px solid ${msg.role === 'user' ? `${C.amber}25` : C.border}`,
+                  borderRadius: msg.role === 'user' ? '12px 2px 12px 12px' : '2px 12px 12px 12px',
+                  padding: '12px 16px',
+                  fontSize: 14, color: C.text, lineHeight: 1.75,
+                  whiteSpace: 'pre-wrap', fontFamily: sans,
+                  animation: 'fadeUp 0.2s ease',
+                }}>
+                  {msg.role === 'assistant' && (
+                    <div style={{ fontFamily: mono, fontSize: 10, color: C.amber, marginBottom: 6 }}>
+                      Rincon · DC Expert
+                    </div>
+                  )}
+                  {msg.content}
+                </div>
+              ))}
+              {loading && (
+                <div style={{
+                  alignSelf: 'flex-start', background: C.surface,
+                  border: `1px solid ${C.border}`, borderRadius: '2px 12px 12px 12px',
+                  padding: '14px 18px',
+                }}>
+                  <div style={{ fontFamily: mono, fontSize: 10, color: C.amber, marginBottom: 8 }}>Rincon · thinking</div>
+                  <TypingDots />
+                </div>
+              )}
+            </div>
+            <div ref={bottomRef} />
+          </div>
+        </div>
+  
+        {/* Input row */}
+        <div style={{ background: C.hi, borderTop: `1px solid ${C.border}`, padding: '14px 24px', flexShrink: 0 }}>
+          <div style={{ maxWidth: 680, margin: '0 auto' }}>
+            <div style={{ background: C.surface, border: `1px solid ${C.border}`, display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px' }}>
+              <span style={{ color: C.muted, fontFamily: mono, fontSize: 12, flexShrink: 0 }}>→</span>
+              <input
+                value={input}
+                onChange={e => setInput(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && sendGreetingMessage(input)}
+                placeholder="Ask anything about your fabric…"
+                style={{
+                  flex: 1, background: 'transparent', border: 'none', outline: 'none',
+                  color: C.text, fontSize: 14, fontFamily: sans, caretColor: C.amber,
+                }}
+              />
+              <button
+                onClick={() => sendGreetingMessage(input)}
+                disabled={!input.trim() || loading}
+                style={{
+                  width: 36, height: 36, border: 'none', flexShrink: 0,
+                  background: input.trim() && !loading ? C.amber : C.muted,
+                  cursor: input.trim() && !loading ? 'pointer' : 'default',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}
+              >
+                <span style={{ color: '#000', fontSize: 15, fontWeight: 700 }}>↑</span>
+              </button>
+              <button
+                onClick={onViewFull}
+                style={{
+                  background: 'transparent', border: `1px solid ${C.border}`,
+                  color: C.muted, fontFamily: mono, fontSize: 10,
+                  padding: '8px 12px', cursor: 'pointer', whiteSpace: 'nowrap',
+                  transition: 'all 0.15s',
+                }}
+                onMouseEnter={e => { e.currentTarget.style.borderColor = `${C.amber}55`; e.currentTarget.style.color = C.amber; }}
+                onMouseLeave={e => { e.currentTarget.style.borderColor = C.border; e.currentTarget.style.color = C.muted; }}
+              >
+                view full analysis →
+              </button>
+            </div>
+            <div style={{ fontFamily: mono, fontSize: 10, color: C.muted, marginTop: 6 }}>
+              ◈ {greetingData?.devices?.length || 0} devices · PSIRT verified · ↵ send · or view full analysis above
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
 export default function RinconChatPrototype() {
   const { member, org, session } = useAuth();
 
@@ -781,6 +1034,8 @@ export default function RinconChatPrototype() {
   const [psirtProgress, setPsirtProgress]   = useState(null); // { total, done, results: [] }
   const [uploading, setUploading]           = useState(false);
   const [dragOver, setDragOver]             = useState(false);
+  const [showChatGreeting, setShowChatGreeting] = useState(false);
+  const [greetingData, setGreetingData]         = useState(null); // { devices, psirtResult }
 
   const bottomRef  = useRef(null);
   const inputRef   = useRef(null);
@@ -1035,13 +1290,13 @@ export default function RinconChatPrototype() {
       }
 
       // Auto-send Rincon's initial assessment — now with PSIRT data
-      await sendWithContext(
-        `Fabric file loaded: ${file.name}`,
-        contextLines,
-        convId,
-        true, // isAutoResponse
-        resolvedPsirtContext
-      );
+      setGreetingData({
+        devices,
+        psirtResult: psirtResult || null,
+        psirtContext: resolvedPsirtContext,
+        fabricContext: contextLines,
+      });
+      setShowChatGreeting(true);
 
       loadConversations();
 
@@ -1391,182 +1646,200 @@ ${context}${psirtData ? "\n\nPSIRT DATA:\n" + psirtData : ""}`
         >
           <DragOverlay visible={dragOver} />
 
-          {/* Messages */}
-          <div style={{ flex: 1, overflowY: "auto", padding: "32px 24px 24px" }}>
-            <div style={{ maxWidth: 740, margin: "0 auto" }}>
-
-              {/* Empty state */}
-              {isEmpty && (
-                <div style={{ animation: "fadeUp 0.4s ease" }}>
-                  <div style={{ marginBottom: 32, paddingTop: 20 }}>
-                    <div style={{ display: "inline-flex", alignItems: "center", gap: 10, background: C.amberG, border: `1px solid ${C.amber}30`, padding: "8px 16px", marginBottom: 24 }}>
-                      <span style={{ color: C.amber, fontSize: 16 }}>◈</span>
-                      <span style={{ fontFamily: mono, fontSize: 11, color: C.amber, letterSpacing: "0.08em" }}>Rincon · DC Expert</span>
-                    </div>
-                    <h1 style={{ fontSize: 28, fontWeight: 300, letterSpacing: "-0.03em", lineHeight: 1.2, marginBottom: 14, color: C.text }}>
-                      What does your fabric<br />
-                      <span style={{ color: C.amber }}>need to know?</span>
-                    </h1>
-                    <p style={{ fontSize: 14, color: C.dim, lineHeight: 1.8, maxWidth: 480 }}>
-                      Ask anything about your Cisco DC fabric, or upload a config file to ground the conversation in your actual inventory.
-                    </p>
-                  </div>
-
-                  {/* Upload CTA */}
-                  <div
-                    onClick={() => fileRef.current?.click()}
-                    style={{
-                      border: `1px dashed ${C.amber}40`, padding: "20px 24px",
-                      marginBottom: 24, cursor: "pointer", transition: "all 0.2s",
-                      background: `${C.amber}04`,
-                      display: "flex", alignItems: "center", gap: 16,
-                    }}
-                    onMouseEnter={e => e.currentTarget.style.borderColor = `${C.amber}80`}
-                    onMouseLeave={e => e.currentTarget.style.borderColor = `${C.amber}40`}
-                  >
-                    <div style={{ fontSize: 24, color: C.amber }}>↑</div>
-                    <div>
-                      <div style={{ fontFamily: mono, fontSize: 12, color: C.amber, marginBottom: 4 }}>
-                        upload_fabric_file()
-                      </div>
-                      <div style={{ fontSize: 13, color: C.muted }}>
-                        Drop a config file, show version output, or CSV inventory. Rincon will parse it and answer questions about your specific fabric.
-                      </div>
-                      <div style={{ fontFamily: mono, fontSize: 10, color: C.faint, marginTop: 6 }}>
-                        .txt .log .csv .conf .cfg .json · max 5MB · drag and drop supported
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Capability cards */}
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 24 }}>
-                    {[
-                      ["↑", "Upgrade sequencing", "Safe order for your fabric tier by tier"],
-                      ["⚠", "Bug research", "Known issues for your platform + version"],
-                      ["⟳", "Version compatibility", "APIC ↔ leaf ↔ spine alignment"],
-                    ].map(([icon, title, desc]) => (
-                      <div key={title} style={{ background: C.surface, border: `1px solid ${C.border}`, padding: "14px 16px" }}>
-                        <div style={{ fontFamily: mono, fontSize: 16, color: C.amber, marginBottom: 8 }}>{icon}</div>
-                        <div style={{ fontSize: 13, fontWeight: 500, color: C.text, marginBottom: 4 }}>{title}</div>
-                        <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.5 }}>{desc}</div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Fabric context banner */}
-              {fabricFile && (
-                <FabricContextBanner
-                  fabricFile={fabricFile}
-                  devices={fabricDevices}
-                  onClear={() => { setFabricContext(null); setFabricDevices([]); setFabricFile(null); setPsirtContext(null); setPsirtProgress(null); }}
-                />
-              )}
-
-              {/* Messages */}
-              {messages.map(msg => (
-                <MessageBubble key={msg.id} msg={msg} member={member} />
-              ))}
-
-              {aiTyping && (
-                <div style={{ display: "flex", gap: 14, marginTop: 20 }}>
-                  <RinconAvatar />
-                  <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: "2px 12px 12px 12px", padding: "14px 18px" }}>
-                    <div style={{ fontFamily: mono, fontSize: 11, color: C.amber, marginBottom: 8 }}>Rincon · thinking</div>
-                    <TypingDots />
-                  </div>
-                </div>
-              )}
-
-              <div ref={bottomRef} />
-            </div>
-          </div>
-
-          {/* Suggestion chips — empty state only */}
-          {isEmpty && (
-            <SuggestionChips
-              onSelect={s => { setInput(s); inputRef.current?.focus(); }}
-              onUpload={() => fileRef.current?.click()}
+          {showChatGreeting ? (
+            <ChatGreeting
+              member={member}
+              greetingData={greetingData}
+              onViewFull={() => setShowChatGreeting(false)}
             />
-          )}
+          ) : (
+            <>
+              {/* Messages */}
+              <div style={{ flex: 1, overflowY: "auto", padding: "32px 24px 24px" }}>
+                <div style={{ maxWidth: 740, margin: "0 auto" }}>
 
-          {/* ── INPUT BAR ── */}
-          <div style={{ background: C.hi, borderTop: `1px solid ${C.border}`, padding: "14px 24px", flexShrink: 0 }}>
-            <div style={{ maxWidth: 740, margin: "0 auto" }}>
-              <div style={{ background: C.surface, border: `1px solid ${C.border}`, display: "flex", alignItems: "flex-end", gap: 8, padding: "10px 14px" }}>
+                  {/* Empty state */}
+                  {isEmpty && (
+                    <div style={{ animation: "fadeUp 0.4s ease" }}>
+                      <div style={{ marginBottom: 32, paddingTop: 20 }}>
+                        <div style={{ display: "inline-flex", alignItems: "center", gap: 10, background: C.amberG, border: `1px solid ${C.amber}30`, padding: "8px 16px", marginBottom: 24 }}>
+                          <span style={{ color: C.amber, fontSize: 16 }}>◈</span>
+                          <span style={{ fontFamily: mono, fontSize: 11, color: C.amber, letterSpacing: "0.08em" }}>Rincon · DC Expert</span>
+                        </div>
+                        <h1 style={{ fontSize: 28, fontWeight: 300, letterSpacing: "-0.03em", lineHeight: 1.2, marginBottom: 14, color: C.text }}>
+                          What does your fabric<br />
+                          <span style={{ color: C.amber }}>need to know?</span>
+                        </h1>
+                        <p style={{ fontSize: 14, color: C.dim, lineHeight: 1.8, maxWidth: 480 }}>
+                          Ask anything about your Cisco DC fabric, or upload a config file to ground the conversation in your actual inventory.
+                        </p>
+                      </div>
 
-                {/* Attach file button */}
-                <button
-                  onClick={() => fileRef.current?.click()}
-                  disabled={uploading}
-                  title="Upload fabric file"
-                  style={{
-                    background: "none", border: "none", color: uploading ? C.amber : C.muted,
-                    cursor: "pointer", padding: "4px", flexShrink: 0, fontSize: 16,
-                    transition: "color 0.15s",
-                  }}
-                  onMouseEnter={e => e.currentTarget.style.color = C.amber}
-                  onMouseLeave={e => e.currentTarget.style.color = uploading ? C.amber : C.muted}
-                >
-                  {uploading ? (
-                    <span style={{ display: "inline-block", animation: "spin 0.7s linear infinite" }}>⟳</span>
-                  ) : "↑"}
-                </button>
+                      {/* Upload CTA */}
+                      <div
+                        onClick={() => fileRef.current?.click()}
+                        style={{
+                          border: `1px dashed ${C.amber}40`, padding: "20px 24px",
+                          marginBottom: 24, cursor: "pointer", transition: "all 0.2s",
+                          background: `${C.amber}04`,
+                          display: "flex", alignItems: "center", gap: 16,
+                        }}
+                        onMouseEnter={e => e.currentTarget.style.borderColor = `${C.amber}80`}
+                        onMouseLeave={e => e.currentTarget.style.borderColor = `${C.amber}40`}
+                      >
+                        <div style={{ fontSize: 24, color: C.amber }}>↑</div>
+                        <div>
+                          <div style={{ fontFamily: mono, fontSize: 12, color: C.amber, marginBottom: 4 }}>
+                            upload_fabric_file()
+                          </div>
+                          <div style={{ fontSize: 13, color: C.muted }}>
+                            Drop a config file, show version output, or CSV inventory. Rincon will parse it and answer questions about your specific fabric.
+                          </div>
+                          <div style={{ fontFamily: mono, fontSize: 10, color: C.faint, marginTop: 6 }}>
+                            .txt .log .csv .conf .cfg .json · max 5MB · drag and drop supported
+                          </div>
+                        </div>
+                      </div>
 
-                <span style={{ color: C.muted, fontFamily: mono, fontSize: 12, flexShrink: 0, paddingBottom: 2 }}>→</span>
+                      {/* Capability cards */}
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 24 }}>
+                        {[
+                          ["↑", "Upgrade sequencing", "Safe order for your fabric tier by tier"],
+                          ["⚠", "Bug research", "Known issues for your platform + version"],
+                          ["⟳", "Version compatibility", "APIC ↔ leaf ↔ spine alignment"],
+                        ].map(([icon, title, desc]) => (
+                          <div key={title} style={{ background: C.surface, border: `1px solid ${C.border}`, padding: "14px 16px" }}>
+                            <div style={{ fontFamily: mono, fontSize: 16, color: C.amber, marginBottom: 8 }}>{icon}</div>
+                            <div style={{ fontSize: 13, fontWeight: 500, color: C.text, marginBottom: 4 }}>{title}</div>
+                            <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.5 }}>{desc}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
 
-                <textarea
-                  ref={inputRef}
-                  value={input}
-                  onChange={e => setInput(e.target.value)}
-                  onKeyDown={handleKey}
-                  placeholder={fabricFile ? `Ask about ${fabricFile.name}…` : "Ask Rincon anything about your Cisco DC fabric…"}
-                  disabled={aiTyping}
-                  rows={1}
-                  style={{
-                    flex: 1, background: "transparent", border: "none",
-                    outline: "none", color: C.text, fontSize: 14,
-                    fontFamily: sans, resize: "none", lineHeight: 1.5,
-                    maxHeight: 120, overflowY: "auto", caretColor: C.amber,
-                  }}
-                  onInput={e => {
-                    e.target.style.height = "auto";
-                    e.target.style.height = Math.min(e.target.scrollHeight, 120) + "px";
-                  }}
+                  {/* Fabric context banner */}
+                  {fabricFile && (
+                    <FabricContextBanner
+                      fabricFile={fabricFile}
+                      devices={fabricDevices}
+                      onClear={() => {
+                        setFabricContext(null);
+                        setFabricDevices([]);
+                        setFabricFile(null);
+                        setPsirtContext(null);
+                        setPsirtProgress(null);
+                      }}
+                    />
+                  )}
+
+                  {/* Messages */}
+                  {messages.map(msg => (
+                    <MessageBubble key={msg.id} msg={msg} member={member} />
+                  ))}
+
+                  {aiTyping && (
+                    <div style={{ display: "flex", gap: 14, marginTop: 20 }}>
+                      <RinconAvatar />
+                      <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: "2px 12px 12px 12px", padding: "14px 18px" }}>
+                        <div style={{ fontFamily: mono, fontSize: 11, color: C.amber, marginBottom: 8 }}>Rincon · thinking</div>
+                        <TypingDots />
+                      </div>
+                    </div>
+                  )}
+
+                  <div ref={bottomRef} />
+                </div>
+              </div>
+
+              {/* Suggestion chips — empty state only */}
+              {isEmpty && (
+                <SuggestionChips
+                  onSelect={s => { setInput(s); inputRef.current?.focus(); }}
+                  onUpload={() => fileRef.current?.click()}
                 />
+              )}
 
-                <button
-                  onClick={() => send()}
-                  disabled={!input.trim() || aiTyping}
-                  style={{
-                    width: 36, height: 36, border: "none", flexShrink: 0,
-                    background: input.trim() && !aiTyping ? C.amber : C.muted,
-                    cursor: input.trim() && !aiTyping ? "pointer" : "default",
-                    display: "flex", alignItems: "center", justifyContent: "center",
-                    transition: "background 0.15s",
-                  }}
-                >
-                  <span style={{ color: "#000", fontSize: 15, fontWeight: 700 }}>↑</span>
-                </button>
+              {/* ── INPUT BAR ── */}
+              <div style={{ background: C.hi, borderTop: `1px solid ${C.border}`, padding: "14px 24px", flexShrink: 0 }}>
+                <div style={{ maxWidth: 740, margin: "0 auto" }}>
+                  <div style={{ background: C.surface, border: `1px solid ${C.border}`, display: "flex", alignItems: "flex-end", gap: 8, padding: "10px 14px" }}>
+
+                    {/* Attach file button */}
+                    <button
+                      onClick={() => fileRef.current?.click()}
+                      disabled={uploading}
+                      title="Upload fabric file"
+                      style={{
+                        background: "none", border: "none", color: uploading ? C.amber : C.muted,
+                        cursor: "pointer", padding: "4px", flexShrink: 0, fontSize: 16,
+                        transition: "color 0.15s",
+                      }}
+                      onMouseEnter={e => e.currentTarget.style.color = C.amber}
+                      onMouseLeave={e => e.currentTarget.style.color = uploading ? C.amber : C.muted}
+                    >
+                      {uploading ? (
+                        <span style={{ display: "inline-block", animation: "spin 0.7s linear infinite" }}>⟳</span>
+                      ) : "↑"}
+                    </button>
+
+                    <span style={{ color: C.muted, fontFamily: mono, fontSize: 12, flexShrink: 0, paddingBottom: 2 }}>→</span>
+
+                    <textarea
+                      ref={inputRef}
+                      value={input}
+                      onChange={e => setInput(e.target.value)}
+                      onKeyDown={handleKey}
+                      placeholder={fabricFile ? `Ask about ${fabricFile.name}…` : "Ask Rincon anything about your Cisco DC fabric…"}
+                      disabled={aiTyping}
+                      rows={1}
+                      style={{
+                        flex: 1, background: "transparent", border: "none",
+                        outline: "none", color: C.text, fontSize: 14,
+                        fontFamily: sans, resize: "none", lineHeight: 1.5,
+                        maxHeight: 120, overflowY: "auto", caretColor: C.amber,
+                      }}
+                      onInput={e => {
+                        e.target.style.height = "auto";
+                        e.target.style.height = Math.min(e.target.scrollHeight, 120) + "px";
+                      }}
+                    />
+
+                    <button
+                      onClick={() => send()}
+                      disabled={!input.trim() || aiTyping}
+                      style={{
+                        width: 36, height: 36, border: "none", flexShrink: 0,
+                        background: input.trim() && !aiTyping ? C.amber : C.muted,
+                        cursor: input.trim() && !aiTyping ? "pointer" : "default",
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        transition: "background 0.15s",
+                      }}
+                    >
+                      <span style={{ color: "#000", fontSize: 15, fontWeight: 700 }}>↑</span>
+                    </button>
+                  </div>
+
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 6, paddingLeft: 2 }}>
+                    <span style={{ fontFamily: mono, fontSize: 10, color: C.muted }}>
+                      {fabricFile
+                        ? `◈ Fabric context: ${fabricFile.name} · ${fabricDevices.length} devices`
+                        : "Rincon · Cisco DC Expert · powered by Claude"
+                      }
+                    </span>
+                    <span style={{ fontFamily: mono, fontSize: 10, color: C.muted }}>
+                      ↑ attach file · ↵ send
+                    </span>
+                  </div>    
+                </div>
               </div>
+            </>
+          )}
+    </div>
+        {/* end chatAreaRef div */}
 
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 6, paddingLeft: 2 }}>
-                <span style={{ fontFamily: mono, fontSize: 10, color: C.muted }}>
-                  {fabricFile
-                    ? `◈ Fabric context: ${fabricFile.name} · ${fabricDevices.length} devices`
-                    : "Rincon · Cisco DC Expert · powered by Claude"
-                  }
-                </span>
-                <span style={{ fontFamily: mono, fontSize: 10, color: C.muted }}>
-                  ↑ attach file · ↵ send
-                </span>
-              </div>
-            </div>
-          </div>
-
-        </div>
       </div>
+      {/* end main layout div */}
 
       {/* Hidden file input */}
       <input
