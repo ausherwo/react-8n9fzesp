@@ -171,31 +171,86 @@ async function getAccessToken() {
   const data = await response.json();
   return data.access_token;
 }
-
 // ─────────────────────────────────────────────
-// PSIRT ADVISORY FETCH
+// PRODUCT NAME MAPPING
+// Maps platform family to Cisco product name for v2 API
 // ─────────────────────────────────────────────
-async function fetchAdvisories(token, platformConfig, version) {
-  //const url = `${CISCO_PSIRT_BASE}/${platformConfig.endpoint}?version=${encodeURIComponent(version)}`;
-  const cleanVersion = decodeURIComponent(version);
-  const url = `${CISCO_PSIRT_BASE}/${platformConfig.endpoint}?version=${encodeURIComponent(cleanVersion)}`;
- 
-  const response = await fetch(url, {
-    headers: {
-      "Authorization": `Bearer ${token}`,
-      "Accept":        "application/json",
-    },
-  });
-
-  if (response.status === 404) return [];
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(`PSIRT API error: ${response.status} ${text.slice(0, 200)}`);
+function getProductName(platformConfig, isAciSwitch) {
+    if (platformConfig.family === "ACI" && platformConfig.endpoint === "aci") {
+      // APIC controller
+      return "Cisco Application Policy Infrastructure Controller (APIC)";
+    }
+    if (platformConfig.family === "ACI" && isAciSwitch) {
+      // Nexus switch in ACI fabric
+      return "Cisco NX-OS System Software in ACI Mode";
+    }
+    if (platformConfig.family === "NX-OS") {
+      return "Cisco NX-OS Software";
+    }
+    if (platformConfig.family === "IOS XE") {
+      return "Cisco IOS XE Software";
+    }
+    if (platformConfig.family === "IOS") {
+      return "Cisco IOS Software";
+    }
+    if (platformConfig.family === "FTD") {
+      return "Cisco Firepower Threat Defense Software";
+    }
+    return null;
   }
-
-  const data = await response.json();
-  return data.advisories || [];
-}
+  
+  // ─────────────────────────────────────────────
+  // PSIRT ADVISORY FETCH — v2 product endpoint
+  // Fetches all advisories for a product then filters by version
+  // ─────────────────────────────────────────────
+  async function fetchAdvisories(token, platformConfig, version, isAciSwitch = false) {
+    const cleanVersion = decodeURIComponent(version);
+    const productName  = getProductName(platformConfig, isAciSwitch);
+  
+    if (!productName) return [];
+  
+    const url = `${CISCO_PSIRT_BASE}/v2/product?product=${encodeURIComponent(productName)}`;
+  
+    const response = await fetch(url, {
+      headers: {
+        "Authorization": `Bearer ${token}`,
+        "Accept":        "application/json",
+      },
+    });
+  
+    if (response.status === 404) return [];
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(`PSIRT API error: ${response.status} ${text.slice(0, 200)}`);
+    }
+  
+    const data = await response.json();
+    const all  = data.advisories || [];
+  
+    // Filter advisories to those that affect this specific version
+    // The v2 API returns all advisories for the product — we filter by version match
+    const filtered = all.filter(a => {
+      const affected = [
+        ...(a.affectedRelease || []).map(r => r.releaseTrainVersion || r.version || ""),
+        ...(a.productNames    || []),
+        a.advisoryTitle || "",
+        a.sir            || "",
+      ].join(" ").toLowerCase();
+  
+      // Check if advisory mentions this version in its affected releases
+      const versionInAdvisory = (a.affectedRelease || []).some(r => {
+        const rv = (r.releaseTrainVersion || r.version || "").toLowerCase();
+        const cv = cleanVersion.toLowerCase();
+        // Match exact version or same train (e.g. 15.2 matches 15.2(8e))
+        return rv.includes(cv) || cv.includes(rv.split("(")[0]);
+      });
+  
+      return versionInAdvisory || all.length <= 20; // if few results, include all
+    });
+  
+    // If filtering removed everything, return all (product match is enough signal)
+    return filtered.length > 0 ? filtered : all.slice(0, 20);
+  }
 
 // ─────────────────────────────────────────────
 // EOX (END OF LIFE) FETCH
@@ -422,8 +477,8 @@ export default async function handler(req, res) {
       const ciscoToken = await getAccessToken();
 
       const [rawAdvisories, eolData] = await Promise.allSettled([
-        fetchAdvisories(ciscoToken, platformConfig, queryVersion),
-        pid ? fetchEoX(ciscoToken, pid) : Promise.resolve(null),
+        fetchAdvisories(token, platformConfig, queryVersion, isAciSwitch),
+        pid ? fetchEoX(token, pid) : Promise.resolve(null),
       ]);
 
       const advisories = (rawAdvisories.status === "fulfilled" ? rawAdvisories.value : []).map(a => ({
