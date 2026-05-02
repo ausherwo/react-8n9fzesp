@@ -1230,7 +1230,7 @@ export default function RinconChatPrototype() {
       // Show live per-device progress indicator in chat
       const devicesWithVersions = devices.filter(d => d.version && d.version.trim());
       let resolvedPsirtContext = null;
-
+      let psirtResult = null;
       if (devicesWithVersions.length > 0) {
         // Add progress card to chat
         const psirtCardId = `psirt-${Date.now()}`;
