@@ -209,7 +209,8 @@ function getProductName(platformConfig, isAciSwitch) {
   
     if (!productName) return [];
   
-    const url = `${CISCO_PSIRT_BASE}/v2/product?product=${encodeURIComponent(productName)}`;
+    // ✅ Fix — let the API filter by version server-side
+    const url = `${CISCO_PSIRT_BASE}/v2/product?product=${encodeURIComponent(productName)}&version=${encodeURIComponent(cleanVersion)}`; 
   
     const response = await fetch(url, {
       headers: {
@@ -477,8 +478,8 @@ export default async function handler(req, res) {
       const ciscoToken = await getAccessToken();
 
       const [rawAdvisories, eolData] = await Promise.allSettled([
-        fetchAdvisories(token, platformConfig, queryVersion, isAciSwitch),
-        pid ? fetchEoX(token, pid) : Promise.resolve(null),
+        fetchAdvisories(ciscoToken, platformConfig, queryVersion, isAciSwitch),
+        pid ? fetchEoX(ciscoToken, pid) : Promise.resolve(null),
       ]);
 
       const advisories = (rawAdvisories.status === "fulfilled" ? rawAdvisories.value : []).map(a => ({
