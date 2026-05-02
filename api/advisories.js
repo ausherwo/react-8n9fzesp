@@ -91,21 +91,68 @@ function mapApicVersionToNxos(apicVersion) {
 // PLATFORM CONFIG
 // Maps platform name to { family, endpoint } for PSIRT API routing
 // ─────────────────────────────────────────────
-function getPlatformConfig(platformName) {
-  if (!platformName) return null;
-  const upper = platformName.toUpperCase();
-
-  if (upper.includes("APIC"))                                              return { family: "ACI",    endpoint: "aci"   };
-  if (upper.includes("NEXUS 9") || upper.includes("NEXUS 7") ||
-      upper.includes("NEXUS 5") || upper.includes("NEXUS 3") ||
-      upper.includes("MDS"))                                               return { family: "NX-OS",  endpoint: "nxos"  };
-  if (upper.includes("CATALYST 9") || upper.includes("ASR") ||
-      upper.includes("ISR"))                                               return { family: "IOS XE", endpoint: "iosxe" };
-  if (upper.includes("CATALYST 6"))                                        return { family: "IOS",    endpoint: "ios"   };
-  if (upper.includes("FIREPOWER") || upper.includes("FTD"))               return { family: "FTD",    endpoint: "ftd"   };
-
-  return null;
-}
+function getPlatformConfig(platformName, version = "", isAciSwitch = false) {
+    if (!platformName) return null;
+    const upper = platformName.toUpperCase();
+  
+    // ── APIC — always ACI endpoint
+    if (upper.includes("APIC")) {
+      return { family: "ACI", endpoint: "aci" };
+    }
+  
+    // ── Nexus 9000 series only — version-based ACI vs NX-OS detection
+    const isNexus9k = (
+      upper.includes("NEXUS 9") ||
+      upper.includes("N9K-") ||
+      upper.includes("N9K ") ||
+      /^N9[0-9]{2,}/.test(upper)
+    );
+  
+    if (isNexus9k) {
+      const majorVersion = parseInt((version || "").match(/^(\d+)/)?.[1] || "0", 10);
+  
+      // ACI versioning: controller 4.x–9.x maps to switch 14.x–19.x
+      // If version is in ACI switch range (14–19) or ACI controller range (4–9)
+      // AND isAciSwitch flag is set → use aci endpoint
+      const isAciVersion = (majorVersion >= 4 && majorVersion <= 9)   // ACI controller version
+                        || (majorVersion >= 14 && majorVersion <= 19); // ACI NX-OS switch version
+  
+      if (isAciSwitch && isAciVersion) {
+        return { family: "ACI", endpoint: "aci" };
+      }
+  
+      // Standalone NX-OS — 7.x, 8.x, 9.x, 10.x without ACI flag
+      // or any version where isAciSwitch is false
+      return { family: "NX-OS", endpoint: "nxos" };
+    }
+  
+    // ── Non-9k Nexus — always standalone NX-OS
+    if (
+      upper.includes("NEXUS 7") || upper.includes("N7K") ||
+      upper.includes("NEXUS 5") || upper.includes("N5K") ||
+      upper.includes("NEXUS 3") || upper.includes("N3K") ||
+      upper.includes("MDS")
+    ) {
+      return { family: "NX-OS", endpoint: "nxos" };
+    }
+  
+    // ── IOS XE
+    if (upper.includes("CATALYST 9") || upper.includes("ASR") || upper.includes("ISR")) {
+      return { family: "IOS XE", endpoint: "iosxe" };
+    }
+  
+    // ── Classic IOS
+    if (upper.includes("CATALYST 6")) {
+      return { family: "IOS", endpoint: "ios" };
+    }
+  
+    // ── Firepower / FTD
+    if (upper.includes("FIREPOWER") || upper.includes("FTD")) {
+      return { family: "FTD", endpoint: "ftd" };
+    }
+  
+    return null;
+  }
 
 // ─────────────────────────────────────────────
 // OAUTH TOKEN — Cisco API
@@ -360,7 +407,8 @@ export default async function handler(req, res) {
   // Used for per-device intel enrichment after fabric analysis
   // ─────────────────────────────────────────────
   if (platform && version && !devices) {
-    const platformConfig = getPlatformConfig(platform);
+    //const platformConfig = getPlatformConfig(platform);
+    const platformConfig = getPlatformConfig(d.platform, d.version, isAciSwitch);
 
     if (!platformConfig) {
       return res.status(200).json({
