@@ -1585,7 +1585,10 @@ ${context}${psirtData ? "\n\nPSIRT DATA:\n" + psirtData : ""}`
                         With fabric context
                       </div>
                       {conversations.filter(c => c.has_fabric).map(conv => (
-                        <ConversationItem key={conv.id} conv={conv} active={conv.id === activeConvId} onClick={() => setActiveConvId(conv.id)} />
+                        <ConversationItem key={conv.id} conv={conv} active={conv.id === activeConvId} onClick={() => { 
+  console.log('sidebar click:', conv.id); 
+  setActiveConvId(conv.id); 
+}} />
                       ))}
                     </>
                   )}
