@@ -58,32 +58,19 @@ function normaliseToPID(platformName) {
 function mapApicVersionToNxos(apicVersion) {
     if (!apicVersion) return null;
   
-    // Match versions like 6.1(5e), 16.1(5e), 5.2(8e), 15.2(8e)
-    const match = apicVersion.match(/^(\d+)([\.\(].+)$/);
+    // Decode in case version arrived URL-encoded
+    const decoded = decodeURIComponent(apicVersion);
+  
+    const match = decoded.match(/^(\d+)([\.\(].+)$/);
     if (!match) return null;
   
     const major = parseInt(match[1], 10);
     const rest  = match[2];
   
-    // Validate major version is in a sensible range
-    // ACI releases: 4.x, 5.x, 6.x, 7.x (controller versions)
-    // NX-OS ACI:   14.x, 15.x, 16.x, 17.x (switch versions = ACI major + 10)
-    // NX-OS standalone: 7.x, 8.x, 9.x, 10.x (not ACI-managed)
+    if (major >= 10 && major <= 19) return decoded;
+    if (major >= 4  && major <= 9)  return `${major + 10}${rest}`;
   
-    if (major >= 10 && major <= 19) {
-      // Already a valid NX-OS ACI version (14.x–19.x) — return as-is
-      // This handles the case where the switch version was explicitly provided
-      return apicVersion;
-    }
-  
-    if (major >= 4 && major <= 9) {
-      // Valid ACI controller version — add 10 to get NX-OS version
-      return `${major + 10}${rest}`;
-    }
-  
-    // Outside expected range — log and return null so the caller
-    // can skip the PSIRT query rather than sending a garbage version
-    console.warn(`mapApicVersionToNxos: unexpected major version ${major} in "${apicVersion}" — skipping remap`);
+    console.warn(`mapApicVersionToNxos: unexpected major version ${major} in "${decoded}"`);
     return null;
   }
 
@@ -189,8 +176,10 @@ async function getAccessToken() {
 // PSIRT ADVISORY FETCH
 // ─────────────────────────────────────────────
 async function fetchAdvisories(token, platformConfig, version) {
-  const url = `${CISCO_PSIRT_BASE}/${platformConfig.endpoint}?version=${encodeURIComponent(version)}`;
-
+  //const url = `${CISCO_PSIRT_BASE}/${platformConfig.endpoint}?version=${encodeURIComponent(version)}`;
+  const cleanVersion = decodeURIComponent(version);
+  const url = `${CISCO_PSIRT_BASE}/${platformConfig.endpoint}?version=${encodeURIComponent(cleanVersion)}`;
+ 
   const response = await fetch(url, {
     headers: {
       "Authorization": `Bearer ${token}`,
@@ -398,10 +387,12 @@ export default async function handler(req, res) {
     sourceFileId = null,
     // Mode B — single device PSIRT/EoX lookup
     platform,
-    version,
+    version: rawVersion,
     isAciSwitch = false,
   } = req.body;
 
+  // Decode in case version was URL-encoded before sending
+  const version = rawVersion ? decodeURIComponent(rawVersion) : rawVersion;
   // ─────────────────────────────────────────────
   // MODE B — Single device PSIRT + EoX lookup
   // Used for per-device intel enrichment after fabric analysis
