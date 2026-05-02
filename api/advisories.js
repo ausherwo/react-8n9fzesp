@@ -56,13 +56,36 @@ function normaliseToPID(platformName) {
 // ACI-managed switches run NX-OS with major version + 10 (e.g. 16.1(5e))
 // ─────────────────────────────────────────────
 function mapApicVersionToNxos(apicVersion) {
-  if (!apicVersion) return null;
-  const match = apicVersion.match(/^(\d+)([\.\(].+)$/);
-  if (!match) return null;
-  const major = parseInt(match[1], 10);
-  const rest  = match[2];
-  return `${major + 10}${rest}`;
-}
+    if (!apicVersion) return null;
+  
+    // Match versions like 6.1(5e), 16.1(5e), 5.2(8e), 15.2(8e)
+    const match = apicVersion.match(/^(\d+)([\.\(].+)$/);
+    if (!match) return null;
+  
+    const major = parseInt(match[1], 10);
+    const rest  = match[2];
+  
+    // Validate major version is in a sensible range
+    // ACI releases: 4.x, 5.x, 6.x, 7.x (controller versions)
+    // NX-OS ACI:   14.x, 15.x, 16.x, 17.x (switch versions = ACI major + 10)
+    // NX-OS standalone: 7.x, 8.x, 9.x, 10.x (not ACI-managed)
+  
+    if (major >= 10 && major <= 19) {
+      // Already a valid NX-OS ACI version (14.x–19.x) — return as-is
+      // This handles the case where the switch version was explicitly provided
+      return apicVersion;
+    }
+  
+    if (major >= 4 && major <= 9) {
+      // Valid ACI controller version — add 10 to get NX-OS version
+      return `${major + 10}${rest}`;
+    }
+  
+    // Outside expected range — log and return null so the caller
+    // can skip the PSIRT query rather than sending a garbage version
+    console.warn(`mapApicVersionToNxos: unexpected major version ${major} in "${apicVersion}" — skipping remap`);
+    return null;
+  }
 
 // ─────────────────────────────────────────────
 // PLATFORM CONFIG
