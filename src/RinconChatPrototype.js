@@ -902,7 +902,15 @@ export default function RinconChatPrototype() {
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages, aiTyping]);
   useEffect(() => { if (session) loadConversations(); }, [session]);
-  useEffect(() => { if (activeConvId) loadMessages(activeConvId); else setMessages([]); }, [activeConvId]);
+  useEffect(() => {
+    if (activeConvId) {
+      setShowChatGreeting(false);
+      setGreetingData(null);
+      loadMessages(activeConvId);
+    } else {
+      setMessages([]);
+    }
+  }, [activeConvId]);
 
   // ─────────────────────────────────────────────
   // SUPABASE HELPERS
