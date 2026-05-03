@@ -635,7 +635,7 @@ async function queryPSIRTForDevices(devices, session, onProgress) {
 // CHAT GREETING SCREEN
 // Shown after PSIRT completes — before full chat
 // ─────────────────────────────────────────────
-function ChatGreeting({ member, greetingData, onViewFull }) {
+function ChatGreeting({ member, greetingData, convId, saveMessage, onViewFull }) {
   const [input, setInput] = useState('');
   const [chatMsgs, setChatMsgs] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -704,6 +704,10 @@ function ChatGreeting({ member, greetingData, onViewFull }) {
     setInput('');
     setLoading(true);
 
+    if (convId && saveMessage) {
+        await saveMessage(convId, 'user', text);
+    }
+
     try {
       const systemPrompt = `You are Rincon, an expert Cisco DC network engineer embedded in netwrkr.ai.
 The engineer has just had their fabric analysed. Answer their questions concisely and directly.
@@ -736,6 +740,10 @@ ${greetingData?.fabricContext || 'No fabric data.'}`;
       const data = await response.json();
       const reply = data.content?.[0]?.text || 'Unable to retrieve response.';
       setChatMsgs(prev => [...prev, { role: 'assistant', content: reply }]);
+      
+      if (convId && saveMessage) {
+        await saveMessage(convId, 'assistant', reply);
+      }
     } catch {
       setChatMsgs(prev => [...prev, { role: 'assistant', content: 'Error — please try again.' }]);
     }
@@ -1334,9 +1342,11 @@ export default function RinconChatPrototype() {
 
           {showChatGreeting ? (
             <ChatGreeting
-              member={member}
-              greetingData={greetingData}
-              onViewFull={() => setShowChatGreeting(false)}
+                member={member}
+                greetingData={greetingData}
+                convId={activeConvId}
+                saveMessage={saveMessage}
+                onViewFull={() => setShowChatGreeting(false)}
             />
           ) : (
             <>
