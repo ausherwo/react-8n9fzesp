@@ -1,6 +1,3 @@
-// App.js
-// v3.0 — unified routing: public marketing + free analysis + authenticated dashboard
-// Route map:
 //   /                → Home (public marketing) — redirects to /app if authenticated
 //   /analyse         → AnalysisApp (public free tier)
 //   /app             → RinconChatPrototype (authenticated dashboard)
