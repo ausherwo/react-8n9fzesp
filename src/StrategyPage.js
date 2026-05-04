@@ -1,5 +1,5 @@
 // StrategyPage.js
-// v1.0 — internal strategy document, password protected
+// v1.1 — updated with product code names
 // Route: /strategy
 
 import { useState } from "react";
@@ -14,11 +14,13 @@ const C = {
 
 const mono = "JetBrains Mono, Fira Code, monospace";
 const sans = "'DM Sans', system-ui, sans-serif";
+
 const PASSWORD = "aiisthefutureman!";
 
 function Lock({ onUnlock }) {
   const [val, setVal] = useState("");
   const [err, setErr] = useState(false);
+
   const attempt = () => {
     if (val === PASSWORD) {
       onUnlock();
@@ -28,6 +30,7 @@ function Lock({ onUnlock }) {
       setTimeout(() => setErr(false), 2000);
     }
   };
+
   return (
     <div style={{ background: C.bg, minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: mono, color: C.text }}>
       <div style={{ width: 380, background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10, padding: "36px 40px" }}>
@@ -91,17 +94,19 @@ function Bullet({ children, color = C.amber }) {
   );
 }
 
-function StageCard({ num, timing, status, title, desc, bullets, statusColor }) {
+function StageCard({ codename, location, num, timing, status, title, desc, bullets, statusColor }) {
   return (
     <div style={{ background: C.surface, border: `1px solid ${statusColor}44`, borderRadius: 10, padding: "20px 22px" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
-        <div style={{ width: 32, height: 32, borderRadius: "50%", background: statusColor + "22", border: `1px solid ${statusColor}`, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: mono, fontSize: 14, fontWeight: 700, color: statusColor, flexShrink: 0 }}>{num}</div>
-        <div>
-          <div style={{ fontFamily: mono, fontSize: 9, color: C.muted, letterSpacing: "0.12em", textTransform: "uppercase" }}>{timing}</div>
+      <div style={{ marginBottom: 14 }}>
+        <div style={{ fontFamily: mono, fontSize: 22, fontWeight: 700, color: statusColor, letterSpacing: "0.04em", marginBottom: 2 }}>{codename}</div>
+        <div style={{ fontFamily: mono, fontSize: 10, color: C.muted, letterSpacing: "0.1em", marginBottom: 8 }}>{location}</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={{ width: 24, height: 24, borderRadius: "50%", background: statusColor + "22", border: `1px solid ${statusColor}`, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: mono, fontSize: 11, fontWeight: 700, color: statusColor, flexShrink: 0 }}>{num}</div>
+          <div style={{ fontFamily: mono, fontSize: 9, color: C.muted, letterSpacing: "0.1em", textTransform: "uppercase" }}>{timing}</div>
           <Tag color={statusColor}>{status}</Tag>
         </div>
       </div>
-      <div style={{ fontSize: 16, fontWeight: 500, marginBottom: 8 }}>{title}</div>
+      <div style={{ fontSize: 15, fontWeight: 500, marginBottom: 8 }}>{title}</div>
       <div style={{ fontSize: 13, color: C.dim, lineHeight: 1.6, marginBottom: 14 }}>{desc}</div>
       {bullets.map((b, i) => <Bullet key={i} color={statusColor}>{b}</Bullet>)}
     </div>
@@ -111,6 +116,7 @@ function StageCard({ num, timing, status, title, desc, bullets, statusColor }) {
 export function StrategyPage() {
   const [unlocked, setUnlocked] = useState(false);
   if (!unlocked) return <Lock onUnlock={() => setUnlocked(true)} />;
+
   return (
     <div style={{ background: C.bg, color: C.text, minHeight: "100vh", fontFamily: sans }}>
       <style>{`
@@ -120,6 +126,7 @@ export function StrategyPage() {
       `}</style>
       <div style={{ position: "fixed", inset: 0, backgroundImage: `linear-gradient(${C.border}55 1px,transparent 1px),linear-gradient(90deg,${C.border}55 1px,transparent 1px)`, backgroundSize: "72px 72px", pointerEvents: "none", zIndex: 0, opacity: .4 }} />
       <div style={{ position: "relative", zIndex: 1 }}>
+        {/* Header */}
         <div style={{ borderBottom: `1px solid ${C.border}`, padding: "16px 48px", display: "flex", alignItems: "center", justifyContent: "space-between", background: `${C.bg}E8`, backdropFilter: "blur(20px)", position: "sticky", top: 0, zIndex: 100 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
             <div style={{ width: 27, height: 27, background: C.amberG, border: `1px solid ${C.amber}44`, borderRadius: 6, display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -133,7 +140,9 @@ export function StrategyPage() {
             <span style={{ fontFamily: mono, fontSize: 10, color: C.muted }}>internal use only · do not distribute</span>
           </div>
         </div>
-        <div style={{ maxWidth: 900, margin: "0 auto", padding: "60px 48px" }}>
+
+        <div style={{ maxWidth: 960, margin: "0 auto", padding: "60px 48px" }}>
+          {/* Title */}
           <div style={{ marginBottom: 56 }}>
             <div style={{ fontFamily: mono, fontSize: 11, color: C.amber, letterSpacing: "0.14em", textTransform: "uppercase", marginBottom: 12 }}>// product route & north star</div>
             <h1 style={{ fontSize: 44, fontWeight: 300, letterSpacing: "-0.03em", lineHeight: 1.1, marginBottom: 16 }}>
@@ -143,6 +152,8 @@ export function StrategyPage() {
               This document is the shared source of truth for netwrkr.ai product strategy. It is a living document — updated as we learn and build.
             </p>
           </div>
+
+          {/* North Star */}
           <Section label="North Star">
             <Card accent>
               <div style={{ fontFamily: mono, fontSize: 11, color: C.amber, marginBottom: 14, letterSpacing: "0.1em" }}>// the destination</div>
@@ -164,21 +175,115 @@ export function StrategyPage() {
               </div>
             </Card>
           </Section>
-          <Section label="Product Development Route">
+
+          {/* AI Assistant */}
+          <Section label="Kelly — The AI DC Engineer Assistant">
+            <Card>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr", gap: 24, alignItems: "center" }}>
+                <div>
+                  <div style={{ fontFamily: mono, fontSize: 32, fontWeight: 700, color: C.amber, marginBottom: 4 }}>Kelly</div>
+                  <div style={{ fontFamily: mono, fontSize: 11, color: C.muted, marginBottom: 16 }}>// AI DC Engineer Assistant</div>
+                  <p style={{ fontSize: 13, color: C.dim, lineHeight: 1.7 }}>
+                    Named after Kelly Slater — the greatest of all time. Kelly is the AI persona embedded across all four products. She gets smarter as you move up the product ladder.
+                  </p>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                  {[
+                    ["Cloudbreak", "Analysis chat — answers questions about your risk report"],
+                    ["Desert Point", "Monitoring alerts — tells you when something changes"],
+                    ["Jaws", "Engineering assistant — drafts change requests and upgrade plans"],
+                    ["Ghost Ships", "Autonomous agent — runs inside your network, never sleeps"],
+                  ].map(([product, role]) => (
+                    <div key={product} style={{ background: C.hi, border: `1px solid ${C.border}`, borderRadius: 8, padding: "12px 14px" }}>
+                      <div style={{ fontFamily: mono, fontSize: 11, color: C.amber, marginBottom: 4 }}>{product}</div>
+                      <div style={{ fontSize: 12, color: C.dim, lineHeight: 1.5 }}>{role}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </Card>
+          </Section>
+
+          {/* Product Route */}
+          <Section label="Product Route — Four Distinct Products">
             <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
-              <StageCard num="1" timing="Now · Live" status="SHIPPED" statusColor={C.green} title="Analysis & Advisory Intelligence" desc="Point-in-time risk assessment with live PSIRT data. The foundation of trust." bullets={["Inventory normalisation", "Live PSIRT integration", "P1/P2/P3 prioritisation", "Rincon DC expert chat", "ACI fabric detection"]} />
-              <StageCard num="2" timing="Next · Building" status="IN DEVELOPMENT" statusColor={C.amber} title="Continuous Monitoring" desc="From a tool you use to infrastructure you rely on. Always watching." bullets={["Persistent fabric model", "Scheduled PSIRT checks", "Proactive Rincon alerts", "Change detection", "Direct APIC integration"]} />
-              <StageCard num="3" timing="Near Term · Vision" status="VISION" statusColor={C.orange} title="AI Engineering Assistant" desc="Rincon does the work. Engineer reviews and approves. Hours saved before every window." bullets={["Change request drafting", "Upgrade path planning", "Maintenance briefing packs", "ServiceNow / Jira integration", "CISO compliance reporting"]} />
-              <StageCard num="4" timing="North Star · Goal" status="NORTH STAR" statusColor={C.amber} title="The AI DC Engineer" desc="The always-on operational brain. Deployed inside your network. Never forgets. Never misses." bullets={["Containerised in-network agent", "Nexus Dashboard API depth", "Autonomous advisory triage", "Institutional knowledge capture", "Multi-vendor expansion"]} />
+              <StageCard
+                codename="Cloudbreak" location="Tavarua, Fiji"
+                num="1" timing="Now · Live" status="SHIPPED" statusColor={C.green}
+                title="Analysis & Advisory Intelligence"
+                desc="Point-in-time risk assessment with live PSIRT data. The foundation of trust. The wave that hooks you."
+                bullets={["Inventory normalisation", "Live PSIRT integration", "P1/P2/P3 prioritisation", "Kelly DC expert chat", "ACI fabric detection"]}
+              />
+              <StageCard
+                codename="Desert Point" location="Lombok, Indonesia"
+                num="2" timing="Next · Building" status="IN DEVELOPMENT" statusColor={C.amber}
+                title="Continuous Monitoring"
+                desc="The longest barrel in the world — just keeps running. From a tool you use to infrastructure you rely on."
+                bullets={["Persistent fabric model", "Scheduled PSIRT checks", "Proactive Kelly alerts", "Change detection", "Direct APIC integration"]}
+              />
+              <StageCard
+                codename="Jaws" location="Pe'ahi, Maui"
+                num="3" timing="Near Term · Vision" status="VISION" statusColor={C.orange}
+                title="AI Engineering Assistant"
+                desc="You need serious commitment and assistance to tackle it. Kelly does the work. Engineer reviews and approves."
+                bullets={["Change request drafting", "Upgrade path planning", "Maintenance briefing packs", "ServiceNow / Jira integration", "CISO compliance reporting"]}
+              />
+              <StageCard
+                codename="Ghost Ships" location="North Star"
+                num="4" timing="North Star · Goal" status="NORTH STAR" statusColor={C.amber}
+                title="The AI DC Engineer"
+                desc="Autonomous. Always moving. No one at the helm. Deployed inside your network. Never forgets. Never misses."
+                bullets={["Containerised in-network agent", "Nexus Dashboard API depth", "Autonomous advisory triage", "Institutional knowledge capture", "Multi-vendor expansion"]}
+              />
             </div>
           </Section>
+
+          {/* Commercial Model */}
+          <Section label="Commercial Model">
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 16 }}>
+              {[
+                ["Cloudbreak", C.green, "Free → £99/mo", "Self-serve. No installation. Engineers discover and share. Volume and word of mouth."],
+                ["Desert Point", C.amber, "£300–600/mo", "Per fabric subscription. Once connected, teams don't leave. Sticky recurring revenue."],
+                ["Jaws", C.orange, "£1,000–3,000/mo", "Enterprise contract. Value measured in engineer hours saved per maintenance window."],
+                ["Ghost Ships", C.red, "£50k–200k/yr", "Deployed inside the perimeter. Annual commitment. The Cisco acquisition conversation."],
+              ].map(([name, color, price, desc]) => (
+                <div key={name} style={{ background: C.surface, border: `1px solid ${color}33`, borderRadius: 10, padding: "18px 20px" }}>
+                  <div style={{ fontFamily: mono, fontSize: 16, fontWeight: 700, color, marginBottom: 4 }}>{name}</div>
+                  <div style={{ fontFamily: mono, fontSize: 13, color: C.amber, marginBottom: 10 }}>{price}</div>
+                  <div style={{ fontSize: 12, color: C.dim, lineHeight: 1.6 }}>{desc}</div>
+                </div>
+              ))}
+            </div>
+          </Section>
+
+          {/* Transformation */}
           <Section label="The Transformation Story">
             <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
               {[
-                ["01", "What it replaces", C.red, ["Manual PSIRT cross-referencing", "Spreadsheet-based inventory tracking", "Tribal knowledge guesswork", "Pre-maintenance manual prep"]],
-                ["02", "What it transforms", C.orange, ["Occasional tool → daily infrastructure", "Reactive → proactive risk management", "Snapshot → living fabric model", "Engineer asks → Rincon tells"]],
-                ["03", "What it automates", C.amber, ["Change request creation", "Upgrade sequence planning", "Risk assessment writing", "Advisory triage and ticketing"]],
-                ["04", "What it becomes", C.green, ["The colleague who never leaves", "Institutional memory, permanent", "Independent operational brain", "The AI DC engineer"]],
+                ["01", "What it replaces", C.red, [
+                  "Manual PSIRT cross-referencing",
+                  "Spreadsheet-based inventory tracking",
+                  "Tribal knowledge guesswork",
+                  "Pre-maintenance manual prep",
+                ]],
+                ["02", "What it transforms", C.orange, [
+                  "Occasional tool → daily infrastructure",
+                  "Reactive → proactive risk management",
+                  "Snapshot → living fabric model",
+                  "Engineer asks → Kelly tells",
+                ]],
+                ["03", "What it automates", C.amber, [
+                  "Change request creation",
+                  "Upgrade sequence planning",
+                  "Risk assessment writing",
+                  "Advisory triage and ticketing",
+                ]],
+                ["04", "What it becomes", C.green, [
+                  "The colleague who never leaves",
+                  "Institutional memory, permanent",
+                  "Independent operational brain",
+                  "The AI DC engineer",
+                ]],
               ].map(([num, title, color, items]) => (
                 <Card key={num}>
                   <div style={{ fontFamily: mono, fontSize: 10, color: C.muted, marginBottom: 6 }}>{num}</div>
@@ -188,43 +293,55 @@ export function StrategyPage() {
               ))}
             </div>
           </Section>
+
+          {/* Enterprise */}
           <Section label="Enterprise Deployment Model">
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
               <Card>
-                <div style={{ fontFamily: mono, fontSize: 11, color: C.amber, marginBottom: 10, letterSpacing: "0.1em" }}>// cloud tiers</div>
+                <div style={{ fontFamily: mono, fontSize: 11, color: C.amber, marginBottom: 10, letterSpacing: "0.1em" }}>// cloud — Cloudbreak + Desert Point</div>
                 <div style={{ fontSize: 18, fontWeight: 500, marginBottom: 8 }}>Individual · Team · Professional</div>
-                <p style={{ fontSize: 13, color: C.dim, lineHeight: 1.7, marginBottom: 16 }}>Self-serve cloud product. Engineers sign up personally, teams upgrade naturally, organisations follow. The bottom-up growth engine.</p>
+                <p style={{ fontSize: 13, color: C.dim, lineHeight: 1.7, marginBottom: 16 }}>
+                  Self-serve cloud product. Engineers sign up personally, teams upgrade naturally, organisations follow. The bottom-up growth engine.
+                </p>
                 <Bullet>No installation required</Bullet>
                 <Bullet>Inventory uploaded or pasted</Bullet>
                 <Bullet>Public PSIRT API integration</Bullet>
-                <Bullet>Rincon chat available</Bullet>
+                <Bullet>Kelly chat available</Bullet>
                 <Bullet>Global self-serve · £79–£200/mo</Bullet>
               </Card>
               <Card accent>
-                <div style={{ fontFamily: mono, fontSize: 11, color: C.amber, marginBottom: 10, letterSpacing: "0.1em" }}>// enterprise agent</div>
+                <div style={{ fontFamily: mono, fontSize: 11, color: C.amber, marginBottom: 10, letterSpacing: "0.1em" }}>// enterprise agent — Jaws + Ghost Ships</div>
                 <div style={{ fontSize: 18, fontWeight: 500, marginBottom: 8 }}>The In-Network AI DC Engineer</div>
-                <p style={{ fontSize: 13, color: C.dim, lineHeight: 1.7, marginBottom: 16 }}>Containerised agent deployed inside the customer's network perimeter. Authenticates with their own Nexus Dashboard and SNTC credentials. Fabric data never leaves their environment.</p>
+                <p style={{ fontSize: 13, color: C.dim, lineHeight: 1.7, marginBottom: 16 }}>
+                  Containerised agent deployed inside the customer's network perimeter. Authenticates with their own Nexus Dashboard and SNTC credentials. Fabric data never leaves their environment.
+                </p>
                 <Bullet>Deployed on customer infrastructure</Bullet>
                 <Bullet>Customer's own SNTC + Nexus Dashboard credentials</Bullet>
                 <Bullet>Full infrastructure API access — ToS, telemetry, config</Bullet>
                 <Bullet>Fabric data stays inside the perimeter</Bullet>
-                <Bullet>Rincon intelligence unlocked via secure model calls</Bullet>
+                <Bullet>Kelly intelligence unlocked via secure model calls</Bullet>
                 <Bullet>Autonomous fabric maintenance suggestions</Bullet>
                 <Bullet>Enterprise pricing — contact us</Bullet>
               </Card>
             </div>
             <div style={{ marginTop: 16, background: C.amberG, border: `1px solid ${C.amber}33`, borderRadius: 10, padding: "16px 20px" }}>
               <div style={{ fontFamily: mono, fontSize: 11, color: C.amber, marginBottom: 6 }}>// the security answer</div>
-              <p style={{ fontSize: 13, color: C.dim, lineHeight: 1.7 }}>"Your fabric data, credentials, and topology never leave your network. The agent runs on your infrastructure, uses your credentials, and queries your APIs locally. The only thing that leaves your perimeter is an anonymised question to Rincon — the same way your engineers use Google."</p>
+              <p style={{ fontSize: 13, color: C.dim, lineHeight: 1.7 }}>
+                "Your fabric data, credentials, and topology never leave your network. The agent runs on your infrastructure, uses your credentials, and queries your APIs locally. The only thing that leaves your perimeter is an anonymised question to Kelly — the same way your engineers use Google."
+              </p>
             </div>
           </Section>
+
+          {/* Exit */}
           <Section label="Exit Thesis">
             <Card>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
                 <div>
                   <div style={{ fontFamily: mono, fontSize: 11, color: C.amber, marginBottom: 10 }}>// most likely acquirer</div>
                   <div style={{ fontSize: 16, fontWeight: 500, marginBottom: 10 }}>Cisco</div>
-                  <p style={{ fontSize: 13, color: C.dim, lineHeight: 1.7, marginBottom: 14 }}>netwrkr.ai does what Cisco's own tools don't — independent, AI-native, unbiased risk assessment that engineers trust precisely because it isn't Cisco. That's the strategic value.</p>
+                  <p style={{ fontSize: 13, color: C.dim, lineHeight: 1.7, marginBottom: 14 }}>
+                    netwrkr.ai does what Cisco's own tools don't — independent, AI-native, unbiased risk assessment that engineers trust precisely because it isn't Cisco. That's the strategic value.
+                  </p>
                   <Bullet>Fills the gap in Cisco's AI portfolio</Bullet>
                   <Bullet>Deepens TAC and PSIRT commercial relationships</Bullet>
                   <Bullet>Natural fit with Cisco AI Assistant for Networking</Bullet>
@@ -232,7 +349,12 @@ export function StrategyPage() {
                 <div>
                   <div style={{ fontFamily: mono, fontSize: 11, color: C.amber, marginBottom: 10 }}>// exit modelling</div>
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                    {[["Target ARR", "£2–5M"], ["Exit multiple", "4–10x ARR"], ["Exit range", "£8M–£50M"], ["Timeline", "3–5 years"]].map(([label, val]) => (
+                    {[
+                      ["Target ARR", "£2–5M"],
+                      ["Exit multiple", "4–10x ARR"],
+                      ["Exit range", "£8M–£50M"],
+                      ["Timeline", "3–5 years"],
+                    ].map(([label, val]) => (
                       <div key={label} style={{ background: C.hi, border: `1px solid ${C.border}`, borderRadius: 8, padding: "14px" }}>
                         <div style={{ fontFamily: mono, fontSize: 10, color: C.muted, marginBottom: 4 }}>{label}</div>
                         <div style={{ fontFamily: mono, fontSize: 20, fontWeight: 700, color: C.amber }}>{val}</div>
@@ -243,6 +365,8 @@ export function StrategyPage() {
               </div>
             </Card>
           </Section>
+
+          {/* Footer */}
           <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 24, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <span style={{ fontFamily: mono, fontSize: 11, color: C.muted }}>netwrkr.ai · internal strategy document</span>
             <span style={{ fontFamily: mono, fontSize: 11, color: C.muted }}>// do not distribute · confidential</span>
