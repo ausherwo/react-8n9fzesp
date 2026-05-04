@@ -1,5 +1,5 @@
 // StrategyPage.js
-// v1.1 — updated with product code names
+// v1.2 — pricing model, Matt's framework, positioning update
 // Route: /strategy
 
 import { useState } from "react";
@@ -294,41 +294,120 @@ export function StrategyPage() {
             </div>
           </Section>
 
-          {/* Enterprise */}
-          <Section label="Enterprise Deployment Model">
+          {/* Positioning */}
+          <Section label="Positioning — How We Win">
+            <Card accent>
+              <div style={{ fontFamily: mono, fontSize: 11, color: C.amber, marginBottom: 14, letterSpacing: "0.1em" }}>// the frame that unlocks premium pricing</div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24, marginBottom: 20 }}>
+                <div style={{ background: C.hi, border: `1px solid ${C.red}33`, borderRadius: 8, padding: "16px 18px" }}>
+                  <div style={{ fontFamily: mono, fontSize: 10, color: C.red, marginBottom: 8, letterSpacing: "0.1em" }}>// don't say this</div>
+                  <div style={{ fontSize: 15, color: C.dim, lineHeight: 1.6 }}>"AI network operations tool"</div>
+                  <div style={{ fontFamily: mono, fontSize: 11, color: C.muted, marginTop: 8 }}>→ SolarWinds comparison · $2k/year conversation</div>
+                </div>
+                <div style={{ background: C.hi, border: `1px solid ${C.green}33`, borderRadius: 8, padding: "16px 18px" }}>
+                  <div style={{ fontFamily: mono, fontSize: 10, color: C.green, marginBottom: 8, letterSpacing: "0.1em" }}>// say this</div>
+                  <div style={{ fontSize: 15, color: C.text, lineHeight: 1.6, fontWeight: 500 }}>"Decision engine for live data centre fabrics"</div>
+                  <div style={{ fontFamily: mono, fontSize: 11, color: C.muted, marginTop: 8 }}>→ NetBrain comparison · $70k–$500k/year conversation</div>
+                </div>
+              </div>
+              <div style={{ background: C.amberG, border: `1px solid ${C.amber}33`, borderRadius: 8, padding: "14px 16px" }}>
+                <div style={{ fontFamily: mono, fontSize: 11, color: C.amber, marginBottom: 6 }}>// the value that justifies the price</div>
+                <p style={{ fontSize: 13, color: C.dim, lineHeight: 1.7 }}>
+                  One bad change in a live DC fabric costs £1M+, career damage, and customer trust. netwrkr.ai eliminates that risk. That is what we price. Not features. Not device counts. The outcome.
+                </p>
+              </div>
+            </Card>
+          </Section>
+
+          {/* Matt's framework */}
+          <Section label="The Brain, Hands & Nervous System — Matt's Framework">
+            <Card>
+              <div style={{ fontFamily: mono, fontSize: 11, color: C.amber, marginBottom: 16, letterSpacing: "0.1em" }}>// how the four products map to a complete AI DC engineer</div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}>
+                {[
+                  ["The Brain", C.green, "Cloudbreak + Desert Point", "Detects risk. Understands the fabric. Reasons across real data. Remembers everything. Recommends action.", "BUILT / BUILDING"],
+                  ["The Hands", C.amber, "Jaws", "Executes changes in assist mode. Engineer approves, Kelly runs. Pre-change validation. Post-change verification. Workflow integration.", "VISION"],
+                  ["The Nervous System", C.orange, "Ghost Ships", "Streaming telemetry. Real-time fabric awareness. Autonomous operation. Never sleeps. Never misses. The complete AI DC engineer.", "NORTH STAR"],
+                ].map(([title, color, product, desc, status]) => (
+                  <div key={title} style={{ background: C.hi, border: `1px solid ${color}33`, borderRadius: 8, padding: "16px 18px" }}>
+                    <div style={{ fontFamily: mono, fontSize: 18, fontWeight: 700, color, marginBottom: 4 }}>{title}</div>
+                    <div style={{ fontFamily: mono, fontSize: 10, color: C.muted, marginBottom: 10, letterSpacing: "0.08em" }}>{product}</div>
+                    <div style={{ fontSize: 12, color: C.dim, lineHeight: 1.6, marginBottom: 12 }}>{desc}</div>
+                    <Tag color={color}>{status}</Tag>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          </Section>
+
+          {/* Pricing */}
+          <Section label="Pricing Model">
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ background: C.amberG, border: `1px solid ${C.amber}44`, borderRadius: 10, padding: "20px 24px", marginBottom: 16 }}>
+                <div style={{ fontFamily: mono, fontSize: 11, color: C.amber, marginBottom: 8, letterSpacing: "0.1em" }}>// the pricing philosophy</div>
+                <p style={{ fontSize: 15, color: C.text, lineHeight: 1.7, fontWeight: 300 }}>
+                  One product. One price. No limits. We are not a monitoring tool with tiers. We are decision infrastructure. The price reflects the outcome, not the features.
+                </p>
+              </div>
+            </div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
               <Card>
-                <div style={{ fontFamily: mono, fontSize: 11, color: C.amber, marginBottom: 10, letterSpacing: "0.1em" }}>// cloud — Cloudbreak + Desert Point</div>
-                <div style={{ fontSize: 18, fontWeight: 500, marginBottom: 8 }}>Individual · Team · Professional</div>
-                <p style={{ fontSize: 13, color: C.dim, lineHeight: 1.7, marginBottom: 16 }}>
-                  Self-serve cloud product. Engineers sign up personally, teams upgrade naturally, organisations follow. The bottom-up growth engine.
-                </p>
-                <Bullet>No installation required</Bullet>
-                <Bullet>Inventory uploaded or pasted</Bullet>
-                <Bullet>Public PSIRT API integration</Bullet>
-                <Bullet>Kelly chat available</Bullet>
-                <Bullet>Global self-serve · £79–£200/mo</Bullet>
+                <div style={{ fontFamily: mono, fontSize: 11, color: C.amber, marginBottom: 10, letterSpacing: "0.1em" }}>// Cloudbreak — self-serve funnel</div>
+                <div style={{ fontSize: 18, fontWeight: 500, marginBottom: 16 }}>Bottom-up discovery</div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 16 }}>
+                  {[
+                    ["Free (anon)", "£0", "5 analyses"],
+                    ["Free (account)", "£0", "10/month"],
+                    ["Pro", "£79/mo", "Single seat"],
+                    ["Team 5", "£249/mo", "5 seats"],
+                    ["Team 10", "£449/mo", "10 seats"],
+                  ].map(([tier, price, note]) => (
+                    <div key={tier} style={{ background: C.hi, border: `1px solid ${C.border}`, borderRadius: 6, padding: "10px 12px" }}>
+                      <div style={{ fontFamily: mono, fontSize: 10, color: C.muted, marginBottom: 3 }}>{tier}</div>
+                      <div style={{ fontFamily: mono, fontSize: 16, fontWeight: 700, color: C.amber }}>{price}</div>
+                      <div style={{ fontFamily: mono, fontSize: 10, color: C.muted, marginTop: 2 }}>{note}</div>
+                    </div>
+                  ))}
+                </div>
+                <Bullet color={C.green}>Engineers discover, love it, bring it to their org</Bullet>
+                <Bullet color={C.green}>No sales motion — self-serve all the way</Bullet>
+                <Bullet color={C.green}>Cloudbreak Pro is the gateway to Desert Point</Bullet>
               </Card>
               <Card accent>
-                <div style={{ fontFamily: mono, fontSize: 11, color: C.amber, marginBottom: 10, letterSpacing: "0.1em" }}>// enterprise agent — Jaws + Ghost Ships</div>
-                <div style={{ fontSize: 18, fontWeight: 500, marginBottom: 8 }}>The In-Network AI DC Engineer</div>
-                <p style={{ fontSize: 13, color: C.dim, lineHeight: 1.7, marginBottom: 16 }}>
-                  Containerised agent deployed inside the customer's network perimeter. Authenticates with their own Nexus Dashboard and SNTC credentials. Fabric data never leaves their environment.
-                </p>
-                <Bullet>Deployed on customer infrastructure</Bullet>
-                <Bullet>Customer's own SNTC + Nexus Dashboard credentials</Bullet>
-                <Bullet>Full infrastructure API access — ToS, telemetry, config</Bullet>
-                <Bullet>Fabric data stays inside the perimeter</Bullet>
-                <Bullet>Kelly intelligence unlocked via secure model calls</Bullet>
-                <Bullet>Autonomous fabric maintenance suggestions</Bullet>
-                <Bullet>Enterprise pricing — contact us</Bullet>
+                <div style={{ fontFamily: mono, fontSize: 11, color: C.amber, marginBottom: 10, letterSpacing: "0.1em" }}>// Desert Point — enterprise decision infrastructure</div>
+                <div style={{ fontSize: 18, fontWeight: 500, marginBottom: 8 }}>One price. No limits.</div>
+                <div style={{ background: C.hi, border: `1px solid ${C.amber}44`, borderRadius: 8, padding: "20px", marginBottom: 16, textAlign: "center" }}>
+                  <div style={{ fontFamily: mono, fontSize: 48, fontWeight: 700, color: C.amber, lineHeight: 1 }}>$70k</div>
+                  <div style={{ fontFamily: mono, fontSize: 13, color: C.muted, marginTop: 6 }}>per year · annual contract</div>
+                  <div style={{ fontFamily: mono, fontSize: 11, color: C.dim, marginTop: 4 }}>unlimited devices · unlimited engineers · full product</div>
+                </div>
+                <Bullet color={C.amber}>No device limits. No seat limits. No feature tiers.</Bullet>
+                <Bullet color={C.amber}>Below formal procurement threshold for most orgs</Bullet>
+                <Bullet color={C.amber}>Competes with NetBrain — wins on intelligence</Bullet>
+                <Bullet color={C.amber}>Year 2 renewal goes up as Kelly proves value</Bullet>
+                <div style={{ marginTop: 12, background: C.greenG, border: `1px solid ${C.green}33`, borderRadius: 6, padding: "10px 12px" }}>
+                  <div style={{ fontFamily: mono, fontSize: 11, color: C.green }}>Market context: NetBrain ~$100k–$110k/yr · Cisco DNA $300k–$1,500/device/yr</div>
+                </div>
               </Card>
             </div>
-            <div style={{ marginTop: 16, background: C.amberG, border: `1px solid ${C.amber}33`, borderRadius: 10, padding: "16px 20px" }}>
-              <div style={{ fontFamily: mono, fontSize: 11, color: C.amber, marginBottom: 6 }}>// the security answer</div>
-              <p style={{ fontSize: 13, color: C.dim, lineHeight: 1.7 }}>
-                "Your fabric data, credentials, and topology never leave your network. The agent runs on your infrastructure, uses your credentials, and queries your APIs locally. The only thing that leaves your perimeter is an anonymised question to Kelly — the same way your engineers use Google."
-              </p>
+            <div style={{ marginTop: 16, background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10, padding: "16px 20px" }}>
+              <div style={{ fontFamily: mono, fontSize: 11, color: C.amber, marginBottom: 8 }}>// the sales motion</div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
+                {[
+                  ["1", "Engineer finds Cloudbreak", "Free tier, no friction, immediate value"],
+                  ["2", "Engineer loves Kelly", "Upgrades to Pro, uses daily"],
+                  ["3", "Engineer brings it to the org", "\"We should have this properly\""],
+                  ["4", "Desert Point conversation", "$70k, Head of Network Eng, 2-week close"],
+                ].map(([num, title, desc]) => (
+                  <div key={num} style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+                    <div style={{ width: 24, height: 24, borderRadius: "50%", background: C.amberG, border: `1px solid ${C.amber}44`, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: mono, fontSize: 11, fontWeight: 700, color: C.amber, flexShrink: 0 }}>{num}</div>
+                    <div>
+                      <div style={{ fontFamily: mono, fontSize: 12, color: C.text, marginBottom: 3 }}>{title}</div>
+                      <div style={{ fontSize: 12, color: C.dim, lineHeight: 1.5 }}>{desc}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           </Section>
 
@@ -345,19 +424,22 @@ export function StrategyPage() {
                   <Bullet>Fills the gap in Cisco's AI portfolio</Bullet>
                   <Bullet>Deepens TAC and PSIRT commercial relationships</Bullet>
                   <Bullet>Natural fit with Cisco AI Assistant for Networking</Bullet>
+                  <Bullet>Decision engine + Cisco data = category-defining product</Bullet>
                 </div>
                 <div>
                   <div style={{ fontFamily: mono, fontSize: 11, color: C.amber, marginBottom: 10 }}>// exit modelling</div>
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
                     {[
-                      ["Target ARR", "£2–5M"],
+                      ["Cloudbreak ARR target", "£2–5M"],
+                      ["Desert Point ARR target", "$7–35M"],
+                      ["Combined ARR target", "$10–40M"],
                       ["Exit multiple", "4–10x ARR"],
-                      ["Exit range", "£8M–£50M"],
+                      ["Exit range", "$40M–$400M"],
                       ["Timeline", "3–5 years"],
                     ].map(([label, val]) => (
                       <div key={label} style={{ background: C.hi, border: `1px solid ${C.border}`, borderRadius: 8, padding: "14px" }}>
                         <div style={{ fontFamily: mono, fontSize: 10, color: C.muted, marginBottom: 4 }}>{label}</div>
-                        <div style={{ fontFamily: mono, fontSize: 20, fontWeight: 700, color: C.amber }}>{val}</div>
+                        <div style={{ fontFamily: mono, fontSize: 16, fontWeight: 700, color: C.amber }}>{val}</div>
                       </div>
                     ))}
                   </div>

@@ -1,5 +1,5 @@
 // ModelPage.js
-// v1.0 — interactive revenue model, password protected
+// v1.2 — Cloudbreak + Desert Point combined model
 // Route: /model
 
 import { useState } from "react";
@@ -22,13 +22,8 @@ function Lock({ onUnlock }) {
   const [err, setErr] = useState(false);
 
   const attempt = () => {
-    if (val === PASSWORD) {
-      onUnlock();
-    } else {
-      setErr(true);
-      setVal("");
-      setTimeout(() => setErr(false), 2000);
-    }
+    if (val === PASSWORD) { onUnlock(); }
+    else { setErr(true); setVal(""); setTimeout(() => setErr(false), 2000); }
   };
 
   return (
@@ -39,15 +34,8 @@ function Lock({ onUnlock }) {
         <div style={{ fontSize: 13, color: C.dim, marginBottom: 28 }}>Revenue model</div>
         <div style={{ marginBottom: 16 }}>
           <label style={{ fontFamily: mono, fontSize: 10, color: C.muted, display: "block", marginBottom: 6, letterSpacing: "0.1em" }}>PASSPHRASE</label>
-          <input
-            type="password"
-            value={val}
-            onChange={e => setVal(e.target.value)}
-            onKeyDown={e => e.key === "Enter" && attempt()}
-            placeholder="enter passphrase"
-            autoFocus
-            style={{ background: C.hi, border: `1px solid ${err ? C.red : C.border}`, color: err ? C.red : C.text, fontFamily: mono, fontSize: 13, padding: "10px 13px", borderRadius: 6, outline: "none", width: "100%", boxSizing: "border-box", transition: "border-color 0.2s" }}
-          />
+          <input type="password" value={val} onChange={e => setVal(e.target.value)} onKeyDown={e => e.key === "Enter" && attempt()} placeholder="enter passphrase" autoFocus
+            style={{ background: C.hi, border: `1px solid ${err ? C.red : C.border}`, color: err ? C.red : C.text, fontFamily: mono, fontSize: 13, padding: "10px 13px", borderRadius: 6, outline: "none", width: "100%", boxSizing: "border-box" }} />
           {err && <div style={{ fontFamily: mono, fontSize: 11, color: C.red, marginTop: 6 }}>// incorrect passphrase</div>}
         </div>
         <button onClick={attempt} style={{ background: C.amber, color: "#000", border: "none", borderRadius: 6, fontFamily: mono, fontWeight: 700, fontSize: 13, padding: "11px", cursor: "pointer", width: "100%" }}>
@@ -64,7 +52,13 @@ function fmt(n) {
   return '£' + Math.round(n).toLocaleString();
 }
 
-function Slider({ label, sublabel, id, min, max, step, value, onChange }) {
+function fmtUSD(n) {
+  if (n >= 1000000) return '$' + (n / 1000000).toFixed(1) + 'M';
+  if (n >= 1000) return '$' + Math.round(n / 1000) + 'k';
+  return '$' + Math.round(n).toLocaleString();
+}
+
+function Slider({ label, sublabel, min, max, step, value, onChange, color = C.amber }) {
   return (
     <div style={{ marginBottom: 20 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 8 }}>
@@ -72,39 +66,32 @@ function Slider({ label, sublabel, id, min, max, step, value, onChange }) {
           <span style={{ fontFamily: mono, fontSize: 13, color: C.text }}>{label}</span>
           {sublabel && <span style={{ fontFamily: mono, fontSize: 11, color: C.muted, marginLeft: 8 }}>{sublabel}</span>}
         </div>
-        <span style={{ fontFamily: mono, fontSize: 16, fontWeight: 700, color: C.amber }}>{value.toLocaleString()}</span>
+        <span style={{ fontFamily: mono, fontSize: 16, fontWeight: 700, color }}>{value.toLocaleString()}</span>
       </div>
-      <input
-        type="range"
-        min={min}
-        max={max}
-        step={step}
-        value={value}
-        onChange={e => onChange(parseInt(e.target.value))}
-        style={{ width: "100%", accentColor: C.amber, height: 4, cursor: "pointer" }}
-      />
+      <input type="range" min={min} max={max} step={step} value={value} onChange={e => onChange(parseInt(e.target.value))}
+        style={{ width: "100%", accentColor: color, height: 4, cursor: "pointer" }} />
       <div style={{ display: "flex", justifyContent: "space-between", fontFamily: mono, fontSize: 10, color: C.muted, marginTop: 4 }}>
-        <span>{min.toLocaleString()}</span>
-        <span>{max.toLocaleString()}</span>
+        <span>{min.toLocaleString()}</span><span>{max.toLocaleString()}</span>
       </div>
     </div>
   );
 }
 
-function MetricCard({ label, value, sub, highlight }) {
+function MetricCard({ label, value, sub, highlight, color }) {
+  const c = color || (highlight ? C.amber : C.text);
   return (
     <div style={{ background: highlight ? C.amberG : C.surface, border: `1px solid ${highlight ? C.amber + "44" : C.border}`, borderRadius: 8, padding: "16px 18px" }}>
       <div style={{ fontFamily: mono, fontSize: 10, color: C.muted, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 8 }}>{label}</div>
-      <div style={{ fontFamily: mono, fontSize: highlight ? 28 : 22, fontWeight: 700, color: highlight ? C.amber : C.text }}>{value}</div>
+      <div style={{ fontFamily: mono, fontSize: highlight ? 26 : 20, fontWeight: 700, color: c }}>{value}</div>
       {sub && <div style={{ fontFamily: mono, fontSize: 11, color: C.muted, marginTop: 4 }}>{sub}</div>}
     </div>
   );
 }
 
-function Section({ label, children }) {
+function Section({ label, children, color = C.amber }) {
   return (
     <div style={{ marginBottom: 36 }}>
-      <div style={{ fontFamily: mono, fontSize: 11, color: C.amber, letterSpacing: "0.14em", textTransform: "uppercase", marginBottom: 16, paddingBottom: 8, borderBottom: `1px solid ${C.border}` }}>
+      <div style={{ fontFamily: mono, fontSize: 11, color, letterSpacing: "0.14em", textTransform: "uppercase", marginBottom: 16, paddingBottom: 8, borderBottom: `1px solid ${C.border}` }}>
         // {label}
       </div>
       {children}
@@ -113,84 +100,95 @@ function Section({ label, children }) {
 }
 
 function Model() {
-  const [proSingle, setProSingle]   = useState(1000);
-  const [team5, setTeam5]           = useState(250);
-  const [team10, setTeam10]         = useState(250);
-  const [annualPct, setAnnualPct]   = useState(30);
+  const [proSingle, setProSingle] = useState(1000);
+  const [team5, setTeam5]         = useState(250);
+  const [team10, setTeam10]       = useState(250);
+  const [annualPct, setAnnualPct] = useState(30);
+  const [dpCustomers, setDpCustomers] = useState(100);
+  const [dpMultiYear, setDpMultiYear] = useState(20);
 
-  // Monthly calculations
-  const proRev   = proSingle * 79;
-  const t5Rev    = team5 * 249;
-  const t10Rev   = team10 * 449;
-  const mrr      = proRev + t5Rev + t10Rev;
-  const arr      = mrr * 12;
-  const seats    = proSingle + (team5 * 5) + (team10 * 10);
-
-  // Annual pricing (2 months free)
-  const proAnnualPrice  = 790;
-  const t5AnnualPrice   = 2490;
-  const t10AnnualPrice  = 4490;
-
-  // Blended ARR (mix of monthly and annual)
-  const annualFrac = annualPct / 100;
-  const monthlyFrac = 1 - annualFrac;
-  const blendedArr =
-    (proSingle * annualFrac * proAnnualPrice) +
-    (proSingle * monthlyFrac * 79 * 12) +
-    (team5 * annualFrac * t5AnnualPrice) +
-    (team5 * monthlyFrac * 249 * 12) +
-    (team10 * annualFrac * t10AnnualPrice) +
-    (team10 * monthlyFrac * 449 * 12);
-
-  const exit4  = blendedArr * 4;
-  const exit10 = blendedArr * 10;
-
-  // Revenue breakdown
+  // Cloudbreak
+  const proRev  = proSingle * 79;
+  const t5Rev   = team5 * 249;
+  const t10Rev  = team10 * 449;
+  const cbMrr   = proRev + t5Rev + t10Rev;
+  const cbArr   = cbMrr * 12;
+  const seats   = proSingle + (team5 * 5) + (team10 * 10);
   const totalOrgs = proSingle + team5 + team10;
+  const annualFrac = annualPct / 100;
+  const cbBlendedArr =
+    (proSingle * annualFrac * 790) + (proSingle * (1-annualFrac) * 79 * 12) +
+    (team5 * annualFrac * 2490) + (team5 * (1-annualFrac) * 249 * 12) +
+    (team10 * annualFrac * 4490) + (team10 * (1-annualFrac) * 449 * 12);
+
+  // Desert Point — $70k/yr, multi-year gets 10% discount
+  const dpBasePrice    = 70000;
+  const dpMultiYearPct = dpMultiYear / 100;
+  const dpAvgPrice     = (dpBasePrice * (1 - dpMultiYearPct) * 1) + (dpBasePrice * 0.9 * dpMultiYearPct);
+  const dpArr          = dpCustomers * dpAvgPrice;
+
+  // Combined
+  const combinedArr = cbBlendedArr + dpArr;
+  const exit4       = combinedArr * 4;
+  const exit10      = combinedArr * 10;
 
   return (
     <div>
-      <Section label="Cloudbreak — customer inputs">
-        <Slider label="Pro single seat" sublabel="£79/mo" min={0} max={5000} step={50} value={proSingle} onChange={setProSingle} />
-        <Slider label="Team 5-seat orgs" sublabel="£249/mo" min={0} max={1000} step={5} value={team5} onChange={setTeam5} />
-        <Slider label="Team 10-seat orgs" sublabel="£449/mo" min={0} max={1000} step={5} value={team10} onChange={setTeam10} />
-        <Slider label="Annual contract %" sublabel="% of customers on annual (2 months free)" min={0} max={100} step={5} value={annualPct} onChange={setAnnualPct} />
-      </Section>
-
-      <Section label="Monthly snapshot">
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginBottom: 12 }}>
-          <MetricCard label="Pro revenue" value={fmt(proRev)} sub="per month" />
-          <MetricCard label="Team 5 revenue" value={fmt(t5Rev)} sub="per month" />
-          <MetricCard label="Team 10 revenue" value={fmt(t10Rev)} sub="per month" />
-          <MetricCard label="Paying engineers" value={seats.toLocaleString()} sub={`across ${totalOrgs.toLocaleString()} orgs`} />
-        </div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-          <MetricCard label="Monthly recurring revenue" value={fmt(mrr)} sub="blended MRR" highlight />
-          <MetricCard label="Run-rate ARR" value={fmt(arr)} sub="MRR × 12" />
+      <Section label="Cloudbreak — self-serve funnel" color={C.green}>
+        <Slider label="Pro single seat" sublabel="£79/mo" min={0} max={5000} step={50} value={proSingle} onChange={setProSingle} color={C.green} />
+        <Slider label="Team 5-seat orgs" sublabel="£249/mo" min={0} max={1000} step={5} value={team5} onChange={setTeam5} color={C.green} />
+        <Slider label="Team 10-seat orgs" sublabel="£449/mo" min={0} max={1000} step={5} value={team10} onChange={setTeam10} color={C.green} />
+        <Slider label="Annual contract %" sublabel="% on annual (2 months free)" min={0} max={100} step={5} value={annualPct} onChange={setAnnualPct} color={C.green} />
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10 }}>
+          <MetricCard label="MRR" value={fmt(cbMrr)} sub="per month" color={C.green} />
+          <MetricCard label="Run-rate ARR" value={fmt(cbArr)} sub="MRR × 12" />
+          <MetricCard label="Blended ARR" value={fmt(cbBlendedArr)} sub={`${annualPct}% annual mix`} color={C.green} />
+          <MetricCard label="Paying engineers" value={seats.toLocaleString()} sub={`${totalOrgs.toLocaleString()} orgs`} />
         </div>
       </Section>
 
-      <Section label="ARR with annual mix">
-        <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10, padding: "16px 20px", marginBottom: 12 }}>
-          <div style={{ fontFamily: mono, fontSize: 11, color: C.muted, marginBottom: 8 }}>
-            {annualPct}% annual ({fmt(blendedArr - arr > 0 ? blendedArr - arr : arr - blendedArr)} {blendedArr > arr ? "uplift" : "discount"} vs all-monthly)
+      <Section label="Desert Point — enterprise decision infrastructure" color={C.amber}>
+        <Slider label="Desert Point customers" sublabel="$70k/yr base" min={0} max={1000} step={5} value={dpCustomers} onChange={setDpCustomers} color={C.amber} />
+        <Slider label="Multi-year contracts %" sublabel="% on 2-3yr deal (10% discount)" min={0} max={100} step={5} value={dpMultiYear} onChange={setDpMultiYear} color={C.amber} />
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
+          <MetricCard label="Avg contract value" value={fmtUSD(Math.round(dpAvgPrice))} sub="per customer/yr" color={C.amber} />
+          <MetricCard label="Desert Point ARR" value={fmtUSD(dpArr)} sub={`${dpCustomers} customers`} highlight />
+          <MetricCard label="Market context" value="$70k" sub="NetBrain = $100k–$110k" color={C.dim} />
+        </div>
+      </Section>
+
+      <Section label="Combined — total business" color={C.amberB}>
+        <div style={{ background: C.surface, border: `1px solid ${C.amber}44`, borderRadius: 10, padding: "20px 24px", marginBottom: 16 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 20, alignItems: "center" }}>
+            <div>
+              <div style={{ fontFamily: mono, fontSize: 10, color: C.muted, marginBottom: 4, letterSpacing: "0.1em" }}>CLOUDBREAK ARR</div>
+              <div style={{ fontFamily: mono, fontSize: 28, fontWeight: 700, color: C.green }}>{fmt(cbBlendedArr)}</div>
+            </div>
+            <div style={{ textAlign: "center" }}>
+              <div style={{ fontFamily: mono, fontSize: 24, color: C.muted }}>+</div>
+            </div>
+            <div>
+              <div style={{ fontFamily: mono, fontSize: 10, color: C.muted, marginBottom: 4, letterSpacing: "0.1em" }}>DESERT POINT ARR</div>
+              <div style={{ fontFamily: mono, fontSize: 28, fontWeight: 700, color: C.amber }}>{fmtUSD(dpArr)}</div>
+            </div>
           </div>
-          <div style={{ fontFamily: mono, fontSize: 32, fontWeight: 700, color: C.amber }}>{fmt(blendedArr)}</div>
-          <div style={{ fontFamily: mono, fontSize: 12, color: C.muted, marginTop: 4 }}>blended ARR</div>
+          <div style={{ borderTop: `1px solid ${C.border}`, marginTop: 16, paddingTop: 16 }}>
+            <div style={{ fontFamily: mono, fontSize: 10, color: C.muted, marginBottom: 4, letterSpacing: "0.1em" }}>COMBINED ARR</div>
+            <div style={{ fontFamily: mono, fontSize: 44, fontWeight: 700, color: C.amberB }}>{fmtUSD(combinedArr)}</div>
+          </div>
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
-          <MetricCard label="Revenue per org" value={fmt(blendedArr / Math.max(totalOrgs, 1))} sub="avg annual" />
-          <MetricCard label="Exit at 4× ARR" value={fmt(exit4)} sub="conservative" />
-          <MetricCard label="Exit at 10× ARR" value={fmt(exit10)} sub="optimistic" highlight />
-        </div>
-      </Section>
 
-      <Section label="Milestones">
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10, marginBottom: 16 }}>
+          <MetricCard label="Exit at 4× ARR" value={fmtUSD(exit4)} sub="conservative" />
+          <MetricCard label="Exit at 7× ARR" value={fmtUSD(combinedArr * 7)} sub="mid-range" color={C.amber} />
+          <MetricCard label="Exit at 10× ARR" value={fmtUSD(exit10)} sub="optimistic" highlight />
+        </div>
+
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
           {[
-            ["£1M ARR", "~105 Pro + 30 teams", blendedArr >= 1000000],
-            ["£2M ARR", "~210 Pro + 60 teams", blendedArr >= 2000000],
-            ["£5M ARR", "~530 Pro + 150 teams", blendedArr >= 5000000],
+            ["$10M ARR", `~${Math.round(10000000 / dpAvgPrice)} DP + ~1,000 CB orgs`, combinedArr >= 10000000],
+            ["$25M ARR", `~${Math.round(25000000 / dpAvgPrice)} DP + ~2,500 CB orgs`, combinedArr >= 25000000],
+            ["$50M ARR", `~${Math.round(50000000 / dpAvgPrice)} DP + ~5,000 CB orgs`, combinedArr >= 50000000],
           ].map(([label, hint, reached]) => (
             <div key={label} style={{ background: reached ? C.greenG : C.surface, border: `1px solid ${reached ? C.green + "44" : C.border}`, borderRadius: 8, padding: "14px 16px", display: "flex", alignItems: "center", gap: 12 }}>
               <div style={{ width: 10, height: 10, borderRadius: "50%", background: reached ? C.green : C.muted, flexShrink: 0 }} />
@@ -231,7 +229,6 @@ export function ModelPage() {
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
             <span style={{ fontFamily: mono, fontSize: 10, color: C.muted, background: C.red + "22", border: `1px solid ${C.red}30`, padding: "2px 8px", borderRadius: 3 }}>RESTRICTED</span>
-            <span style={{ fontFamily: mono, fontSize: 10, color: C.muted }}>internal use only</span>
             <button onClick={() => window.location.href = "/strategy"} style={{ background: "none", border: `1px solid ${C.border}`, color: C.dim, fontFamily: mono, fontSize: 11, padding: "5px 12px", borderRadius: 6, cursor: "pointer" }}>
               ← strategy
             </button>
@@ -242,17 +239,17 @@ export function ModelPage() {
           <div style={{ marginBottom: 40 }}>
             <div style={{ fontFamily: mono, fontSize: 11, color: C.amber, letterSpacing: "0.14em", textTransform: "uppercase", marginBottom: 10 }}>// revenue model</div>
             <h1 style={{ fontSize: 36, fontWeight: 300, letterSpacing: "-0.03em", marginBottom: 12 }}>
-              Cloudbreak — <span style={{ color: C.amber }}>interactive model</span>
+              Cloudbreak + Desert Point — <span style={{ color: C.amber }}>combined model</span>
             </h1>
             <p style={{ fontSize: 14, color: C.dim, lineHeight: 1.7 }}>
-              Adjust customer numbers and annual contract mix to model ARR and exit scenarios. All figures in GBP.
+              Adjust customer numbers to model ARR and exit scenarios across both products. Cloudbreak in GBP, Desert Point in USD.
             </p>
           </div>
 
           <Model />
 
           <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 24, display: "flex", justifyContent: "space-between" }}>
-            <span style={{ fontFamily: mono, fontSize: 11, color: C.muted }}>netwrkr.ai · cloudbreak revenue model</span>
+            <span style={{ fontFamily: mono, fontSize: 11, color: C.muted }}>netwrkr.ai · combined revenue model</span>
             <span style={{ fontFamily: mono, fontSize: 11, color: C.muted }}>// internal use only</span>
           </div>
         </div>
