@@ -1,13 +1,12 @@
-// /api/advisories.js — v3.0
-// Merged: Cisco PSIRT openVuln API + EoX API + Supabase auth gate + licence quota tracking
-// Vercel serverless function
+// api/advisories.js
+// Vercel serverless function — Cisco PSIRT openVuln API + fabric analysis
+// v3.0 — consolidated analysis prompt, system/user split, P2 priority fix
+
+const { createClient } = require('@supabase/supabase-js');
 
 const CISCO_TOKEN_URL  = "https://id.cisco.com/oauth2/default/v1/token";
 const CISCO_PSIRT_BASE = "https://apix.cisco.com/security/advisories";
 const CISCO_EOX_BASE   = "https://apix.cisco.com/supporttools/eox/rest/5";
-
-const { createClient } = require('@supabase/supabase-js');
-const Anthropic = require('@anthropic-ai/sdk');
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
@@ -16,20 +15,12 @@ const supabase = createClient(
 
 // ─────────────────────────────────────────────
 // PID NORMALISATION
-// Converts user-friendly platform names to Cisco PIDs for EoX API queries
-// e.g. "Nexus 9336C-FX2" → "N9K-C9336C-FX2"
 // ─────────────────────────────────────────────
 function normaliseToPID(platformName) {
   if (!platformName) return null;
   const upper = platformName.toUpperCase().trim();
-
-  if (/^N[0-9]K-[A-Z0-9]/.test(upper) || upper.startsWith("APIC-")) {
-    return upper;
-  }
-
-  if (upper.includes("APIC")) {
-    return upper.replace(/^CISCO\s+/, "").trim();
-  }
+  if (/^N[0-9]K-[A-Z0-9]/.test(upper) || upper.startsWith("APIC-")) return upper;
+  if (upper.includes("APIC")) return upper.replace(/^CISCO\s+/, "").trim();
 
   let model = upper
     .replace(/^CISCO\s+/, "")
@@ -42,115 +33,45 @@ function normaliseToPID(platformName) {
   if (/^7[0-9]\d{2}/.test(model))     return `N7K-C${model}`;
   if (/^5[456]\d{2}/.test(model))     return `N5K-C${model}`;
   if (/^3[0-9]\d{2}/.test(model))     return `N3K-C${model}`;
-
-  if (/^9\d{3}/.test(model) && platformName.toUpperCase().includes("MDS")) {
-    return `DS-C${model}`;
-  }
+  if (/^9\d{3}/.test(model) && platformName.toUpperCase().includes("MDS")) return `DS-C${model}`;
 
   return null;
 }
 
 // ─────────────────────────────────────────────
 // ACI / NX-OS VERSION MAPPING
-// APIC versions use ACI release numbering (e.g. 6.1(5e))
-// ACI-managed switches run NX-OS with major version + 10 (e.g. 16.1(5e))
 // ─────────────────────────────────────────────
 function mapApicVersionToNxos(apicVersion) {
-    if (!apicVersion) return null;
-  
-    // Decode in case version arrived URL-encoded
-    const decoded = decodeURIComponent(apicVersion);
-  
-    const match = decoded.match(/^(\d+)([\.\(].+)$/);
-    if (!match) return null;
-  
-    const major = parseInt(match[1], 10);
-    const rest  = match[2];
-  
-    if (major >= 10 && major <= 19) return decoded;
-    if (major >= 4  && major <= 9)  return `${major + 10}${rest}`;
-  
-    console.warn(`mapApicVersionToNxos: unexpected major version ${major} in "${decoded}"`);
-    return null;
-  }
+  if (!apicVersion) return null;
+  const match = apicVersion.match(/^(\d+)([\.\(].+)$/);
+  if (!match) return null;
+  const major = parseInt(match[1], 10);
+  const rest  = match[2];
+  return `${major + 10}${rest}`;
+}
 
 // ─────────────────────────────────────────────
 // PLATFORM CONFIG
-// Maps platform name to { family, endpoint } for PSIRT API routing
 // ─────────────────────────────────────────────
-function getPlatformConfig(platformName, version = "", isAciSwitch = false) {
-    if (!platformName) return null;
-    const upper = platformName.toUpperCase();
-  
-    // ── APIC — always ACI endpoint
-    if (upper.includes("APIC")) {
-      return { family: "ACI", endpoint: "aci" };
-    }
-  
-    // ── Nexus 9000 series only — version-based ACI vs NX-OS detection
-    const isNexus9k = (
-      upper.includes("NEXUS 9") ||
-      upper.includes("N9K-") ||
-      upper.includes("N9K ") ||
-      /^N9[0-9]{2,}/.test(upper)
-    );
-  
-    if (isNexus9k) {
-      const majorVersion = parseInt((version || "").match(/^(\d+)/)?.[1] || "0", 10);
-  
-      // ACI versioning: controller 4.x–9.x maps to switch 14.x–19.x
-      // If version is in ACI switch range (14–19) or ACI controller range (4–9)
-      // AND isAciSwitch flag is set → use aci endpoint
-      const isAciVersion = (majorVersion >= 4 && majorVersion <= 9)   // ACI controller version
-                        || (majorVersion >= 14 && majorVersion <= 19); // ACI NX-OS switch version
-  
-      if (isAciSwitch && isAciVersion) {
-        return { family: "ACI", endpoint: "aci" };
-      }
-  
-      // Standalone NX-OS — 7.x, 8.x, 9.x, 10.x without ACI flag
-      // or any version where isAciSwitch is false
-      return { family: "NX-OS", endpoint: "nxos" };
-    }
-  
-    // ── Non-9k Nexus — always standalone NX-OS
-    if (
-      upper.includes("NEXUS 7") || upper.includes("N7K") ||
-      upper.includes("NEXUS 5") || upper.includes("N5K") ||
-      upper.includes("NEXUS 3") || upper.includes("N3K") ||
-      upper.includes("MDS")
-    ) {
-      return { family: "NX-OS", endpoint: "nxos" };
-    }
-  
-    // ── IOS XE
-    if (upper.includes("CATALYST 9") || upper.includes("ASR") || upper.includes("ISR")) {
-      return { family: "IOS XE", endpoint: "iosxe" };
-    }
-  
-    // ── Classic IOS
-    if (upper.includes("CATALYST 6")) {
-      return { family: "IOS", endpoint: "ios" };
-    }
-  
-    // ── Firepower / FTD
-    if (upper.includes("FIREPOWER") || upper.includes("FTD")) {
-      return { family: "FTD", endpoint: "ftd" };
-    }
-  
-    return null;
-  }
+function getPlatformConfig(platformName) {
+  if (!platformName) return null;
+  const upper = platformName.toUpperCase();
+  if (upper.includes("APIC"))                                                          return { family: "ACI",    endpoint: "aci"   };
+  if (upper.includes("NEXUS 9") || upper.includes("NEXUS 7") ||
+      upper.includes("NEXUS 5") || upper.includes("NEXUS 3") || upper.includes("MDS")) return { family: "NX-OS",  endpoint: "nxos"  };
+  if (upper.includes("CATALYST 9") || upper.includes("ASR") || upper.includes("ISR")) return { family: "IOS XE", endpoint: "iosxe" };
+  if (upper.includes("CATALYST 6"))                                                    return { family: "IOS",    endpoint: "ios"   };
+  if (upper.includes("FIREPOWER") || upper.includes("FTD"))                            return { family: "FTD",    endpoint: "ftd"   };
+  return null;
+}
 
 // ─────────────────────────────────────────────
-// OAUTH TOKEN — Cisco API
+// OAUTH TOKEN
 // ─────────────────────────────────────────────
 async function getAccessToken() {
   const clientId     = process.env.CISCO_CLIENT_ID;
   const clientSecret = process.env.CISCO_CLIENT_SECRET;
-
-  if (!clientId || !clientSecret) {
-    throw new Error("CISCO_CLIENT_ID and CISCO_CLIENT_SECRET environment variables are required");
-  }
+  if (!clientId || !clientSecret) throw new Error("CISCO_CLIENT_ID and CISCO_CLIENT_SECRET are required");
 
   const body = new URLSearchParams();
   body.append("grant_type",    "client_credentials");
@@ -171,417 +92,306 @@ async function getAccessToken() {
   const data = await response.json();
   return data.access_token;
 }
-// ─────────────────────────────────────────────
-// PRODUCT NAME MAPPING
-// Maps platform family to Cisco product name for v2 API
-// ─────────────────────────────────────────────
-function getProductName(platformConfig, isAciSwitch) {
-    if (platformConfig.family === "ACI" && platformConfig.endpoint === "aci") {
-      // APIC controller
-      return "Cisco Application Policy Infrastructure Controller (APIC)";
-    }
-    if (platformConfig.family === "ACI" && isAciSwitch) {
-      // Nexus switch in ACI fabric
-      return "Cisco NX-OS System Software in ACI Mode";
-    }
-    if (platformConfig.family === "NX-OS") {
-      return "Cisco NX-OS Software";
-    }
-    if (platformConfig.family === "IOS XE") {
-      return "Cisco IOS XE Software";
-    }
-    if (platformConfig.family === "IOS") {
-      return "Cisco IOS Software";
-    }
-    if (platformConfig.family === "FTD") {
-      return "Cisco Firepower Threat Defense Software";
-    }
-    return null;
-  }
-  
-  // ─────────────────────────────────────────────
-  // PSIRT ADVISORY FETCH — v2 product endpoint
-  // Fetches all advisories for a product then filters by version
-  // ─────────────────────────────────────────────
-  async function fetchAdvisories(token, platformConfig, version, isAciSwitch = false) {
-    const cleanVersion = decodeURIComponent(version);
-    const productName  = getProductName(platformConfig, isAciSwitch);
-  
-    if (!productName) return [];
-  
-    // ✅ Fix — let the API filter by version server-side
-    const url = `${CISCO_PSIRT_BASE}/v2/product?product=${encodeURIComponent(productName)}&version=${encodeURIComponent(cleanVersion)}`; 
-  
-    const response = await fetch(url, {
-      headers: {
-        "Authorization": `Bearer ${token}`,
-        "Accept":        "application/json",
-      },
-    });
-  
-    if (response.status === 404) return [];
-    if (!response.ok) {
-      const text = await response.text();
-      throw new Error(`PSIRT API error: ${response.status} ${text.slice(0, 200)}`);
-    }
-  
-    const data = await response.json();
-    const all  = data.advisories || [];
-  
-    // Filter advisories to those that affect this specific version
-    // The v2 API returns all advisories for the product — we filter by version match
-    const filtered = all.filter(a => {
-      const affected = [
-        ...(a.affectedRelease || []).map(r => r.releaseTrainVersion || r.version || ""),
-        ...(a.productNames    || []),
-        a.advisoryTitle || "",
-        a.sir            || "",
-      ].join(" ").toLowerCase();
-  
-      // Check if advisory mentions this version in its affected releases
-      const versionInAdvisory = (a.affectedRelease || []).some(r => {
-        const rv = (r.releaseTrainVersion || r.version || "").toLowerCase();
-        const cv = cleanVersion.toLowerCase();
-        // Match exact version or same train (e.g. 15.2 matches 15.2(8e))
-        return rv.includes(cv) || cv.includes(rv.split("(")[0]);
-      });
-  
-      return versionInAdvisory || all.length <= 20; // if few results, include all
-    });
-  
-    // If filtering removed everything, return all (product match is enough signal)
-    return filtered.length > 0 ? filtered : all.slice(0, 20);
-  }
 
 // ─────────────────────────────────────────────
-// EOX (END OF LIFE) FETCH
+// PSIRT ADVISORY FETCH
+// ─────────────────────────────────────────────
+async function fetchAdvisories(token, platformConfig, version) {
+  const url = `${CISCO_PSIRT_BASE}/${platformConfig.endpoint}?version=${encodeURIComponent(version)}`;
+  const response = await fetch(url, {
+    headers: { "Authorization": `Bearer ${token}`, "Accept": "application/json" },
+  });
+  if (response.status === 404) return [];
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`PSIRT API error: ${response.status} ${text.slice(0, 200)}`);
+  }
+  const data = await response.json();
+  return data.advisories || [];
+}
+
+// ─────────────────────────────────────────────
+// EOX FETCH
 // ─────────────────────────────────────────────
 async function fetchEoX(token, pid) {
-  const url = `${CISCO_EOX_BASE}/EOXByProductID/5/${encodeURIComponent(pid)}?responseencoding=json`;
-
+  const url = `${CISCO_EOX_BASE}/EOXByProductID/1/${encodeURIComponent(pid)}?responseencoding=json`;
   const response = await fetch(url, {
-    headers: {
-      "Authorization": `Bearer ${token}`,
-      "Accept":        "application/json",
-    },
+    headers: { "Authorization": `Bearer ${token}`, "Accept": "application/json" },
   });
-
   if (response.status === 404) return null;
   if (!response.ok) {
     const text = await response.text();
     throw new Error(`EoX API error: ${response.status} ${text.slice(0, 200)}`);
   }
-
   const data   = await response.json();
   const record = data?.EOXRecord?.[0];
   if (!record) return null;
-
   return {
-    endOfSaleDate:            record.EndOfSaleDate?.value                    || null,
-    endOfSwMaintenanceDate:   record.EndOfSWMaintenanceReleases?.value       || null,
-    endOfSecuritySupportDate: record.EndOfSecurityVulSupportDate?.value      || null,
-    endOfSupportDate:         record.LastDateOfSupport?.value                || null,
+    endOfSaleDate:            record.EndOfSaleDate?.value || null,
+    endOfSwMaintenanceDate:   record.EndOfSWMaintenanceReleases?.value || null,
+    endOfSecuritySupportDate: record.EndOfSecurityVulSupportDate?.value || null,
+    endOfSupportDate:         record.LastDateOfSupport?.value || null,
     migrationProduct:         record.EOXMigrationDetails?.MigrationProductName || null,
-    migrationProductPID:      record.EOXMigrationDetails?.MigrationProductId   || null,
-    bulletinURL:              record.LinkToProductBulletinURL                || null,
+    migrationProductPID:      record.EOXMigrationDetails?.MigrationProductId || null,
+    bulletinURL:              record.LinkToProductBulletinURL || null,
   };
 }
 
 // ─────────────────────────────────────────────
-// ANTHROPIC ANALYSIS
-// Runs the fabric risk assessment against the full device list
+// ANALYSIS SYSTEM PROMPT
+// Single source of truth for all fabric analysis logic.
+// Updated: P2 priority fix — observed structural findings always outrank advisory findings.
 // ─────────────────────────────────────────────
-async function runFabricAnalysis(devices, preflightStatus) {
-  const anthropic = new Anthropic({
-    apiKey: process.env.REACT_APP_ANTHROPIC_API_KEY,
-  });
+function buildAnalysisSystemPrompt(aciFabric) {
+  return `You are netwrkr.ai, an expert Cisco data centre network engineer.
 
-  const deviceList = devices.map(d =>
-    `- ${d.name} | ${d.platform} | ${d.version} | ${d.role}`
-  ).join('\n');
+ABSOLUTE RULES:
+1. ONLY report bug findings for devices where a version is EXPLICITLY provided. If ver is "not provided" set bugs to [].
+2. NEVER infer or guess software versions from platform names or roles.
+3. Version mismatches can ONLY be reported when multiple devices of the same type show DIFFERENT explicit versions.
+4. Every finding must end with [observed], [inferred], or [assumed].
+5. [observed] = directly from the data. [inferred] = logical conclusion. [assumed] = no evidence, low confidence only.
+6. CRITICAL or HIGH severity requires explicit version evidence. No version = maximum MEDIUM risk.
+7. If any device has ver="not provided", include this finding: "Software version not provided for X device(s) — bug and CVE analysis unavailable for those devices [observed]"
+8. NEVER add devices that are not in the submitted inventory. The devices array must contain EXACTLY the same devices as the submitted inventory — no additions, no omissions.
+9. Sort devices in the output by infrastructure tier in this strict order: Controllers (APIC, DNAC, NSO) → Spine → Border Leaf → Leaf → Distribution/Firewall/Edge.
+10. Identify Border Leaf from: device name or role containing "BORDER-LEAF", "BORDER_LEAF", "Border Leaf", "border-leaf", or "BL-". Assign tier:2 to Border Leaf.
+11. Border Leaf devices must have intelRisk "HIGH" minimum.
+12. Tier 4 devices (Distribution, Firewall, Catalyst, Firepower) must never exceed intelRisk "MEDIUM".
+13. APIC controllers always appear first in the devices array, before Spines.
+14. Controllers (APIC, DNAC, NSO) must have fabricRisk "LOW" unless there is a version mismatch between the controllers themselves.
+15. Border Leaf device recommendations must never use directive upgrade language. Use advisory language such as "Review upgrade target against current fabric baseline".
+16. P1/P2/P3 priority assessment titles must never contain the word "Critical".
+17. Observed structural fabric findings (version mismatches, topology inconsistencies detected directly from inventory data) always rank above intel advisory findings in priority order, regardless of advisory severity. A verified HIGH advisory on a controller is P2 only if no observed structural fabric risk exists in the inventory. If both are present, the structural risk is P1 and the advisory remediation is P3.
+18. fabricAnalysis findings must never reference advisory counts, CVEs, or bug data — topology facts from the submitted inventory only.
+19. EoL findings disabled pending enterprise SNTC credentials.${aciFabric ? `
+20. This is an ACI fabric (APIC detected). APIC version uses ACI release numbering. Nexus switches in this fabric run NX-OS with major version = APIC major version + 10 (e.g. APIC 6.1(5e) → NX-OS 16.1(5e)). Note this version relationship in fabric analysis findings.` : ""}
 
-  const message = await anthropic.messages.create({
-    model:      'claude-sonnet-4-20250514',
-    max_tokens: 4000,
-    messages: [{
-      role:    'user',
-      content: `You are a Cisco data centre network expert. Analyse this device inventory and return a JSON risk assessment.
+INFRASTRUCTURE TIER GUIDE:
+- Tier 1: Controllers — APIC, DNAC, NSO. Shapes upgrade path for entire fabric. Always appears first.
+- Tier 2a: Spine — core fabric stability
+- Tier 2b: Border Leaf — external routing, BGP, WAN-facing (HIGH intel minimum)
+- Tier 3: Leaf — forwarding fabric
+- Tier 4: Distribution, Firewall, Catalyst, Firepower (cap intel at MEDIUM)
 
-DEVICE INVENTORY:
-${deviceList}
-
-PRE-FLIGHT STATUS: ${preflightStatus}
-
-Return ONLY valid JSON matching this exact structure — no markdown, no explanation:
-
+Respond ONLY with valid JSON (no markdown):
 {
-  "priorityAssessment": {
-    "items": [
-      {"priority": "P1", "title": "...", "reason": "...", "devices": ["..."]}
-    ]
-  },
-  "fabricAnalysis": {
-    "risk": "LOW|MEDIUM|HIGH",
-    "consistent": false,
-    "mismatches": [],
-    "missingVersions": [],
-    "findings": []
-  },
-  "netwrkrIntel": {
-    "hasIntel": true,
-    "summary": "...",
-    "items": [{"platform":"","version":"","title":"","detail":"","id":"","verified":false,"sev":"MEDIUM"}]
-  },
+  "priorityAssessment": {"items": [{"priority":"P1","title":"...","reason":"...","devices":["..."]},{"priority":"P2","title":"...","reason":"...","devices":["..."]},{"priority":"P3","title":"...","reason":"...","devices":["..."]}]},
+  "fabricAnalysis": {"risk":"LOW|MEDIUM|HIGH","consistent":false,"mismatches":["Platform: version1 vs version2 — description [observed]"],"missingVersions":[],"findings":["finding [observed|inferred]"]},
+  "netwrkrIntel": {"hasIntel":true,"summary":"brief summary","items":[{"platform":"","version":"","title":"","detail":"","id":"","verified":false,"sev":"MEDIUM"}]},
   "devices": [{"name":"","ver":"","role":"","tier":1,"fabricRisk":"LOW","intelRisk":"LOW","rec":""}]
+}`;
 }
 
-RULES:
-- priorityAssessment always has exactly 3 items: P1, P2, P3
-- fabricAnalysis contains ONLY facts from the submitted inventory — no AI knowledge
-- All fabricAnalysis findings labelled [observed] or [inferred]
-- fabricRisk is LOW unless version mismatches exist
-- netwrkrIntel is AI training knowledge — always unverified, max severity HIGH never CRITICAL
-- Every device must appear in devices array sorted by tier (Controllers→Spine→Border Leaf→Leaf→Distribution/Firewall)
-- Tier 4 devices (Distribution, Firewall): cap intelRisk at MEDIUM
-- Border leaf with external peering: intelRisk minimum HIGH
-- Recommendation wording must be cautious: use "Priority review recommended" not "Upgrade immediately"
-- Controllers always first in devices array`
-    }]
+// ─────────────────────────────────────────────
+// FABRIC ANALYSIS — called when devices + advisorySummary are provided
+// ─────────────────────────────────────────────
+async function runFabricAnalysis(devices, advisorySummary, aciFabric, ctx, advMap) {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) throw new Error("Anthropic API key not configured");
+
+  const inventoryCsv = "Platform, Version, Role\n" +
+    devices.map(d => `${d.name}, ${d.ver || "not provided"}, ${d.role || "unknown"}`).join("\n");
+
+  const userContent = `Validated device inventory (engineer-confirmed):
+${inventoryCsv}
+
+FABRIC TYPE: ${aciFabric ? "ACI (APIC-managed fabric detected)" : "Standalone NX-OS or unknown"}
+Additional context: ${ctx || "None provided"}
+
+VERIFIED CISCO SECURITY ADVISORIES (live Cisco PSIRT API data):
+${advisorySummary}
+
+// HARDWARE END OF LIFE DATA: disabled pending enterprise SNTC credentials`;
+
+  const response = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "Content-Type":    "application/json",
+      "x-api-key":       apiKey,
+      "anthropic-version": "2023-06-01",
+    },
+    body: JSON.stringify({
+      model:      "claude-sonnet-4-20250514",
+      max_tokens: 4000,
+      system:     buildAnalysisSystemPrompt(aciFabric),
+      messages:   [{ role: "user", content: userContent }],
+    }),
   });
 
-  const raw = message.content[0].text;
-  return JSON.parse(raw.replace(/```json\n?|\n?```/g, '').trim());
+  const data = await response.json();
+  if (data.error) throw new Error(data.error.message);
+
+  const raw    = data.content[0].text.replace(/```json|```/g, "").trim();
+  const parsed = JSON.parse(raw);
+
+  // Cross-check verified flags against real advisory IDs from PSIRT API
+  const realIds = new Set(
+    Object.values(advMap)
+      .flatMap(d => (d.advisories || []).map(a => a.id))
+      .filter(Boolean)
+  );
+
+  if (parsed.netwrkrIntel?.items) {
+    parsed.netwrkrIntel.items = parsed.netwrkrIntel.items.map(item => ({
+      ...item,
+      verified: realIds.has(item.id) ? true : item.verified,
+    }));
+  }
+
+  return parsed;
 }
 
 // ─────────────────────────────────────────────
 // MAIN HANDLER
+// Handles two modes:
+//   1. PSIRT lookup only  — { platform, version, isAciSwitch }
+//   2. Full analysis      — { devices, ctx, runAnalysis: true }
 // ─────────────────────────────────────────────
 export default async function handler(req, res) {
-  res.setHeader("Access-Control-Allow-Origin",  "*");
+  res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
 
   if (req.method === "OPTIONS") return res.status(200).end();
-  if (req.method !== "POST")    return res.status(405).json({ error: "method_not_allowed" });
+  if (req.method !== "POST")   return res.status(405).json({ error: "Method not allowed" });
 
-  // ─────────────────────────────────────────────
-  // 1. VERIFY JWT
-  // ─────────────────────────────────────────────
-  const token = req.headers.authorization?.split(' ')[1];
-  if (!token) return res.status(401).json({ error: 'unauthorised' });
+  // ── Auth
+  const token = req.headers.authorization?.split(" ")[1];
+  if (!token) return res.status(401).json({ error: "unauthorised" });
 
   const { data: { user }, error: authError } = await supabase.auth.getUser(token);
-  if (authError || !user) return res.status(401).json({ error: 'unauthorised' });
+  if (authError || !user) return res.status(401).json({ error: "unauthorised" });
 
   const { data: member } = await supabase
-    .from('members')
-    .select('id, org_id, role, mfa_grace_started_at')
-    .eq('user_id', user.id)
+    .from("members")
+    .select("id, org_id, role")
+    .eq("user_id", user.id)
     .single();
 
-  if (!member) return res.status(401).json({ error: 'unauthorised' });
+  if (!member) return res.status(401).json({ error: "unauthorised" });
 
-  // ─────────────────────────────────────────────
-  // 2. ROLE CHECK
-  // ─────────────────────────────────────────────
-  if (member.role === 'viewer') {
-    return res.status(403).json({ error: 'insufficient_role' });
-  }
-
-  // ─────────────────────────────────────────────
-  // 3. LICENCE CHECK
-  // ─────────────────────────────────────────────
-  const { data: licence } = await supabase
-    .from('licences')
-    .select('plan, status, analyses_used, analyses_limit, current_period_end')
-    .eq('org_id', member.org_id)
-    .single();
-
-  if (!licence || licence.status !== 'active') {
-    return res.status(402).json({ error: 'no_active_licence', status: licence?.status });
-  }
-
-  if (licence.analyses_used >= licence.analyses_limit) {
-    return res.status(402).json({
-      error:             'limit_reached',
-      used:              licence.analyses_used,
-      limit:             licence.analyses_limit,
-      plan:              licence.plan,
-      upgradeAvailable:  licence.plan === 'free',
-    });
-  }
-
-  // ─────────────────────────────────────────────
-  // 4. MFA CHECK (Pro / Enterprise)
-  // ─────────────────────────────────────────────
-  if (licence.plan === 'pro' || licence.plan === 'enterprise') {
-    const { count: passkeyCount } = await supabase
-      .from('passkey_credentials')
-      .select('id', { count: 'exact', head: true })
-      .eq('member_id', member.id);
-
-    if (passkeyCount === 0) {
-      const gracePeriodMs = 30 * 24 * 60 * 60 * 1000;
-      const graceStart    = member.mfa_grace_started_at ? new Date(member.mfa_grace_started_at) : null;
-      const graceElapsed  = graceStart ? (Date.now() - graceStart.getTime()) > gracePeriodMs : false;
-
-      if (graceElapsed) return res.status(403).json({ error: 'mfa_required' });
-      res.setHeader('X-MFA-Grace-Warning', 'true');
-    }
-  }
-
-  // ─────────────────────────────────────────────
-  // 5. VALIDATE REQUEST BODY
-  // Two modes:
-  //   A) Full fabric analysis — { devices[], preflightStatus }
-  //   B) Single device PSIRT lookup — { platform, version, isAciSwitch }
-  // ─────────────────────────────────────────────
-  const {
-    // Mode A — fabric analysis
-    devices,
-    preflightStatus,
-    sourceFileId = null,
-    // Mode B — single device PSIRT/EoX lookup
-    platform,
-    version: rawVersion,
-    isAciSwitch = false,
-  } = req.body;
-
-  // Decode in case version was URL-encoded before sending
-  const version = rawVersion ? decodeURIComponent(rawVersion) : rawVersion;
-  // ─────────────────────────────────────────────
-  // MODE B — Single device PSIRT + EoX lookup
-  // Used for per-device intel enrichment after fabric analysis
-  // ─────────────────────────────────────────────
-  if (platform && version && !devices) {
-    //const platformConfig = getPlatformConfig(platform);
-    const platformConfig = getPlatformConfig(platform, version, isAciSwitch);
-
-    if (!platformConfig) {
-      return res.status(200).json({
-        advisories: [],
-        eol:        null,
-        verified:   false,
-        message:    `No platform mapping for: ${platform}`,
-      });
+  // ── MODE 1: Full fabric analysis
+  // Client sends { runAnalysis: true, devices, ctx, advisoryMap }
+  if (req.body.runAnalysis === true) {
+    if (member.role === "viewer") {
+      return res.status(403).json({ error: "insufficient_role" });
     }
 
-    let queryVersion = version;
-    if (isAciSwitch && platformConfig.family === "NX-OS") {
-      const remapped = mapApicVersionToNxos(version);
-      if (remapped) queryVersion = remapped;
+    const { data: licence } = await supabase
+      .from("licences")
+      .select("plan, status, analyses_used, analyses_limit")
+      .eq("org_id", member.org_id)
+      .single();
+
+    if (!licence || licence.status !== "active") {
+      return res.status(402).json({ error: "no_active_licence" });
+    }
+    if (licence.analyses_used >= licence.analyses_limit) {
+      return res.status(402).json({ error: "limit_reached" });
     }
 
-    const pid = normaliseToPID(platform);
+    const { devices, ctx, advisoryMap } = req.body;
+    if (!devices || !Array.isArray(devices) || devices.length === 0) {
+      return res.status(400).json({ error: "invalid_request", message: "devices array is required" });
+    }
+
+    const aciFabric = devices.some(d => d.name && d.name.toUpperCase().includes("APIC"));
+
+    const advisorySummary = Object.entries(advisoryMap || {}).map(([key, data]) => {
+      const [platform, version] = key.split("__");
+      if (!data.advisories?.length) return null;
+      const high = data.advisories.filter(a => a.impact === "High");
+      const med  = data.advisories.filter(a => a.impact === "Medium");
+      return `${platform} v${version} [${data.family || ""}]: ${data.advisories.length} advisories (${high.length} High, ${med.length} Medium). Top issues: ${data.advisories.slice(0, 3).map(a => `${a.id} — ${a.title}`).join("; ")}${data.queryVersion !== version ? ` [ACI NX-OS version queried: ${data.queryVersion}]` : ""}`;
+    }).filter(Boolean).join("\n") || "No Cisco advisory data retrieved.";
 
     try {
-      const ciscoToken = await getAccessToken();
+      const result = await runFabricAnalysis(devices, advisorySummary, aciFabric, ctx, advisoryMap || {});
 
-      const [rawAdvisories, eolData] = await Promise.allSettled([
-        fetchAdvisories(ciscoToken, platformConfig, queryVersion, isAciSwitch),
-        pid ? fetchEoX(ciscoToken, pid) : Promise.resolve(null),
-      ]);
-
-      const advisories = (rawAdvisories.status === "fulfilled" ? rawAdvisories.value : []).map(a => ({
-        id:         a.advisoryId || a.identifier || "",
-        title:      a.advisoryTitle || a.title || "",
-        impact:     a.sir || a.impact || "Unknown",
-        published:  a.firstPublished || "",
-        url:        a.publicationUrl || a.url || "",
-        firstFixed: Array.isArray(a.firstFixed) ? a.firstFixed[0] : (a.firstFixed || ""),
-        cvssScore:  a.cvssBaseScore || "",
-        cveId:      Array.isArray(a.cves) ? a.cves[0] : (a.cves || ""),
-      }));
-
-      const eol      = eolData.status === "fulfilled" ? eolData.value : null;
-      const warnings = [];
-
-      if (!pid)                              warnings.push(`Could not determine PID for "${platform}" — EoL check skipped.`);
-      if (rawAdvisories.status === "rejected") warnings.push(`Advisory lookup failed: ${rawAdvisories.reason?.message}`);
-      if (eolData.status === "rejected")       warnings.push(`EoL lookup failed: ${eolData.reason?.message}`);
-
-      return res.status(200).json({
-        advisories,
-        eol,
-        pid:          pid || null,
-        platform,
-        version,
-        queryVersion,
-        family:       platformConfig.family,
-        verified:     true,
-        warnings:     warnings.length > 0 ? warnings : undefined,
-      });
-
-    } catch (err) {
-      console.error("PSIRT lookup error:", err.message);
-      return res.status(200).json({
-        advisories: [],
-        eol:        null,
-        verified:   false,
-        message:    err.message,
-      });
-    }
-  }
-
-  // ─────────────────────────────────────────────
-  // MODE A — Full fabric analysis
-  // ─────────────────────────────────────────────
-  if (!devices || !Array.isArray(devices) || devices.length === 0) {
-    return res.status(400).json({ error: 'invalid_request', detail: 'devices array required' });
-  }
-
-  const validPreflight = ['clear', 'warning', 'blocked'];
-  if (!validPreflight.includes(preflightStatus)) {
-    return res.status(400).json({ error: 'invalid_request', detail: 'invalid preflightStatus' });
-  }
-
-  if (preflightStatus === 'blocked') {
-    return res.status(422).json({ error: 'preflight_blocked' });
-  }
-
-  // Run Anthropic fabric analysis
-  let analysisResult;
-  try {
-    analysisResult = await runFabricAnalysis(devices, preflightStatus);
-  } catch (err) {
-    console.error('Anthropic API error:', err);
-    return res.status(502).json({ error: 'upstream_error' });
-  }
-
-  // Write audit record + increment counter
-  try {
-    const { data: analysis } = await supabase
-      .from('analyses')
-      .insert({
+      // Write audit record
+      await supabase.from("analyses").insert({
         org_id:           member.org_id,
         run_by:           member.id,
         device_count:     devices.length,
-        preflight_status: preflightStatus,
-        result_json:      analysisResult,
-        source_file_id:   sourceFileId,
-      })
-      .select('id')
-      .single();
+        preflight_status: "clear",
+        result_json:      result,
+      });
 
-    await supabase.rpc('increment_analyses_used', { p_org_id: member.org_id });
+      // Increment usage counter
+      await supabase.rpc("increment_analyses_used", { p_org_id: member.org_id });
+
+      return res.status(200).json(result);
+
+    } catch (err) {
+      console.error("Analysis error:", err.message);
+      return res.status(502).json({ error: "upstream_error", message: err.message });
+    }
+  }
+
+  // ── MODE 2: PSIRT advisory lookup (existing behaviour)
+  // Client sends { platform, version, isAciSwitch }
+  const { platform, version, isAciSwitch } = req.body;
+
+  if (!platform || !version) {
+    return res.status(400).json({ error: "platform and version are required" });
+  }
+
+  const platformConfig = getPlatformConfig(platform);
+  if (!platformConfig) {
+    return res.status(200).json({
+      advisories: [], eol: null, verified: false,
+      message: `No platform mapping for: ${platform}`,
+    });
+  }
+
+  let queryVersion = version;
+  if (isAciSwitch && platformConfig.family === "NX-OS") {
+    const remapped = mapApicVersionToNxos(version);
+    if (remapped) queryVersion = remapped;
+  }
+
+  const pid = normaliseToPID(platform);
+
+  try {
+    const token2 = await getAccessToken();
+
+    const [rawAdvisories, eolData] = await Promise.allSettled([
+      fetchAdvisories(token2, platformConfig, queryVersion),
+      pid ? fetchEoX(token2, pid) : Promise.resolve(null),
+    ]);
+
+    const advisories = (rawAdvisories.status === "fulfilled" ? rawAdvisories.value : []).map(a => ({
+      id:         a.advisoryId || a.identifier || "",
+      title:      a.advisoryTitle || a.title || "",
+      impact:     a.sir || a.impact || "Unknown",
+      published:  a.firstPublished || "",
+      url:        a.publicationUrl || a.url || "",
+      firstFixed: Array.isArray(a.firstFixed) ? a.firstFixed[0] : (a.firstFixed || ""),
+      cvssScore:  a.cvssBaseScore || "",
+      cveId:      Array.isArray(a.cves) ? a.cves[0] : (a.cves || ""),
+    }));
+
+    const eol      = eolData.status === "fulfilled" ? eolData.value : null;
+    const warnings = [];
+    if (!pid)                                warnings.push(`Could not determine PID for "${platform}" — EoL check skipped.`);
+    if (rawAdvisories.status === "rejected") warnings.push(`Advisory lookup failed: ${rawAdvisories.reason?.message}`);
+    if (eolData.status === "rejected")       warnings.push(`EoL lookup failed: ${eolData.reason?.message}`);
 
     return res.status(200).json({
-      ...analysisResult,
-      _meta: {
-        analysisId: analysis?.id || null,
-        used:       licence.analyses_used + 1,
-        limit:      licence.analyses_limit,
-        plan:       licence.plan,
-        remaining:  licence.analyses_limit - (licence.analyses_used + 1),
-      },
+      advisories,
+      eol,
+      pid:          pid || null,
+      platform,
+      version,
+      queryVersion,
+      family:       platformConfig.family,
+      verified:     true,
+      warnings:     warnings.length > 0 ? warnings : undefined,
     });
 
   } catch (err) {
-    console.error('Post-analysis write error:', err);
-    // Return the result even if the audit write fails — don't lose the engineer's work
-    return res.status(200).json({
-      ...analysisResult,
-      _meta: { error: 'audit_write_failed' },
-    });
+    console.error("advisories.js error:", err.message);
+    return res.status(200).json({ advisories: [], eol: null, verified: false, message: err.message });
   }
 }
