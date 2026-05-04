@@ -245,10 +245,10 @@ ${advisorySummary}
 // ─────────────────────────────────────────────
 // MAIN HANDLER
 // Handles two modes:
-//   1. PSIRT lookup only  — { platform, version, isAciSwitch }
-//   2. Full analysis      — { devices, ctx, runAnalysis: true }
+//   1. PSIRT lookup only  — { platform, version, isAciSwitch } — PUBLIC, no auth
+//   2. Full analysis      — { devices, ctx, runAnalysis: true } — requires auth
 // ─────────────────────────────────────────────
-export default async function handler(req, res) {
+module.exports = async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
@@ -256,24 +256,23 @@ export default async function handler(req, res) {
   if (req.method === "OPTIONS") return res.status(200).end();
   if (req.method !== "POST")   return res.status(405).json({ error: "Method not allowed" });
 
-  // ── Auth
-  const token = req.headers.authorization?.split(" ")[1];
-  if (!token) return res.status(401).json({ error: "unauthorised" });
-
-  const { data: { user }, error: authError } = await supabase.auth.getUser(token);
-  if (authError || !user) return res.status(401).json({ error: "unauthorised" });
-
-  const { data: member } = await supabase
-    .from("members")
-    .select("id, org_id, role")
-    .eq("user_id", user.id)
-    .single();
-
-  if (!member) return res.status(401).json({ error: "unauthorised" });
-
-  // ── MODE 1: Full fabric analysis
+  // ── MODE 1: Full fabric analysis — requires auth
   // Client sends { runAnalysis: true, devices, ctx, advisoryMap }
   if (req.body.runAnalysis === true) {
+    const token = req.headers.authorization?.split(" ")[1];
+    if (!token) return res.status(401).json({ error: "unauthorised" });
+
+    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+    if (authError || !user) return res.status(401).json({ error: "unauthorised" });
+
+    const { data: member } = await supabase
+      .from("members")
+      .select("id, org_id, role")
+      .eq("user_id", user.id)
+      .single();
+
+    if (!member) return res.status(401).json({ error: "unauthorised" });
+
     if (member.role === "viewer") {
       return res.status(403).json({ error: "insufficient_role" });
     }
