@@ -1,5 +1,5 @@
 // App.js
-// v3.1 — definitive routing with Home marketing page
+// App v3.1 — definitive routing with Home marketing page
 // Route map:
 //   /                → Home (public marketing) — redirects to /app if authenticated
 //   /analyse         → AnalysisApp (public free tier, no auth required)
