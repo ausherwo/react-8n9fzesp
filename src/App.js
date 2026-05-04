@@ -19,6 +19,7 @@ import { AuthProvider, AuthGuard, LoginPage, SignupPage, AcceptInvitePage, useAu
 import { ForgotPasswordPage, SetNewPasswordPage } from './PasswordReset';
 import { SettingsPage } from './SettingsPage';
 import { StrategyPage } from './StrategyPage';
+import { ModelPage } from './ModelPage';
 
 const C = {
   bg:"#080806", surface:"#0E0D0A", hi:"#141310",
@@ -374,6 +375,7 @@ function Router() {
   if (path === '/app')                    return <AuthGuard><RinconChatPrototype /></AuthGuard>;
   if (path === '/settings')               return <AuthGuard><SettingsPage /></AuthGuard>;
       if (path === '/strategy')    return <StrategyPage />;
+          if (path === '/model')      return <ModelPage />;
   if (path === '/history')                return <AuthGuard><HistoryStub /></AuthGuard>;
 
   if (path === '/' || path === '')        return <RootPage />;
