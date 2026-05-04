@@ -245,8 +245,11 @@ ${advisorySummary}
 // ─────────────────────────────────────────────
 // MAIN HANDLER
 // Handles two modes:
-//   1. PSIRT lookup only  — { platform, version, isAciSwitch } — PUBLIC, no auth
-//   2. Full analysis      — { devices, ctx, runAnalysis: true } — requires auth
+//   1. PSIRT lookup only  — { platform, version, isAciSwitch } — always public
+//   2. Full analysis      — { devices, ctx, runAnalysis: true }
+//      Auth is OPTIONAL:
+//      - Authenticated: writes audit record, increments quota
+//      - Unauthenticated (free tier): runs analysis, no audit record
 // ─────────────────────────────────────────────
 module.exports = async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -256,38 +259,46 @@ module.exports = async function handler(req, res) {
   if (req.method === "OPTIONS") return res.status(200).end();
   if (req.method !== "POST")   return res.status(405).json({ error: "Method not allowed" });
 
-  // ── MODE 1: Full fabric analysis — requires auth
+  // ── MODE 1: Full fabric analysis
   // Client sends { runAnalysis: true, devices, ctx, advisoryMap }
   if (req.body.runAnalysis === true) {
+
+    // ── Optional auth — try to identify the member but don't block if missing
+    let member = null;
     const token = req.headers.authorization?.split(" ")[1];
-    if (!token) return res.status(401).json({ error: "unauthorised" });
-
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
-    if (authError || !user) return res.status(401).json({ error: "unauthorised" });
-
-    const { data: member } = await supabase
-      .from("members")
-      .select("id, org_id, role")
-      .eq("user_id", user.id)
-      .single();
-
-    if (!member) return res.status(401).json({ error: "unauthorised" });
-
-    if (member.role === "viewer") {
-      return res.status(403).json({ error: "insufficient_role" });
-    }
-
-    const { data: licence } = await supabase
-      .from("licences")
-      .select("plan, status, analyses_used, analyses_limit")
-      .eq("org_id", member.org_id)
-      .single();
-
-    if (!licence || licence.status !== "active") {
-      return res.status(402).json({ error: "no_active_licence" });
-    }
-    if (licence.analyses_used >= licence.analyses_limit) {
-      return res.status(402).json({ error: "limit_reached" });
+    if (token) {
+      try {
+        const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+        if (!authError && user) {
+          const { data: memberData } = await supabase
+            .from("members")
+            .select("id, org_id, role")
+            .eq("user_id", user.id)
+            .single();
+          if (memberData) {
+            // Viewer role cannot run analyses even when authenticated
+            if (memberData.role === "viewer") {
+              return res.status(403).json({ error: "insufficient_role" });
+            }
+            // Licence check for authenticated users
+            const { data: licence } = await supabase
+              .from("licences")
+              .select("plan, status, analyses_used, analyses_limit")
+              .eq("org_id", memberData.org_id)
+              .single();
+            if (!licence || licence.status !== "active") {
+              return res.status(402).json({ error: "no_active_licence" });
+            }
+            if (licence.analyses_used >= licence.analyses_limit) {
+              return res.status(402).json({ error: "limit_reached" });
+            }
+            member = memberData;
+          }
+        }
+      } catch (e) {
+        // Auth failed silently — continue as free tier
+        console.warn("Auth check failed (continuing as free tier):", e.message);
+      }
     }
 
     const { devices, ctx, advisoryMap } = req.body;
@@ -308,17 +319,17 @@ module.exports = async function handler(req, res) {
     try {
       const result = await runFabricAnalysis(devices, advisorySummary, aciFabric, ctx, advisoryMap || {});
 
-      // Write audit record
-      await supabase.from("analyses").insert({
-        org_id:           member.org_id,
-        run_by:           member.id,
-        device_count:     devices.length,
-        preflight_status: "clear",
-        result_json:      result,
-      });
-
-      // Increment usage counter
-      await supabase.rpc("increment_analyses_used", { p_org_id: member.org_id });
+      // Write audit record only for authenticated members
+      if (member) {
+        await supabase.from("analyses").insert({
+          org_id:           member.org_id,
+          run_by:           member.id,
+          device_count:     devices.length,
+          preflight_status: "clear",
+          result_json:      result,
+        });
+        await supabase.rpc("increment_analyses_used", { p_org_id: member.org_id });
+      }
 
       return res.status(200).json(result);
 
