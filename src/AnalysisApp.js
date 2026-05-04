@@ -1,5 +1,5 @@
 // AnalysisApp.js
-// v2.1 — two-tile results layout with Kelly integrated
+// v2.2 — Cisco verified advisories prioritised, expandable detail panels
 
 import { useState, useRef } from "react";
 import { useAuth } from './Auth';
@@ -133,7 +133,7 @@ function Nav({go, authed}) {
   );
 }
 
-// ── Kelly chat component
+// ── Kelly chat component v2 — verified-aware
 function KellyPanel({data, go}) {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
@@ -141,22 +141,24 @@ function KellyPanel({data, go}) {
   const [briefing, setBriefing] = useState(null);
   const [briefingLoading, setBriefingLoading] = useState(true);
 
-  const riskColor = {LOW:C.green, MEDIUM:C.yellow, HIGH:C.orange, CRITICAL:C.red};
   const fabricRisk = data.fabricAnalysis?.risk || "LOW";
   const p1 = data.priorityAssessment?.items?.[0];
   const mismatch = data.fabricAnalysis?.mismatches?.[0];
+  const verifiedItems = data.netwrkrIntel?.items?.filter(i=>i.verified) || [];
+  const verifiedCount = verifiedItems.length;
 
-  // Auto-generate Kelly briefing on mount
+  // Auto-generate Kelly briefing on mount — verified-aware
   useState(() => {
     const generateBriefing = async () => {
       try {
-        const summary = `Priority: ${p1?.title || "no critical issues"}. Fabric risk: ${fabricRisk}. ${mismatch ? "Mismatch: " + mismatch : "No version mismatches."}. Devices: ${data.devices?.length || 0}.`;
+        const cscIds = verifiedItems.map(i=>i.id).filter(Boolean).join(", ");
+        const summary = `${verifiedCount > 0 ? verifiedCount + " verified Cisco advisories: " + cscIds + "." : "No verified advisories."} Priority: ${p1?.title || "no critical issues"}. Fabric risk: ${fabricRisk}. ${mismatch ? "Mismatch: " + mismatch : "No version mismatches."}`;
         const res = await fetch("/api/chat", {
           method: "POST",
           headers: {"Content-Type":"application/json"},
           body: JSON.stringify({
-            system: `You are Kelly, a senior DC network engineer assistant for netwrkr.ai. You have just completed a fabric analysis. Be direct, confident and specific. Max 3 sentences. End with a concrete next action in monospace format prefixed with →`,
-            messages: [{role:"user", content:`Give me a one-paragraph briefing on this fabric analysis result: ${summary}. What is the most urgent action and rough time estimate?`}]
+            system: `You are Kelly, a senior DC network engineer assistant for netwrkr.ai. You have just completed a fabric analysis. Be direct, confident and specific. Reference verified CSC IDs by name when present. Max 3 sentences. End with a concrete next action prefixed with →`,
+            messages: [{role:"user", content:`Give me a briefing: ${summary}. What is the most urgent action?`}]
           })
         });
         const d = await res.json();
@@ -188,7 +190,7 @@ function KellyPanel({data, go}) {
         method: "POST",
         headers: {"Content-Type":"application/json"},
         body: JSON.stringify({
-          system: `You are Kelly, a senior DC network engineer assistant for netwrkr.ai. You have access to this fabric analysis result: ${context}. Be direct, specific, and actionable. Use technical language appropriate for a senior DC engineer. Keep responses concise — 2-4 sentences unless a detailed sequence is needed.`,
+          system: `You are Kelly, a senior DC network engineer assistant for netwrkr.ai. You have access to this fabric analysis: ${context}. Reference verified CSC IDs by name. Be direct, specific, actionable. Technical language for senior DC engineers. 2-4 sentences unless a sequence is needed.`,
           messages: newMessages
         })
       });
@@ -201,7 +203,12 @@ function KellyPanel({data, go}) {
     }
   };
 
-  const suggestions = [
+  const suggestions = verifiedCount > 0 ? [
+    "What is the safe upgrade sequence to fix all advisories?",
+    "Draft a change request for the highest priority fix",
+    "Write a manager summary with CSC IDs",
+    "What validation steps after the upgrade?",
+  ] : [
     "What is the safe upgrade sequence?",
     "Write a manager summary",
     "How urgent is the P1?",
@@ -296,12 +303,66 @@ function KellyPanel({data, go}) {
   );
 }
 
-// ── Results component v2 — two-tile layout with Kelly
+// ── Cisco verified advisory card with expandable detail panel
+function VerifiedAdvisoryCard({item, kellyTake}) {
+  const [open, setOpen] = useState(false);
+  const sev = SEV[item.sev] || SEV.MEDIUM;
+  return (
+    <div style={{marginBottom:8}}>
+      <div
+        onClick={()=>setOpen(!open)}
+        style={{background:C.hi,border:`1.5px solid #1a5276`,borderRadius:open?"8px 8px 0 0":8,padding:"12px 14px",cursor:"pointer"}}
+      >
+        <div style={{display:"flex",alignItems:"flex-start",gap:10}}>
+          <div style={{flex:1}}>
+            <div style={{display:"flex",alignItems:"center",gap:7,marginBottom:4,flexWrap:"wrap"}}>
+              <span style={{fontSize:13,fontWeight:600}}>{item.title}</span>
+              {item.id && <span style={{fontFamily:mono,fontSize:10,color:"#85B7EB",background:"#0c447c44",border:"1px solid #1a5276",padding:"1px 7px",borderRadius:3}}>{item.id}</span>}
+              <Badge level={item.sev} sm/>
+            </div>
+            <div style={{fontSize:12,color:C.muted}}>{item.platform} · {item.version}</div>
+          </div>
+          <span style={{fontFamily:mono,fontSize:11,color:"#85B7EB",flexShrink:0}}>{open?"▲":"details ↓"}</span>
+        </div>
+      </div>
+      {open && (
+        <div style={{background:C.surface,border:"1.5px solid #1a5276",borderTop:"none",borderRadius:"0 0 8px 8px",padding:"14px 16px"}}>
+          {/* Kelly take */}
+          <div style={{display:"flex",gap:8,alignItems:"flex-start",marginBottom:12}}>
+            <div style={{width:24,height:24,background:C.amberG,border:`1px solid ${C.amber}44`,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:mono,fontSize:10,fontWeight:700,color:C.amber,flexShrink:0}}>K</div>
+            <div style={{background:C.hi,border:`1px solid ${C.border}`,borderRadius:"0 8px 8px 8px",padding:"10px 13px",fontSize:13,lineHeight:1.7,color:C.text,flex:1}}>
+              {kellyTake || `${item.id} — ${item.detail}`}
+            </div>
+          </div>
+          {/* Advisory details */}
+          <div style={{background:C.faint,border:`1px solid ${C.border}`,borderRadius:6,padding:"12px 14px"}}>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"8px 16px",marginBottom:10}}>
+              {item.cvss && <div><div style={{fontFamily:mono,fontSize:10,color:C.muted,marginBottom:2}}>CVSS SCORE</div><div style={{fontFamily:mono,fontSize:13,fontWeight:600,color:sev.color}}>{item.cvss}</div></div>}
+              {item.fixedVersion && <div><div style={{fontFamily:mono,fontSize:10,color:C.muted,marginBottom:2}}>FIXED VERSION</div><div style={{fontFamily:mono,fontSize:13,fontWeight:600,color:C.green}}>{item.fixedVersion}</div></div>}
+              {item.affectedVersions && <div><div style={{fontFamily:mono,fontSize:10,color:C.muted,marginBottom:2}}>AFFECTED</div><div style={{fontFamily:mono,fontSize:12,color:C.dim}}>{item.affectedVersions}</div></div>}
+              {item.published && <div><div style={{fontFamily:mono,fontSize:10,color:C.muted,marginBottom:2}}>PUBLISHED</div><div style={{fontFamily:mono,fontSize:12,color:C.dim}}>{item.published}</div></div>}
+            </div>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",paddingTop:10,borderTop:`1px solid ${C.border}`}}>
+              <span style={{fontFamily:mono,fontSize:10,color:C.green}}>✓ verified — Cisco PSIRT API</span>
+              {item.id && <a href={`https://tools.cisco.com/security/center/content/CiscoSecurityAdvisory/${item.id}`} target="_blank" rel="noreferrer" style={{fontFamily:mono,fontSize:11,color:"#85B7EB",textDecoration:"none"}}>view on cisco.com →</a>}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Results component v3 — Cisco verified prioritised
 function Results({data, advisoryMap, reset, go, onShowSignup, showNudge, onDismissNudge}) {
 
   const riskColor = {LOW:C.green, MEDIUM:C.yellow, HIGH:C.orange, CRITICAL:C.red};
   const fabricRisk = data.fabricAnalysis?.risk || "LOW";
-  const issueCount = (data.fabricAnalysis?.mismatches?.length || 0) + (data.netwrkrIntel?.items?.filter(i=>i.sev==="HIGH"||i.sev==="CRITICAL").length || 0);
+
+  const verifiedItems = (data.netwrkrIntel?.items || []).filter(i=>i.verified);
+  const unverifiedItems = (data.netwrkrIntel?.items || []).filter(i=>!i.verified);
+  const verifiedCount = verifiedItems.length;
+  const mismatchCount = data.fabricAnalysis?.mismatches?.length || 0;
 
   return (
     <div style={{animation:"fadeUp 0.3s ease"}}>
@@ -322,12 +383,10 @@ function Results({data, advisoryMap, reset, go, onShowSignup, showNudge, onDismi
 
       {/* Top bar */}
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14}}>
-        <div style={{display:"flex",alignItems:"center",gap:8}}>
+        <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
           <span style={{fontFamily:mono,fontSize:11,color:C.amber,letterSpacing:"0.1em",textTransform:"uppercase"}}>// analysis complete</span>
-          {issueCount > 0
-            ? <span style={{fontFamily:mono,fontSize:10,color:C.red,background:C.red+"18",border:`1px solid ${C.red}30`,padding:"2px 8px",borderRadius:3}}>{issueCount} issue{issueCount!==1?"s":""} found</span>
-            : <span style={{fontFamily:mono,fontSize:10,color:C.green,background:C.greenG,border:`1px solid ${C.green}33`,padding:"2px 8px",borderRadius:3}}>clean fabric</span>
-          }
+          {verifiedCount > 0 && <span style={{fontFamily:mono,fontSize:10,color:"#85B7EB",background:"#0c447c44",border:"1px solid #1a5276",padding:"2px 8px",borderRadius:3}}>{verifiedCount} cisco verified</span>}
+          {mismatchCount > 0 && <span style={{fontFamily:mono,fontSize:10,color:C.red,background:C.red+"18",border:`1px solid ${C.red}30`,padding:"2px 8px",borderRadius:3}}>{mismatchCount} mismatch{mismatchCount!==1?"es":""}</span>}
           <span style={{fontFamily:mono,fontSize:10,color:C.muted,background:C.faint,border:`1px solid ${C.border}`,padding:"2px 8px",borderRadius:3}}>{data.devices?.length||0} devices</span>
         </div>
         <div style={{display:"flex",gap:8}}>
@@ -340,15 +399,30 @@ function Results({data, advisoryMap, reset, go, onShowSignup, showNudge, onDismi
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,alignItems:"start"}}>
 
         {/* Tile 1 — Fabric Analysis */}
-        <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:10,padding:"18px 20px"}}>
-          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16,paddingBottom:12,borderBottom:`1px solid ${C.border}`}}>
-            <span style={{fontFamily:mono,fontSize:12,fontWeight:600}}>Fabric Analysis</span>
+        <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:10,padding:"18px 20px",display:"flex",flexDirection:"column",gap:16}}>
+
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",paddingBottom:12,borderBottom:`1px solid ${C.border}`}}>
+            <span style={{fontFamily:mono,fontSize:12,fontWeight:600}}>Fabric analysis</span>
             <span style={{fontFamily:mono,fontSize:11,fontWeight:700,color:riskColor[fabricRisk]||C.green,background:(riskColor[fabricRisk]||C.green)+"22",border:`1px solid ${(riskColor[fabricRisk]||C.green)}44`,padding:"2px 10px",borderRadius:3}}>{fabricRisk} RISK</span>
           </div>
 
-          {/* Priorities */}
+          {/* Cisco Verified — HERO SECTION */}
+          {verifiedItems.length > 0 && (
+            <div>
+              <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10,paddingBottom:8,borderBottom:`1px solid #1a527644`}}>
+                <div style={{width:8,height:8,borderRadius:"50%",background:"#378ADD"}}/>
+                <span style={{fontFamily:mono,fontSize:11,fontWeight:600,color:"#85B7EB",letterSpacing:"0.1em",textTransform:"uppercase"}}>cisco verified advisories</span>
+                <span style={{marginLeft:"auto",fontFamily:mono,fontSize:10,color:"#85B7EB",background:"#0c447c44",border:"1px solid #1a5276",padding:"1px 8px",borderRadius:3}}>live PSIRT</span>
+              </div>
+              {verifiedItems.map((item,i)=>(
+                <VerifiedAdvisoryCard key={i} item={item} kellyTake={null} />
+              ))}
+            </div>
+          )}
+
+          {/* Priority assessment */}
           {data.priorityAssessment?.items && (
-            <div style={{marginBottom:16}}>
+            <div>
               <div style={{fontFamily:mono,fontSize:10,color:C.amber,letterSpacing:"0.12em",textTransform:"uppercase",marginBottom:10,paddingBottom:7,borderBottom:`1px solid ${C.border}`}}>// priorities</div>
               {data.priorityAssessment.items.map((item,i)=>{
                 const pColor = i===0?C.red:i===1?C.orange:C.yellow;
@@ -365,9 +439,9 @@ function Results({data, advisoryMap, reset, go, onShowSignup, showNudge, onDismi
             </div>
           )}
 
-          {/* Mismatch callout */}
-          {data.fabricAnalysis?.mismatches?.length>0 && (
-            <div style={{marginBottom:16}}>
+          {/* Fabric mismatch */}
+          {data.fabricAnalysis?.mismatches?.length > 0 && (
+            <div>
               <div style={{fontFamily:mono,fontSize:10,color:C.amber,letterSpacing:"0.12em",textTransform:"uppercase",marginBottom:10,paddingBottom:7,borderBottom:`1px solid ${C.border}`}}>// fabric risk</div>
               <div style={{background:"#2A1400",border:`1px solid ${C.orange}33`,borderRadius:6,padding:"10px 13px"}}>
                 <div style={{fontFamily:mono,fontSize:10,color:C.orange,marginBottom:5}}>// version mismatch</div>
@@ -378,8 +452,32 @@ function Results({data, advisoryMap, reset, go, onShowSignup, showNudge, onDismi
             </div>
           )}
 
+          {/* Unverified intel — secondary */}
+          {unverifiedItems.length > 0 && (
+            <div>
+              <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10,paddingBottom:7,borderBottom:`1px solid ${C.border}`}}>
+                <span style={{fontFamily:mono,fontSize:10,color:C.muted,letterSpacing:"0.12em",textTransform:"uppercase"}}>// netwrkr intel</span>
+                <span style={{marginLeft:"auto",fontFamily:mono,fontSize:10,color:C.orange,background:C.orange+"11",border:`1px solid ${C.orange}33`,padding:"1px 8px",borderRadius:3}}>⚠ unverified</span>
+              </div>
+              {unverifiedItems.map((item,i)=>{
+                const s=SEV[item.sev]||SEV.MEDIUM;
+                return (
+                  <div key={i} style={{border:`1px solid ${s.bd}`,borderRadius:6,padding:"9px 12px",marginBottom:7,background:`${s.bg}88`}}>
+                    <div style={{display:"flex",alignItems:"center",gap:7,marginBottom:3,flexWrap:"wrap"}}>
+                      <Badge level={item.sev} sm/>
+                      <span style={{fontSize:12,fontWeight:500}}>{item.title}</span>
+                      <span style={{fontFamily:mono,fontSize:10,color:C.muted}}>{item.platform}</span>
+                    </div>
+                    <div style={{fontSize:12,color:C.dim,lineHeight:1.5,marginBottom:6}}>{item.detail}</div>
+                    <button onClick={()=>go("signup")} style={{background:"none",border:`1px solid ${C.amber}44`,color:C.amber,fontFamily:mono,fontSize:10,padding:"2px 9px",borderRadius:3,cursor:"pointer"}}>verify with enterprise →</button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
           {/* Device breakdown */}
-          {data.devices?.length>0 && (
+          {data.devices?.length > 0 && (
             <div>
               <div style={{fontFamily:mono,fontSize:10,color:C.amber,letterSpacing:"0.12em",textTransform:"uppercase",marginBottom:10,paddingBottom:7,borderBottom:`1px solid ${C.border}`}}>// devices</div>
               <div style={{background:C.hi,border:`1px solid ${C.border}`,borderRadius:6,overflow:"hidden"}}>
@@ -399,35 +497,6 @@ function Results({data, advisoryMap, reset, go, onShowSignup, showNudge, onDismi
                   );
                 })}
               </div>
-            </div>
-          )}
-
-          {/* Netwrkr Intel — collapsed in tile */}
-          {data.netwrkrIntel?.hasIntel && (
-            <div style={{marginTop:14,paddingTop:14,borderTop:`1px solid ${C.border}`}}>
-              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
-                <div style={{fontFamily:mono,fontSize:10,color:C.amber,letterSpacing:"0.12em",textTransform:"uppercase"}}>// netwrkr intel</div>
-                {data.netwrkrIntel.items?.some(i=>i.verified)
-                  ? <span style={{fontFamily:mono,fontSize:10,color:C.green,background:C.greenG,border:`1px solid ${C.green}33`,padding:"1px 8px",borderRadius:3}}>✓ live PSIRT</span>
-                  : <span style={{fontFamily:mono,fontSize:10,color:C.orange,background:C.orange+"11",border:`1px solid ${C.orange}33`,padding:"1px 8px",borderRadius:3}}>⚠ unverified</span>
-                }
-              </div>
-              {data.netwrkrIntel.items?.map((item,i)=>{
-                const s=SEV[item.sev]||SEV.MEDIUM;
-                return (
-                  <div key={i} style={{border:`1px solid ${s.bd}`,borderRadius:6,padding:"9px 12px",marginBottom:7,background:`${s.bg}88`}}>
-                    <div style={{display:"flex",alignItems:"center",gap:7,marginBottom:3,flexWrap:"wrap"}}>
-                      <Badge level={item.sev} sm/>
-                      <span style={{fontSize:12,fontWeight:500}}>{item.title}</span>
-                      {item.id&&<span style={{fontFamily:mono,fontSize:10,color:C.amber,background:C.amberG,padding:"1px 6px",borderRadius:2}}>{item.id}</span>}
-                    </div>
-                    <div style={{fontSize:12,color:C.dim,lineHeight:1.5,marginBottom:6}}>{item.detail}</div>
-                    {!item.verified && (
-                      <button onClick={()=>go("signup")} style={{background:"none",border:`1px solid ${C.amber}44`,color:C.amber,fontFamily:mono,fontSize:10,padding:"2px 9px",borderRadius:3,cursor:"pointer"}}>verify with enterprise →</button>
-                    )}
-                  </div>
-                );
-              })}
             </div>
           )}
         </div>
