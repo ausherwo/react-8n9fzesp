@@ -1,5 +1,5 @@
 // AnalysisApp.js
-// v2.0 — API calls moved server-side, prompt removed from client
+// v2.1 — two-tile results layout with Kelly integrated
 
 import { useState, useRef } from "react";
 import { useAuth } from './Auth';
@@ -133,18 +133,182 @@ function Nav({go, authed}) {
   );
 }
 
-// ── Results component (unchanged from v1)
-function Results({data, advisoryMap, reset, go, onShowSignup, showNudge, onDismissNudge}) {
-  const [exp, setExp] = useState(null);
+// ── Kelly chat component
+function KellyPanel({data, go}) {
+  const [messages, setMessages] = useState([]);
+  const [input, setInput] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [briefing, setBriefing] = useState(null);
+  const [briefingLoading, setBriefingLoading] = useState(true);
 
   const riskColor = {LOW:C.green, MEDIUM:C.yellow, HIGH:C.orange, CRITICAL:C.red};
   const fabricRisk = data.fabricAnalysis?.risk || "LOW";
+  const p1 = data.priorityAssessment?.items?.[0];
+  const mismatch = data.fabricAnalysis?.mismatches?.[0];
+
+  // Auto-generate Kelly briefing on mount
+  useState(() => {
+    const generateBriefing = async () => {
+      try {
+        const summary = `Priority: ${p1?.title || "no critical issues"}. Fabric risk: ${fabricRisk}. ${mismatch ? "Mismatch: " + mismatch : "No version mismatches."}. Devices: ${data.devices?.length || 0}.`;
+        const res = await fetch("/api/chat", {
+          method: "POST",
+          headers: {"Content-Type":"application/json"},
+          body: JSON.stringify({
+            system: `You are Kelly, a senior DC network engineer assistant for netwrkr.ai. You have just completed a fabric analysis. Be direct, confident and specific. Max 3 sentences. End with a concrete next action in monospace format prefixed with →`,
+            messages: [{role:"user", content:`Give me a one-paragraph briefing on this fabric analysis result: ${summary}. What is the most urgent action and rough time estimate?`}]
+          })
+        });
+        const d = await res.json();
+        setBriefing(d.content || "Analysis complete. Ask me anything about your fabric.");
+      } catch {
+        setBriefing("Analysis complete. Ask me anything about your fabric.");
+      } finally {
+        setBriefingLoading(false);
+      }
+    };
+    generateBriefing();
+  }, []);
+
+  const sendMessage = async (text) => {
+    if (!text.trim()) return;
+    const userMsg = {role:"user", content:text};
+    const newMessages = [...messages, userMsg];
+    setMessages(newMessages);
+    setInput("");
+    setLoading(true);
+    try {
+      const context = JSON.stringify({
+        priorityAssessment: data.priorityAssessment,
+        fabricAnalysis: data.fabricAnalysis,
+        devices: data.devices,
+        netwrkrIntel: data.netwrkrIntel
+      });
+      const res = await fetch("/api/chat", {
+        method: "POST",
+        headers: {"Content-Type":"application/json"},
+        body: JSON.stringify({
+          system: `You are Kelly, a senior DC network engineer assistant for netwrkr.ai. You have access to this fabric analysis result: ${context}. Be direct, specific, and actionable. Use technical language appropriate for a senior DC engineer. Keep responses concise — 2-4 sentences unless a detailed sequence is needed.`,
+          messages: newMessages
+        })
+      });
+      const d = await res.json();
+      setMessages([...newMessages, {role:"assistant", content: d.content || "I couldn't process that request."}]);
+    } catch {
+      setMessages([...newMessages, {role:"assistant", content:"Something went wrong. Please try again."}]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const suggestions = [
+    "What is the safe upgrade sequence?",
+    "Write a manager summary",
+    "How urgent is the P1?",
+    "What validation steps after upgrade?",
+  ];
+
+  return (
+    <div style={{background:C.surface,border:`1px solid ${C.amber}33`,borderRadius:10,padding:"18px 20px",display:"flex",flexDirection:"column",gap:14}}>
+
+      {/* Kelly header */}
+      <div style={{display:"flex",alignItems:"center",gap:9,paddingBottom:12,borderBottom:`1px solid ${C.border}`}}>
+        <div style={{width:28,height:28,background:C.amberG,border:`1px solid ${C.amber}44`,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:mono,fontSize:11,fontWeight:700,color:C.amber,flexShrink:0}}>K</div>
+        <div>
+          <div style={{fontFamily:mono,fontSize:13,fontWeight:600}}>Kelly</div>
+          <div style={{fontSize:11,color:C.muted}}>DC engineer assistant</div>
+        </div>
+        <span style={{marginLeft:"auto",fontFamily:mono,fontSize:10,color:C.green,background:C.greenG,border:`1px solid ${C.green}33`,padding:"2px 8px",borderRadius:3}}>● online</span>
+      </div>
+
+      {/* Auto briefing */}
+      <div>
+        <div style={{fontFamily:mono,fontSize:10,color:C.amber,letterSpacing:"0.12em",textTransform:"uppercase",marginBottom:8}}>// briefing</div>
+        <div style={{display:"flex",gap:8,alignItems:"flex-start"}}>
+          <div style={{width:26,height:26,background:C.amberG,border:`1px solid ${C.amber}44`,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:mono,fontSize:10,fontWeight:700,color:C.amber,flexShrink:0,marginTop:2}}>K</div>
+          <div style={{background:C.hi,border:`1px solid ${C.border}`,borderRadius:"0 8px 8px 8px",padding:"12px 14px",fontSize:13,lineHeight:1.7,color:C.text,flex:1}}>
+            {briefingLoading
+              ? <span style={{color:C.muted,fontFamily:mono,fontSize:12}}>analysing your fabric<span style={{animation:"blink 1s step-end infinite"}}>▌</span></span>
+              : briefing
+            }
+          </div>
+        </div>
+      </div>
+
+      {/* Suggestions */}
+      {messages.length === 0 && (
+        <div>
+          <div style={{fontFamily:mono,fontSize:10,color:C.muted,letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:8}}>// ask kelly</div>
+          <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+            {suggestions.map((s,i)=>(
+              <button key={i} onClick={()=>sendMessage(s)} style={{background:"none",border:`1px solid ${C.border}`,color:C.dim,fontFamily:mono,fontSize:11,padding:"5px 11px",borderRadius:20,cursor:"pointer"}}>
+                {s} →
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Chat thread */}
+      {messages.length > 0 && (
+        <div style={{display:"flex",flexDirection:"column",gap:10,maxHeight:240,overflowY:"auto"}}>
+          {messages.map((m,i)=>(
+            <div key={i} style={{display:"flex",gap:8,alignItems:"flex-start",flexDirection:m.role==="user"?"row-reverse":"row"}}>
+              {m.role==="assistant" && (
+                <div style={{width:24,height:24,background:C.amberG,border:`1px solid ${C.amber}44`,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:mono,fontSize:10,fontWeight:700,color:C.amber,flexShrink:0,marginTop:2}}>K</div>
+              )}
+              <div style={{
+                background:m.role==="user"?C.amberG:C.hi,
+                border:`1px solid ${m.role==="user"?C.amber+"33":C.border}`,
+                borderRadius:m.role==="user"?"8px 0 8px 8px":"0 8px 8px 8px",
+                padding:"10px 13px",fontSize:13,lineHeight:1.7,
+                color:m.role==="user"?C.amber:C.text,
+                maxWidth:"85%"
+              }}>{m.content}</div>
+            </div>
+          ))}
+          {loading && (
+            <div style={{display:"flex",gap:8,alignItems:"flex-start"}}>
+              <div style={{width:24,height:24,background:C.amberG,border:`1px solid ${C.amber}44`,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:mono,fontSize:10,fontWeight:700,color:C.amber,flexShrink:0}}>K</div>
+              <div style={{background:C.hi,border:`1px solid ${C.border}`,borderRadius:"0 8px 8px 8px",padding:"10px 13px",fontFamily:mono,fontSize:12,color:C.muted}}>thinking<span style={{animation:"blink 1s step-end infinite"}}>▌</span></div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Input */}
+      <div style={{borderTop:`1px solid ${C.border}`,paddingTop:12}}>
+        <div style={{display:"flex",gap:8,alignItems:"center"}}>
+          <input
+            value={input}
+            onChange={e=>setInput(e.target.value)}
+            onKeyDown={e=>e.key==="Enter"&&sendMessage(input)}
+            placeholder="Ask Kelly about your fabric..."
+            style={{flex:1,background:C.hi,border:`1px solid ${C.border}`,color:C.text,fontFamily:mono,fontSize:12,padding:"9px 13px",borderRadius:6,outline:"none"}}
+          />
+          <button onClick={()=>sendMessage(input)} style={{background:C.amber,border:"none",color:"#000",fontFamily:mono,fontSize:12,fontWeight:700,padding:"9px 13px",borderRadius:6,cursor:"pointer",flexShrink:0}}>→</button>
+        </div>
+        <div style={{fontSize:11,color:C.muted,marginTop:7,textAlign:"center"}}>
+          <span style={{color:C.amber,cursor:"pointer"}} onClick={()=>go("signup")}>upgrade to Desert Point for real SNTC data →</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Results component v2 — two-tile layout with Kelly
+function Results({data, advisoryMap, reset, go, onShowSignup, showNudge, onDismissNudge}) {
+
+  const riskColor = {LOW:C.green, MEDIUM:C.yellow, HIGH:C.orange, CRITICAL:C.red};
+  const fabricRisk = data.fabricAnalysis?.risk || "LOW";
+  const issueCount = (data.fabricAnalysis?.mismatches?.length || 0) + (data.netwrkrIntel?.items?.filter(i=>i.sev==="HIGH"||i.sev==="CRITICAL").length || 0);
 
   return (
     <div style={{animation:"fadeUp 0.3s ease"}}>
 
+      {/* Sign up nudge */}
       {showNudge && (
-        <div style={{background:C.amberG,border:`1px solid ${C.amber}44`,borderRadius:10,padding:"14px 18px",marginBottom:16,display:"flex",alignItems:"center",justifyContent:"space-between",gap:16}}>
+        <div style={{background:C.amberG,border:`1px solid ${C.amber}44`,borderRadius:10,padding:"14px 18px",marginBottom:14,display:"flex",alignItems:"center",justifyContent:"space-between",gap:16}}>
           <div>
             <div style={{fontFamily:mono,fontSize:11,color:C.amber,marginBottom:4}}>// save your analysis history</div>
             <div style={{fontSize:13,color:C.dim}}>Create a free account to keep your analyses and access them later.</div>
@@ -156,156 +320,123 @@ function Results({data, advisoryMap, reset, go, onShowSignup, showNudge, onDismi
         </div>
       )}
 
-      <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:10,padding:"14px 18px",marginBottom:14,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-        <div style={{fontFamily:mono,fontSize:11,color:C.amber,letterSpacing:"0.1em",textTransform:"uppercase"}}>// analysis complete</div>
-        <div style={{display:"flex",gap:9}}>
+      {/* Top bar */}
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14}}>
+        <div style={{display:"flex",alignItems:"center",gap:8}}>
+          <span style={{fontFamily:mono,fontSize:11,color:C.amber,letterSpacing:"0.1em",textTransform:"uppercase"}}>// analysis complete</span>
+          {issueCount > 0
+            ? <span style={{fontFamily:mono,fontSize:10,color:C.red,background:C.red+"18",border:`1px solid ${C.red}30`,padding:"2px 8px",borderRadius:3}}>{issueCount} issue{issueCount!==1?"s":""} found</span>
+            : <span style={{fontFamily:mono,fontSize:10,color:C.green,background:C.greenG,border:`1px solid ${C.green}33`,padding:"2px 8px",borderRadius:3}}>clean fabric</span>
+          }
+          <span style={{fontFamily:mono,fontSize:10,color:C.muted,background:C.faint,border:`1px solid ${C.border}`,padding:"2px 8px",borderRadius:3}}>{data.devices?.length||0} devices</span>
+        </div>
+        <div style={{display:"flex",gap:8}}>
           <button onClick={reset} style={{background:"none",border:`1px solid ${C.border}`,color:C.dim,fontFamily:mono,fontSize:12,padding:"7px 13px",borderRadius:6,cursor:"pointer"}}>← new_analysis()</button>
           <button style={{background:C.amber,border:"none",color:"#000",fontFamily:mono,fontSize:12,fontWeight:700,padding:"7px 13px",borderRadius:6,cursor:"pointer"}}>export_report()</button>
         </div>
       </div>
 
-      {/* Priority Assessment */}
-      {data.priorityAssessment?.items && (
-        <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:10,padding:"16px 20px",marginBottom:12}}>
-          <div style={{fontFamily:mono,fontSize:11,color:C.amber,letterSpacing:"0.12em",textTransform:"uppercase",marginBottom:14}}>// priority assessment</div>
-          {data.priorityAssessment.items.map((item,i)=>(
-            <div key={i} style={{display:"flex",gap:13,marginBottom:i<data.priorityAssessment.items.length-1?14:0,paddingBottom:i<data.priorityAssessment.items.length-1?14:0,borderBottom:i<data.priorityAssessment.items.length-1?`1px solid ${C.border}`:"none"}}>
-              <div style={{width:28,height:28,borderRadius:6,background:i===0?C.red+"22":i===1?C.orange+"22":C.yellow+"22",border:`1px solid ${i===0?C.red:i===1?C.orange:C.yellow}44`,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:mono,fontSize:11,fontWeight:700,color:i===0?C.red:i===1?C.orange:C.yellow,flexShrink:0}}>
-                {item.priority}
-              </div>
-              <div style={{flex:1}}>
-                <div style={{fontWeight:600,fontSize:14,marginBottom:3}}>{item.title}</div>
-                <div style={{fontSize:13,color:C.dim,lineHeight:1.6,marginBottom:6}}>{item.reason}</div>
-                <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-                  {item.devices?.map((d,di)=><Pill key={di}>{d}</Pill>)}
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
+      {/* Two tiles */}
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,alignItems:"start"}}>
 
-      {/* Fabric Analysis */}
-      {data.fabricAnalysis && (
-        <div style={{background:C.surface,border:`1px solid ${C.amber}33`,borderRadius:10,padding:"16px 20px",marginBottom:12}}>
-          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
-            <div style={{fontFamily:mono,fontSize:11,color:C.amber,letterSpacing:"0.12em",textTransform:"uppercase"}}>// fabric analysis</div>
-            <span style={{fontFamily:mono,fontSize:11,fontWeight:700,color:riskColor[fabricRisk]||C.green,background:(riskColor[fabricRisk]||C.green)+"22",border:`1px solid ${(riskColor[fabricRisk]||C.green)}44`,padding:"2px 10px",borderRadius:3}}>{fabricRisk}</span>
+        {/* Tile 1 — Fabric Analysis */}
+        <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:10,padding:"18px 20px"}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16,paddingBottom:12,borderBottom:`1px solid ${C.border}`}}>
+            <span style={{fontFamily:mono,fontSize:12,fontWeight:600}}>Fabric Analysis</span>
+            <span style={{fontFamily:mono,fontSize:11,fontWeight:700,color:riskColor[fabricRisk]||C.green,background:(riskColor[fabricRisk]||C.green)+"22",border:`1px solid ${(riskColor[fabricRisk]||C.green)}44`,padding:"2px 10px",borderRadius:3}}>{fabricRisk} RISK</span>
           </div>
-          <div style={{fontFamily:mono,fontSize:11,color:C.muted,fontStyle:"italic",marginBottom:10}}>Facts derived directly from your submitted inventory.</div>
-          {data.fabricAnalysis.findings?.map((f,i)=>(
-            <div key={i} style={{display:"flex",gap:9,marginBottom:7}}>
-              <span style={{color:C.amber,fontFamily:mono,fontSize:12,flexShrink:0}}>→</span>
-              <span style={{fontSize:13,color:C.dim,lineHeight:1.6}}>{f}</span>
+
+          {/* Priorities */}
+          {data.priorityAssessment?.items && (
+            <div style={{marginBottom:16}}>
+              <div style={{fontFamily:mono,fontSize:10,color:C.amber,letterSpacing:"0.12em",textTransform:"uppercase",marginBottom:10,paddingBottom:7,borderBottom:`1px solid ${C.border}`}}>// priorities</div>
+              {data.priorityAssessment.items.map((item,i)=>{
+                const pColor = i===0?C.red:i===1?C.orange:C.yellow;
+                return (
+                  <div key={i} style={{background:C.hi,border:`1px solid ${C.border}`,borderLeft:`2px solid ${pColor}`,borderRadius:"0 6px 6px 0",padding:"10px 13px",marginBottom:7}}>
+                    <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:3}}>
+                      <span style={{fontFamily:mono,fontSize:10,fontWeight:700,color:pColor,background:pColor+"22",border:`1px solid ${pColor}44`,padding:"1px 7px",borderRadius:3}}>{item.priority}</span>
+                      <span style={{fontSize:13,fontWeight:500}}>{item.title}</span>
+                    </div>
+                    <div style={{fontSize:12,color:C.dim,marginLeft:36,lineHeight:1.5}}>{item.reason}</div>
+                  </div>
+                );
+              })}
             </div>
-          ))}
-          {data.fabricAnalysis.mismatches?.length>0 && (
-            <div style={{background:"#2A1400",border:`1px solid ${C.orange}33`,borderRadius:8,padding:"12px 14px",marginTop:10}}>
-              <div style={{fontFamily:mono,fontSize:11,color:C.orange,marginBottom:7}}>// version mismatches detected</div>
-              {data.fabricAnalysis.mismatches.map((m,i)=>(
-                <div key={i} style={{fontSize:13,color:C.dim,marginBottom:4}}>{m}</div>
-              ))}
+          )}
+
+          {/* Mismatch callout */}
+          {data.fabricAnalysis?.mismatches?.length>0 && (
+            <div style={{marginBottom:16}}>
+              <div style={{fontFamily:mono,fontSize:10,color:C.amber,letterSpacing:"0.12em",textTransform:"uppercase",marginBottom:10,paddingBottom:7,borderBottom:`1px solid ${C.border}`}}>// fabric risk</div>
+              <div style={{background:"#2A1400",border:`1px solid ${C.orange}33`,borderRadius:6,padding:"10px 13px"}}>
+                <div style={{fontFamily:mono,fontSize:10,color:C.orange,marginBottom:5}}>// version mismatch</div>
+                {data.fabricAnalysis.mismatches.map((m,i)=>(
+                  <div key={i} style={{fontSize:12,color:C.dim}}>{m}</div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Device breakdown */}
+          {data.devices?.length>0 && (
+            <div>
+              <div style={{fontFamily:mono,fontSize:10,color:C.amber,letterSpacing:"0.12em",textTransform:"uppercase",marginBottom:10,paddingBottom:7,borderBottom:`1px solid ${C.border}`}}>// devices</div>
+              <div style={{background:C.hi,border:`1px solid ${C.border}`,borderRadius:6,overflow:"hidden"}}>
+                {data.devices.map((d,di)=>{
+                  const dotColor = SEV[d.fabricRisk]?.color||C.green;
+                  const isHighRisk = d.fabricRisk==="HIGH"||d.fabricRisk==="CRITICAL";
+                  return (
+                    <div key={di} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 12px",borderBottom:di<data.devices.length-1?`1px solid ${C.border}`:"none",background:isHighRisk?"#2A140088":"none",fontSize:12}}>
+                      <div style={{width:7,height:7,borderRadius:"50%",background:dotColor,flexShrink:0}}/>
+                      <div style={{flex:1,display:"flex",alignItems:"center",gap:7,flexWrap:"wrap"}}>
+                        <span style={{fontWeight:500}}>{d.name}</span>
+                        <span style={{fontFamily:mono,fontSize:11,color:isHighRisk?C.orange:C.muted}}>v{d.ver}</span>
+                        <span style={{fontFamily:mono,fontSize:9,color:C.muted,background:C.faint,padding:"1px 5px",borderRadius:2}}>{d.role}</span>
+                      </div>
+                      <Badge level={d.fabricRisk} sm/>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Netwrkr Intel — collapsed in tile */}
+          {data.netwrkrIntel?.hasIntel && (
+            <div style={{marginTop:14,paddingTop:14,borderTop:`1px solid ${C.border}`}}>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
+                <div style={{fontFamily:mono,fontSize:10,color:C.amber,letterSpacing:"0.12em",textTransform:"uppercase"}}>// netwrkr intel</div>
+                {data.netwrkrIntel.items?.some(i=>i.verified)
+                  ? <span style={{fontFamily:mono,fontSize:10,color:C.green,background:C.greenG,border:`1px solid ${C.green}33`,padding:"1px 8px",borderRadius:3}}>✓ live PSIRT</span>
+                  : <span style={{fontFamily:mono,fontSize:10,color:C.orange,background:C.orange+"11",border:`1px solid ${C.orange}33`,padding:"1px 8px",borderRadius:3}}>⚠ unverified</span>
+                }
+              </div>
+              {data.netwrkrIntel.items?.map((item,i)=>{
+                const s=SEV[item.sev]||SEV.MEDIUM;
+                return (
+                  <div key={i} style={{border:`1px solid ${s.bd}`,borderRadius:6,padding:"9px 12px",marginBottom:7,background:`${s.bg}88`}}>
+                    <div style={{display:"flex",alignItems:"center",gap:7,marginBottom:3,flexWrap:"wrap"}}>
+                      <Badge level={item.sev} sm/>
+                      <span style={{fontSize:12,fontWeight:500}}>{item.title}</span>
+                      {item.id&&<span style={{fontFamily:mono,fontSize:10,color:C.amber,background:C.amberG,padding:"1px 6px",borderRadius:2}}>{item.id}</span>}
+                    </div>
+                    <div style={{fontSize:12,color:C.dim,lineHeight:1.5,marginBottom:6}}>{item.detail}</div>
+                    {!item.verified && (
+                      <button onClick={()=>go("signup")} style={{background:"none",border:`1px solid ${C.amber}44`,color:C.amber,fontFamily:mono,fontSize:10,padding:"2px 9px",borderRadius:3,cursor:"pointer"}}>verify with enterprise →</button>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
-      )}
 
-      {/* Netwrkr Intel */}
-      {data.netwrkrIntel?.hasIntel && (
-        <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:10,padding:"16px 20px",marginBottom:12}}>
-          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
-            <div style={{fontFamily:mono,fontSize:11,color:C.amber,letterSpacing:"0.12em",textTransform:"uppercase"}}>// netwrkr intel</div>
-            {data.netwrkrIntel.items?.some(i=>i.verified) && (
-              <span style={{fontFamily:mono,fontSize:10,color:C.green,background:C.greenG,border:`1px solid ${C.green}33`,padding:"2px 9px",borderRadius:3}}>✓ live PSIRT data</span>
-            )}
-          </div>
-          <div style={{fontSize:13,color:C.dim,marginBottom:12,lineHeight:1.6}}>
-            {data.netwrkrIntel.items?.some(i=>i.verified)
-              ? <>Verified advisories sourced from the live Cisco PSIRT API. Unverified items are from AI training knowledge — <span style={{color:C.amber,cursor:"pointer"}} onClick={()=>go("signup")}>Upgrade to enterprise</span> for full fabric exposure analysis.</>
-              : <>⚠ AI-powered intelligence from training knowledge — unverified. <span style={{color:C.amber,cursor:"pointer"}} onClick={()=>go("signup")}>Upgrade to enterprise</span> for verified Cisco Bug API data.</>
-            }
-          </div>
-          {data.netwrkrIntel.items?.map((item,i)=>{
-            const s=SEV[item.sev]||SEV.MEDIUM;
-            return (
-              <div key={i} style={{border:`1px solid ${s.bd}`,borderRadius:8,padding:"12px 14px",marginBottom:9,background:`${s.bg}88`}}>
-                <div style={{display:"flex",alignItems:"flex-start",gap:10,marginBottom:6}}>
-                  <Badge level={item.sev} sm/>
-                  <div style={{flex:1}}>
-                    <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",marginBottom:3}}>
-                      <span style={{fontWeight:600,fontSize:13}}>{item.title}</span>
-                      {item.id&&<span style={{fontFamily:mono,fontSize:10,color:C.amber,background:C.amberG,padding:"1px 7px",borderRadius:3}}>{item.id}</span>}
-                      <span style={{fontFamily:mono,fontSize:10,color:C.muted}}>{item.platform} {item.version}</span>
-                    </div>
-                    <div style={{fontSize:13,color:C.dim,lineHeight:1.6}}>{item.detail}</div>
-                  </div>
-                </div>
-                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginTop:8,paddingTop:8,borderTop:`1px solid ${C.border}`}}>
-                  {item.verified
-                    ? <span style={{fontFamily:mono,fontSize:10,color:C.green}}>✓ verified — Cisco PSIRT API</span>
-                    : <span style={{fontFamily:mono,fontSize:10,color:C.orange}}>⚠ unverified — AI training knowledge</span>
-                  }
-                  {!item.verified && (
-                    <button onClick={()=>go("signup")} style={{background:"none",border:`1px solid ${C.amber}44`,color:C.amber,fontFamily:mono,fontSize:10,padding:"3px 10px",borderRadius:4,cursor:"pointer"}}>verify with enterprise →</button>
-                  )}
-                </div>
-              </div>
-            );
-          })}
+        {/* Tile 2 — Kelly */}
+        <div style={{position:"sticky",top:0}}>
+          <KellyPanel data={data} go={go} />
         </div>
-      )}
 
-      {/* Device Breakdown */}
-      {data.devices?.length>0 && (
-        <div style={{marginBottom:14}}>
-          <div style={{fontFamily:mono,fontSize:11,color:C.muted,letterSpacing:"0.12em",textTransform:"uppercase",marginBottom:9}}>// device breakdown</div>
-          <div style={{display:"flex",flexDirection:"column",gap:9}}>
-            {data.devices.map((d,di)=>{
-              const open=exp===di;
-              const fRisk=SEV[d.fabricRisk]||SEV.LOW;
-              const iRisk=SEV[d.intelRisk]||SEV.LOW;
-              return (
-                <div key={di} style={{background:C.surface,border:`1px solid ${open?C.amber+"44":C.border}`,borderRadius:10,overflow:"hidden"}}>
-                  <div onClick={()=>setExp(open?null:di)} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"13px 18px",cursor:"pointer"}}>
-                    <div style={{display:"flex",alignItems:"center",gap:12}}>
-                      <div style={{width:7,height:7,borderRadius:"50%",background:SEV[d.fabricRisk]?.color||C.green,flexShrink:0}}/>
-                      <div>
-                        <div style={{display:"flex",alignItems:"center",gap:8}}>
-                          <span style={{fontWeight:600,fontSize:14}}>{d.name}</span>
-                          <span style={{fontFamily:mono,fontSize:11,color:C.muted}}>v{d.ver}</span>
-                          <span style={{fontFamily:mono,fontSize:10,color:C.muted,background:C.faint,padding:"1px 7px",borderRadius:3}}>{d.role}</span>
-                        </div>
-                        <div style={{fontSize:12,color:C.muted,marginTop:2}}>{d.rec}</div>
-                      </div>
-                    </div>
-                    <div style={{display:"flex",alignItems:"center",gap:9}}>
-                      <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:3}}>
-                        <div style={{display:"flex",alignItems:"center",gap:5}}>
-                          <span style={{fontFamily:mono,fontSize:9,color:C.muted}}>fabric</span>
-                          <Badge level={d.fabricRisk} sm/>
-                        </div>
-                        <div style={{display:"flex",alignItems:"center",gap:5}}>
-                          <span style={{fontFamily:mono,fontSize:9,color:C.muted}}>intel</span>
-                          <Badge level={d.intelRisk} sm/>
-                        </div>
-                      </div>
-                      <span style={{color:C.muted,fontFamily:mono,fontSize:11}}>{open?"▲":"▼"}</span>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* Enterprise upsell */}
-      <div style={{background:C.amberG,border:`1px solid ${C.amber}33`,borderRadius:10,padding:"16px 20px",display:"flex",alignItems:"center",justifyContent:"space-between",gap:18}}>
-        <div>
-          <div style={{fontFamily:mono,fontSize:11,color:C.amber,marginBottom:4}}>// unlock verified fabric exposure analysis</div>
-          <div style={{fontSize:13,color:C.dim,lineHeight:1.6}}>Enterprise adds live Cisco Bug API data — verified CSC IDs and confirmed fabric exposure analysis.</div>
-        </div>
-        <button onClick={()=>go("signup")} style={{background:C.amber,border:"none",color:"#000",fontFamily:mono,fontSize:12,fontWeight:700,padding:"9px 16px",borderRadius:6,cursor:"pointer",whiteSpace:"nowrap",flexShrink:0}}>get_enterprise()</button>
       </div>
     </div>
   );
@@ -609,6 +740,7 @@ export default function AnalysisApp() {
         @keyframes fadeUp{from{opacity:0;transform:translateY(11px);}to{opacity:1;transform:translateY(0);}}
         @keyframes spin{to{transform:rotate(360deg);}}
         @keyframes pulse{0%,100%{opacity:1;}50%{opacity:.3;}}
+        @keyframes blink{50%{opacity:0;}}
       `}</style>
       <div style={{position:"fixed",inset:0,backgroundImage:`linear-gradient(${C.border}55 1px,transparent 1px),linear-gradient(90deg,${C.border}55 1px,transparent 1px)`,backgroundSize:"72px 72px",pointerEvents:"none",zIndex:0,opacity:.4}}/>
       <div style={{position:"fixed",top:"15%",left:"50%",transform:"translateX(-50%)",width:680,height:480,background:`radial-gradient(ellipse,${C.amber}06 0%,transparent 65%)`,pointerEvents:"none",zIndex:0}}/>
