@@ -444,20 +444,7 @@ export default function RinconChatPrototype() {
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior:"smooth" }); }, [messages, aiTyping]);
   useEffect(() => { if (session) loadConversations(); }, [session]);
-  //useEffect(() => { if (activeConvId) loadMessages(activeConvId); else setMessages([]); }, [activeConvId]);
-  useEffect(() => {
-    if (activeConvId) {
-      setShowChatGreeting(false);
-      setGreetingData(null);
-      loadMessages(activeConvId);
-    } else {
-      setMessages([]);
-      setFabricContext(null);
-      setFabricDevices([]);
-      setFabricFile(null);
-      setPsirtContext(null);
-    }
-  }, [activeConvId]);
+  useEffect(() => { if (activeConvId) { setShowChatGreeting(false); setGreetingData(null); loadMessages(activeConvId);} else { setMessages([]); setFabricContext(null); setFabricDevices([]); setFabricFile(null); setPsirtContext(null);}}, [activeConvId]);
 
   // ── Supabase helpers
   const loadConversations = async () => {
