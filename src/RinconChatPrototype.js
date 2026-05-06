@@ -444,7 +444,20 @@ export default function RinconChatPrototype() {
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior:"smooth" }); }, [messages, aiTyping]);
   useEffect(() => { if (session) loadConversations(); }, [session]);
-  useEffect(() => { if (activeConvId) loadMessages(activeConvId); else setMessages([]); }, [activeConvId]);
+  //useEffect(() => { if (activeConvId) loadMessages(activeConvId); else setMessages([]); }, [activeConvId]);
+  useEffect(() => {
+    if (activeConvId) {
+      setShowChatGreeting(false);
+      setGreetingData(null);
+      loadMessages(activeConvId);
+    } else {
+      setMessages([]);
+      setFabricContext(null);
+      setFabricDevices([]);
+      setFabricFile(null);
+      setPsirtContext(null);
+    }
+  }, [activeConvId]);
 
   // ── Supabase helpers
   const loadConversations = async () => {
@@ -455,8 +468,36 @@ export default function RinconChatPrototype() {
   };
 
   const loadMessages = async (convId) => {
-    const { data } = await supabase.from('conversation_messages').select('id,role,content,created_at').eq('conversation_id',convId).order('created_at',{ascending:true});
-    if (data) setMessages(data.map(m=>({...m,role:m.role==="assistant"?"ai":m.role})));
+    // Load messages
+    const { data: msgData } = await supabase
+      .from('conversation_messages')
+      .select('id, role, content, created_at')
+      .eq('conversation_id', convId)
+      .order('created_at', { ascending: true });
+    if (msgData) setMessages(msgData.map(m => ({ ...m, role: m.role === "assistant" ? "ai" : m.role })));
+  
+    // Restore fabric context if this conversation has one
+    const { data: convData } = await supabase
+      .from('conversations')
+      .select('fabric_context, fabric_devices, fabric_psirt_context, has_fabric')
+      .eq('id', convId)
+      .single();
+  
+    if (convData?.has_fabric && convData?.fabric_context) {
+      setFabricContext(convData.fabric_context);
+      setFabricDevices(convData.fabric_devices || []);
+      setPsirtContext(convData.fabric_psirt_context || null);
+      // Reconstruct fabricFile display object from context string
+      const fileNameMatch = convData.fabric_context.match(/^FILE: (.+)$/m);
+      const fileName = fileNameMatch ? fileNameMatch[1] : 'fabric-file';
+      setFabricFile({ name: fileName, size: null, storagePath: null });
+    } else {
+      // Clear fabric context when switching to a non-fabric conversation
+      setFabricContext(null);
+      setFabricDevices([]);
+      setFabricFile(null);
+      setPsirtContext(null);
+    }
   };
 
   const getOrgMemberIds = async () => {
@@ -541,8 +582,13 @@ export default function RinconChatPrototype() {
       if (!convId) {
         convId = await createConversation(`Fabric analysis: ${file.name}`,{ hasFabric:true });
         if (convId) setActiveConvId(convId);
-      } else {
-        await supabase.from('conversations').update({ has_fabric:true }).eq('id',convId);
+      } 
+      if (convId) {
+        await supabase.from('conversations').update({
+          has_fabric: true,
+          fabric_context: contextLines,
+          fabric_devices: devices,
+        }).eq('id', convId);
       }
       if (convId) await saveMessage(convId,'user',`[Uploaded fabric file: ${file.name}]`);
 
@@ -560,6 +606,11 @@ export default function RinconChatPrototype() {
           });
           resolvedPsirtContext = psirtResult.psirtContext;
           setPsirtContext(resolvedPsirtContext); // FIX: stored in state correctly
+          if (convId) {
+            await supabase.from('conversations')
+              .update({ fabric_psirt_context: resolvedPsirtContext })
+              .eq('id', convId);
+          }
           setMessages(prev=>prev.map(m=>m.id===psirtCardId?{
             ...m, type:"psirt-done",
             psirtSummary:{ total:devicesWithVersions.length, advisories:psirtResult.totalAdvisories },
