@@ -431,6 +431,8 @@ export default function RinconChatPrototype() {
   const [psirtProgress, setPsirtProgress]   = useState(null);
   const [uploading, setUploading]           = useState(false);
   const [dragOver, setDragOver]             = useState(false);
+  const [showChatGreeting, setShowChatGreeting] = useState(false);
+  const [greetingData, setGreetingData]         = useState(null);
 
   const bottomRef   = useRef(null);
   const inputRef    = useRef(null);
@@ -445,6 +447,7 @@ export default function RinconChatPrototype() {
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior:"smooth" }); }, [messages, aiTyping]);
   useEffect(() => { if (session) loadConversations(); }, [session]);
   useEffect(() => { if (activeConvId) { setShowChatGreeting(false); setGreetingData(null); loadMessages(activeConvId);} else { setMessages([]); setFabricContext(null); setFabricDevices([]); setFabricFile(null); setPsirtContext(null);}}, [activeConvId]);
+
 
   // ── Supabase helpers
   const loadConversations = async () => {
