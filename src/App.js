@@ -1,6 +1,6 @@
 // App.js
-// App v3.3 — Light theme repositioning for Ghost Ships launch
-// netwrkr.ai will autonomously monitor, diagnose and operate your Cisco data centre network.
+// App v3.4 — headline refinement, Cisco removed, font size and spacing improved
+// netwrkr.ai will autonomously monitor, diagnose and operate your data centre fabric.
 
 import { useState, useEffect, useRef } from "react";
 import AnalysisApp from "./AnalysisApp";
@@ -211,8 +211,8 @@ function Home({ authed }) {
             <span style={{fontFamily:mono,fontSize:11,color:C.amber}}>ghost ships // the destination</span>
           </div>
           <div style={{fontFamily:mono,fontSize:12,color:C.muted,marginBottom:8,letterSpacing:"0.06em"}}>// cisco dc network operations</div>
-          <h1 style={{fontSize:44,fontWeight:300,letterSpacing:"-0.04em",lineHeight:1.1,marginBottom:20,color:C.text}}>
-            netwrkr.ai will autonomously monitor, diagnose and operate your Cisco data centre network.
+          <h1 style={{fontSize:34,fontWeight:300,letterSpacing:"-0.03em",lineHeight:1.25,marginBottom:20,color:C.text}}>
+            netwrkr.ai will autonomously monitor, diagnose and operate your data centre fabric.
           </h1>
           <p style={{fontSize:15,color:C.dim,lineHeight:1.8,marginBottom:28,maxWidth:440}}>
             DC networks are complex to operate. They contain bugs, version drift, and risk that engineers spend their careers managing manually. netwrkr.ai is the AI layer that changes that — starting with intelligence today, fully autonomous tomorrow.
