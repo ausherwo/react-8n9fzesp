@@ -1,5 +1,5 @@
-// RinconChatPrototype.js — v4.2
-// Features: chat greeting screen, fabric persistence, licence counting, sidebar restore
+// RinconChatPrototype.js — v4.3
+// v4.3 — markdown rendering for Rincon responses (bold, line breaks)
 
 import { useState, useEffect, useRef } from "react";
 import { useAuth } from './Auth';
@@ -72,6 +72,73 @@ function preflightCheck(text) {
 
 function tierLabel(tier) { return {1:"Controller",2:"Spine / Border Leaf",3:"Leaf",4:"Distribution / Firewall"}[tier] || "Unknown"; }
 function tierColor(tier) { return {1:C.amber,2:C.orange,3:C.green,4:C.dim}[tier] || C.muted; }
+
+// ─────────────────────────────────────────────
+// MARKDOWN RENDERER
+// Handles: **bold**, numbered lists (1. ...), bullet lists (- ...), blank lines
+// ─────────────────────────────────────────────
+function renderMarkdown(text) {
+  if (!text) return null;
+  const lines = text.split('\n');
+  const elements = [];
+  let i = 0;
+
+  while (i < lines.length) {
+    const line = lines[i];
+
+    // Blank line → small spacer
+    if (line.trim() === '') {
+      elements.push(<div key={i} style={{ height: '0.5em' }} />);
+      i++;
+      continue;
+    }
+
+    // Numbered list item: "1. ..." or "2. ..."
+    const numMatch = line.match(/^(\d+)\.\s+(.+)/);
+    if (numMatch) {
+      elements.push(
+        <div key={i} style={{ display: 'flex', gap: 8, marginBottom: 4 }}>
+          <span style={{ fontFamily: mono, fontSize: 12, color: C.amber, flexShrink: 0, minWidth: 18 }}>{numMatch[1]}.</span>
+          <span>{renderInline(numMatch[2])}</span>
+        </div>
+      );
+      i++;
+      continue;
+    }
+
+    // Bullet list item: "- ..." or "* ..."
+    const bulletMatch = line.match(/^[-*]\s+(.+)/);
+    if (bulletMatch) {
+      elements.push(
+        <div key={i} style={{ display: 'flex', gap: 8, marginBottom: 4 }}>
+          <span style={{ color: C.amber, flexShrink: 0 }}>→</span>
+          <span>{renderInline(bulletMatch[1])}</span>
+        </div>
+      );
+      i++;
+      continue;
+    }
+
+    // Normal line with possible inline bold
+    elements.push(
+      <div key={i} style={{ marginBottom: 2 }}>{renderInline(line)}</div>
+    );
+    i++;
+  }
+
+  return elements;
+}
+
+// Renders inline **bold** within a line
+function renderInline(text) {
+  const parts = text.split(/(\*\*[^*]+\*\*)/g);
+  return parts.map((part, j) => {
+    if (part.startsWith('**') && part.endsWith('**')) {
+      return <strong key={j} style={{ color: C.amberB, fontWeight: 600 }}>{part.slice(2, -2)}</strong>;
+    }
+    return <span key={j}>{part}</span>;
+  });
+}
 
 function TypingDots() {
   return (
@@ -207,7 +274,9 @@ function MessageBubble({ msg, member }) {
           <FileUploadCard {...msg.fileData}/>
         ) : (
           <div style={{ background:isUser?`${C.amber}12`:C.surface, border:`1px solid ${isUser?`${C.amber}25`:C.border}`, borderRadius:isUser?"12px 2px 12px 12px":"2px 12px 12px 12px", padding:"12px 16px" }}>
-            <div style={{ fontSize:14, lineHeight:1.75, whiteSpace:"pre-wrap", color:C.text, fontFamily:sans }}>{msg.content}</div>
+            <div style={{ fontSize:14, lineHeight:1.75, color:C.text, fontFamily:sans }}>
+              {isUser ? msg.content : renderMarkdown(msg.content)}
+            </div>
             <div style={{ fontFamily:mono, fontSize:10, color:C.muted, marginTop:6, textAlign:isUser?"left":"right" }}>{timeAgo(msg.created_at)}</div>
           </div>
         )}
@@ -493,9 +562,9 @@ ${greetingData?.fabricContext||'No fabric data.'}`,
           {/* Chat messages */}
           <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
             {chatMsgs.map((msg,i)=>(
-              <div key={i} style={{ alignSelf:msg.role==='user'?'flex-end':'flex-start', maxWidth:'85%', background:msg.role==='user'?`${C.amber}12`:C.surface, border:`1px solid ${msg.role==='user'?`${C.amber}25`:C.border}`, borderRadius:msg.role==='user'?'12px 2px 12px 12px':'2px 12px 12px 12px', padding:'12px 16px', fontSize:14, color:C.text, lineHeight:1.75, whiteSpace:'pre-wrap', fontFamily:sans, animation:'fadeUp 0.2s ease' }}>
+              <div key={i} style={{ alignSelf:msg.role==='user'?'flex-end':'flex-start', maxWidth:'85%', background:msg.role==='user'?`${C.amber}12`:C.surface, border:`1px solid ${msg.role==='user'?`${C.amber}25`:C.border}`, borderRadius:msg.role==='user'?'12px 2px 12px 12px':'2px 12px 12px 12px', padding:'12px 16px', fontSize:14, color:C.text, lineHeight:1.75, fontFamily:sans, animation:'fadeUp 0.2s ease' }}>
                 {msg.role==='assistant' && <div style={{ fontFamily:mono, fontSize:10, color:C.amber, marginBottom:6 }}>Rincon · DC Expert</div>}
-                {msg.content}
+                {msg.role==='user' ? msg.content : renderMarkdown(msg.content)}
               </div>
             ))}
             {loading && (
@@ -655,13 +724,11 @@ export default function RinconChatPrototype() {
       if (warnings.length > 0) setMessages(prev=>prev.map(m=>m.id===uploadCardId?{...m,fileData:{...m.fileData,status:"preflight",warnings}}:m));
       setMessages(prev=>prev.map(m=>m.id===uploadCardId?{...m,fileData:{...m.fileData,status:"extracting",warnings}}:m));
 
-      // Extract devices via server
       const extractRes = await fetch("/api/extract", { method:"POST", headers:authHeaders(), body:JSON.stringify({ text }) });
       const extractData = await extractRes.json();
       if (extractData.error) throw new Error(extractData.message || extractData.error);
       const devices = extractData.devices;
 
-      // Upload to storage
       const { orgId } = await getOrgMemberIds();
       const storagePath = `${orgId}/${Date.now()}-${file.name.replace(/[^a-zA-Z0-9._-]/g,'_')}`;
       const { error:storageError } = await supabase.storage.from('environment-files').upload(storagePath,file,{ contentType:'text/plain', upsert:false });
@@ -679,7 +746,6 @@ export default function RinconChatPrototype() {
       setFabricFile({ name:file.name, size:file.size, storagePath });
       setMessages(prev=>prev.map(m=>m.id===uploadCardId?{...m,fileData:{...m.fileData,status:"done",warnings}}:m));
 
-      // Create/update conversation
       let convId = activeConvId;
       if (!convId) {
         convId = await createConversation(`Fabric analysis: ${file.name}`,{ hasFabric:true });
@@ -690,7 +756,6 @@ export default function RinconChatPrototype() {
       }
       if (convId) await saveMessage(convId,'user',`[Uploaded fabric file: ${file.name}]`);
 
-      // PSIRT query
       const devicesWithVersions = devices.filter(d=>d.version&&d.version.trim());
       let resolvedPsirtContext = null;
       let psirtResult = null;
@@ -717,13 +782,11 @@ export default function RinconChatPrototype() {
         }
       }
 
-      // ── INCREMENT LICENCE USAGE ──
       await supabase.rpc('increment_analyses_used', { p_org_id: orgId });
       const updatedLicence = await loadLicence();
       const atLimit   = updatedLicence && updatedLicence.analyses_used >= updatedLicence.analyses_limit;
       const nearLimit = updatedLicence && updatedLicence.analyses_used >= updatedLicence.analyses_limit - 2;
 
-      // ── SHOW GREETING SCREEN ──
       setGreetingData({
         devices,
         psirtResult,
