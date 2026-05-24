@@ -1,824 +1,190 @@
-// AnalysisApp.js
-// v2.3 — Kelly voice update, chat auto-scroll
+// App.js
+// App v3.5 — simplified homepage, light theme, Ghost Ships positioning
 
-import { useState, useRef } from "react";
-import { useAuth } from './Auth';
+import { useState, useEffect, useRef } from "react";
+import AnalysisApp from "./AnalysisApp";
+import RinconChatPrototype from "./RinconChatPrototype";
+import { AuthProvider, AuthGuard, LoginPage, SignupPage, AcceptInvitePage, useAuth } from './Auth';
+import { ForgotPasswordPage, SetNewPasswordPage } from './PasswordReset';
+import { SettingsPage } from './SettingsPage';
+import { StrategyPage } from './StrategyPage';
+import { ModelPage } from './ModelPage';
 
 const C = {
-  bg:"#080806", surface:"#0E0D0A", hi:"#141310",
-  border:"#272318", amber:"#D4A000", amberB:"#FFCA28",
-  amberG:"#D4A00015", green:"#22C55E", greenG:"#22C55E15",
-  red:"#EF4444", orange:"#F97316", yellow:"#EAB308",
-  text:"#EDE8DC", dim:"#9C9278", muted:"#524B3A", faint:"#1A1810",
-};
-
-const SEV = {
-  CRITICAL:{ color:C.red,    bg:"#2A0A0A", bd:"#5A1A1A" },
-  HIGH:    { color:C.orange, bg:"#2A1400", bd:"#5A2A00" },
-  MEDIUM:  { color:C.yellow, bg:"#2A2000", bd:"#5A4A00" },
-  LOW:     { color:C.green,  bg:"#0A2A10", bd:"#1A4A20" },
+  bg:      "#F7F5F0",
+  surface: "#FFFFFF",
+  hi:      "#F0EDE6",
+  border:  "#DDD9CF",
+  amber:   "#B8860B",
+  amberB:  "#D4A000",
+  amberG:  "#D4A00012",
+  green:   "#1A7A3C",
+  red:     "#C0392B",
+  orange:  "#C0620B",
+  text:    "#1A1810",
+  dim:     "#4A4438",
+  muted:   "#7A7060",
+  shadow:  "rgba(0,0,0,0.06)",
 };
 
 const mono = "JetBrains Mono, Fira Code, monospace";
+const sans = "'DM Sans', system-ui, sans-serif";
 
-function Pill({ children, color=C.amber }) {
-  return <span style={{fontFamily:mono,fontSize:10,color,background:color+"18",border:`1px solid ${color}30`,padding:"2px 8px",borderRadius:3,letterSpacing:"0.04em"}}>{children}</span>;
-}
-
-function Badge({ level, sm }) {
-  const s = SEV[level]||SEV.LOW;
-  return <span style={{fontFamily:mono,fontSize:sm?9:11,fontWeight:700,color:s.color,background:s.bg,border:`1px solid ${s.bd}`,padding:sm?"1px 6px":"2px 9px",borderRadius:3}}>{level}</span>;
-}
-
-function MacBar({ label }) {
+function HomeNav({ authed }) {
   return (
-    <div style={{background:C.hi,borderBottom:`1px solid ${C.border}`,padding:"8px 14px",display:"flex",alignItems:"center",gap:7}}>
-      {["#FF5F56","#FFBD2E","#27C93F"].map(c=><div key={c} style={{width:10,height:10,borderRadius:"50%",background:c,opacity:.8}}/>)}
-      <span style={{marginLeft:8,fontFamily:mono,fontSize:11,color:C.muted}}>{label}</span>
-    </div>
-  );
-}
-
-function isAciFabric(devList) {
-  return devList.some(d => d.name && d.name.toUpperCase().includes("APIC"));
-}
-
-function isAciManagedSwitch(device, aciFabric) {
-  if (!aciFabric) return false;
-  const upper = (device.name || "").toUpperCase();
-  return upper.includes("NEXUS") || upper.includes("N9K") || upper.includes("N7K") || upper.includes("N5K") || upper.includes("N3K") || upper.includes("MDS");
-}
-
-function getCount() {
-  try { return parseInt(localStorage.getItem("nw_count") || "0", 10); } catch { return 0; }
-}
-function incCount() {
-  try { localStorage.setItem("nw_count", String(getCount() + 1)); } catch {}
-}
-function isRegistered() {
-  try { return !!localStorage.getItem("nw_registered"); } catch { return false; }
-}
-
-const STEPS = [
-  {l:"Parsing inventory",           d:600},
-  {l:"Identifying platforms",        d:700},
-  {l:"Checking bug patterns",        d:900},
-  {l:"Cross-referencing advisories", d:800},
-  {l:"Running AI analysis",          d:1200},
-  {l:"Generating remediation plan",  d:700},
-];
-
-const SAMPLE = `APIC-01    Cisco APIC       6.0(3e)    APIC Controller
-APIC-02    Cisco APIC       6.0(3e)    APIC Controller
-APIC-03    Cisco APIC       6.0(3e)    APIC Controller
-SP-01      Nexus 9336C-FX2  15.2(8e)   Spine
-SP-02      Nexus 9336C-FX2  15.2(8e)   Spine
-BL-01      Nexus 93180YC-EX  15.2(8e)   Border Leaf
-BL-02      Nexus 93180YC-EX  15.2(7f)   Border Leaf
-LEAF-01    Nexus 93180YC-EX  15.2(8e)   Leaf
-LEAF-02    Nexus 93180YC-EX  15.2(8e)   Leaf
-LEAF-03    Nexus 93180YC-EX  15.2(8e)   Leaf
-LEAF-04    Nexus 93180YC-EX  15.2(8e)   Leaf
-FTD-01     Firepower 2140    7.4(1)     Firewall
-FTD-02     Firepower 2140    7.4(1)     Firewall`;
-
-function Overlay({step}) {
-  return (
-    <div style={{position:"fixed",inset:0,background:"#080806EE",backdropFilter:"blur(8px)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center"}}>
-      <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:12,padding:"36px 44px",width:460,boxShadow:`0 0 60px ${C.amber}12`}}>
-        <div style={{fontFamily:mono,fontSize:11,color:C.amber,letterSpacing:"0.12em",textTransform:"uppercase",marginBottom:18}}>// analyzing fabric</div>
-        {STEPS.map((s,i)=>{
-          const done=i<step,active=i===step;
-          return (
-            <div key={i} style={{display:"flex",alignItems:"center",gap:11,marginBottom:11,opacity:i>step?.3:1,transition:"opacity .3s"}}>
-              <div style={{width:19,height:19,borderRadius:"50%",background:done?C.green:active?C.amber:C.border,display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,color:done||active?"#000":C.muted,flexShrink:0,transition:"all .3s"}}>
-                {done?"✓":active?"●":""}
-              </div>
-              <span style={{fontFamily:mono,fontSize:13,color:done?C.dim:active?C.text:C.muted}}>{s.l}{active?"...":""}</span>
-              {done&&<span style={{fontFamily:mono,fontSize:11,color:C.green,marginLeft:"auto"}}>done</span>}
-            </div>
-          );
-        })}
-        <div style={{background:C.faint,borderRadius:4,height:3,marginTop:14,overflow:"hidden"}}>
-          <div style={{height:"100%",background:C.amber,width:`${(step/STEPS.length)*100}%`,transition:"width .5s",borderRadius:4}}/>
-        </div>
-        <div style={{fontFamily:mono,fontSize:11,color:C.muted,marginTop:7,textAlign:"right"}}>{Math.round((step/STEPS.length)*100)}% complete</div>
-      </div>
-    </div>
-  );
-}
-
-function Nav({go, authed}) {
-  return (
-    <nav style={{borderBottom:`1px solid ${C.border}`,padding:"0 36px",background:`${C.bg}E8`,backdropFilter:"blur(20px)",position:"sticky",top:0,zIndex:100}}>
-      <div style={{maxWidth:1140,margin:"0 auto",display:"flex",alignItems:"center",justifyContent:"space-between",height:54}}>
-        <div style={{display:"flex",alignItems:"center",gap:9,cursor:"pointer"}} onClick={()=>go("analyse")}>
+    <nav style={{borderBottom:`1px solid ${C.border}`,padding:"0 36px",background:`${C.bg}F0`,backdropFilter:"blur(20px)",position:"sticky",top:0,zIndex:100}}>
+      <div style={{maxWidth:960,margin:"0 auto",display:"flex",alignItems:"center",justifyContent:"space-between",height:56}}>
+        <div style={{display:"flex",alignItems:"center",gap:9,cursor:"pointer"}} onClick={()=>window.location.href="/"}>
           <div style={{width:27,height:27,background:C.amberG,border:`1px solid ${C.amber}44`,borderRadius:6,display:"flex",alignItems:"center",justifyContent:"center"}}>
             <svg width="13" height="13" viewBox="0 0 14 14" fill="none"><polyline points="1,10 4,6 7,8.5 10,3.5 13,5.5" stroke={C.amber} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
           </div>
-          <span style={{fontFamily:mono,fontWeight:700,fontSize:15}}>netwrkr<span style={{color:C.amber}}>.ai</span></span>
+          <span style={{fontFamily:mono,fontWeight:700,fontSize:15,color:C.text}}>netwrkr<span style={{color:C.amber}}>.ai</span></span>
         </div>
         <div style={{display:"flex",alignItems:"center",gap:8}}>
-          {authed && (
-            <button onClick={()=>go("settings")} style={{background:"none",border:`1px solid ${C.border}`,color:C.dim,borderRadius:6,fontFamily:mono,fontSize:12,padding:"7px 14px",cursor:"pointer"}}>
-              settings
+          {authed ? (
+            <button onClick={()=>window.location.href="/app"} style={{background:C.amber,color:"#FFF",border:"none",borderRadius:6,fontFamily:mono,fontWeight:700,fontSize:12,padding:"7px 14px",cursor:"pointer"}}>
+              dashboard →
             </button>
+          ) : (
+            <div style={{display:"flex",gap:8}}>
+              <button onClick={()=>window.location.href="/login"} style={{background:"none",border:`1px solid ${C.border}`,color:C.dim,borderRadius:6,fontFamily:mono,fontSize:12,padding:"7px 16px",cursor:"pointer"}}>
+                sign_in()
+              </button>
+              <button onClick={()=>window.location.href="/analyse"} style={{background:C.amber,color:"#FFF",border:"none",borderRadius:6,fontFamily:mono,fontWeight:700,fontSize:12,padding:"7px 14px",cursor:"pointer"}}>
+                try_free →
+              </button>
+            </div>
           )}
-          <button onClick={()=>go("login")} style={{background:"none",border:`1px solid ${C.border}`,color:C.dim,borderRadius:6,fontFamily:mono,fontSize:12,padding:"7px 16px",cursor:"pointer"}}>
-            sign_in()
-          </button>
         </div>
       </div>
     </nav>
   );
 }
 
-// ── Kelly chat component v2 — verified-aware
-function KellyPanel({data, go}) {
-  const [messages, setMessages] = useState([]);
-  const [input, setInput] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [briefing, setBriefing] = useState(null);
-  const [briefingLoading, setBriefingLoading] = useState(true);
-
-  const fabricRisk = data.fabricAnalysis?.risk || "LOW";
-  const p1 = data.priorityAssessment?.items?.[0];
-  const mismatch = data.fabricAnalysis?.mismatches?.[0];
-  const verifiedItems = data.netwrkrIntel?.items?.filter(i=>i.verified) || [];
-  const verifiedCount = verifiedItems.length;
-
-  // Auto-generate Kelly briefing on mount — verified-aware
-  useState(() => {
-    const generateBriefing = async () => {
-      try {
-        const cscIds = verifiedItems.map(i=>i.id).filter(Boolean).join(", ");
-        const summary = `${verifiedCount > 0 ? verifiedCount + " verified Cisco advisories: " + cscIds + "." : "No verified advisories."} Priority: ${p1?.title || "no critical issues"}. Fabric risk: ${fabricRisk}. ${mismatch ? "Mismatch: " + mismatch : "No version mismatches."}`;
-        const res = await fetch("/api/chat", {
-          method: "POST",
-          headers: {"Content-Type":"application/json"},
-          body: JSON.stringify({
-            system: `You are Kelly — a senior Cisco DC network engineer with 20 years of hands-on fabric experience. You talk like a senior engineer, not a document. Short sentences. Direct opinions. No padding. No markdown, no asterisks, no bold. No preamble. Get straight to the point. End with a single concrete next action on a new line prefixed with →. Max 3 sentences before the action line. Example style: "BL-02 is your problem. Version drift on border leafs creates asymmetric policy enforcement — I have seen that cause real issues at failover. Get it upgraded before the next maintenance window." Never say Great question, never hedge, never use corporate language.`,
-            messages: [{role:"user", content:`Give me a direct engineer's briefing on this fabric: ${summary}. Lead with the most urgent issue.`}]
-          })
-        });
-        const d = await res.json();
-        setBriefing(d.content || "Analysis complete. Ask me anything about your fabric.");
-      } catch {
-        setBriefing("Analysis complete. Ask me anything about your fabric.");
-      } finally {
-        setBriefingLoading(false);
-      }
-    };
-    generateBriefing();
-  }, []);
-
-  const sendMessage = async (text) => {
-    if (!text.trim()) return;
-    const userMsg = {role:"user", content:text};
-    const newMessages = [...messages, userMsg];
-    setMessages(newMessages);
-    setInput("");
-    setLoading(true);
-    try {
-      const context = JSON.stringify({
-        priorityAssessment: data.priorityAssessment,
-        fabricAnalysis: data.fabricAnalysis,
-        devices: data.devices,
-        netwrkrIntel: data.netwrkrIntel
-      });
-      const res = await fetch("/api/chat", {
-        method: "POST",
-        headers: {"Content-Type":"application/json"},
-        body: JSON.stringify({
-          system: `You are Kelly, a senior DC network engineer assistant for netwrkr.ai. You have access to this fabric analysis: ${context}. Reference verified CSC IDs by name. Be direct, specific, actionable. Technical language for senior DC engineers. 2-4 sentences unless a sequence is needed.`,
-          messages: newMessages
-        })
-      });
-      const d = await res.json();
-      setMessages([...newMessages, {role:"assistant", content: d.content || "I couldn't process that request."}]);
-    } catch {
-      setMessages([...newMessages, {role:"assistant", content:"Something went wrong. Please try again."}]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const suggestions = verifiedCount > 0 ? [
-    "What is the safe upgrade sequence to fix all advisories?",
-    "Draft a change request for the highest priority fix",
-    "Write a manager summary with CSC IDs",
-    "What validation steps after the upgrade?",
-  ] : [
-    "What is the safe upgrade sequence?",
-    "Write a manager summary",
-    "How urgent is the P1?",
-    "What validation steps after upgrade?",
-  ];
-
+function Home({ authed }) {
   return (
-    <div style={{background:C.surface,border:`1px solid ${C.amber}33`,borderRadius:10,padding:"18px 20px",display:"flex",flexDirection:"column",gap:14}}>
-
-      {/* Kelly header */}
-      <div style={{display:"flex",alignItems:"center",gap:9,paddingBottom:12,borderBottom:`1px solid ${C.border}`}}>
-        <div style={{width:28,height:28,background:C.amberG,border:`1px solid ${C.amber}44`,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:mono,fontSize:11,fontWeight:700,color:C.amber,flexShrink:0}}>K</div>
-        <div>
-          <div style={{fontFamily:mono,fontSize:13,fontWeight:600}}>Kelly</div>
-          <div style={{fontSize:11,color:C.muted}}>DC engineer assistant</div>
-        </div>
-        <span style={{marginLeft:"auto",fontFamily:mono,fontSize:10,color:C.green,background:C.greenG,border:`1px solid ${C.green}33`,padding:"2px 8px",borderRadius:3}}>● online</span>
-      </div>
-
-      {/* Auto briefing */}
-      <div>
-        <div style={{fontFamily:mono,fontSize:10,color:C.amber,letterSpacing:"0.12em",textTransform:"uppercase",marginBottom:8}}>// briefing</div>
-        <div style={{display:"flex",gap:8,alignItems:"flex-start"}}>
-          <div style={{width:26,height:26,background:C.amberG,border:`1px solid ${C.amber}44`,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:mono,fontSize:10,fontWeight:700,color:C.amber,flexShrink:0,marginTop:2}}>K</div>
-          <div style={{background:C.hi,border:`1px solid ${C.border}`,borderRadius:"0 8px 8px 8px",padding:"12px 14px",fontSize:13,lineHeight:1.7,color:C.text,flex:1}}>
-            {briefingLoading
-              ? <span style={{color:C.muted,fontFamily:mono,fontSize:12}}>analysing your fabric<span style={{animation:"blink 1s step-end infinite"}}>▌</span></span>
-              : briefing
-            }
-          </div>
-        </div>
-      </div>
-
-      {/* Suggestions */}
-      {messages.length === 0 && (
-        <div>
-          <div style={{fontFamily:mono,fontSize:10,color:C.muted,letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:8}}>// ask kelly</div>
-          <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
-            {suggestions.map((s,i)=>(
-              <button key={i} onClick={()=>sendMessage(s)} style={{background:"none",border:`1px solid ${C.border}`,color:C.dim,fontFamily:mono,fontSize:11,padding:"5px 11px",borderRadius:20,cursor:"pointer"}}>
-                {s} →
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Chat thread */}
-      {messages.length > 0 && (
-        <div ref={el => { if (el) el.scrollTop = el.scrollHeight; }} style={{display:"flex",flexDirection:"column",gap:10,maxHeight:240,overflowY:"auto"}}>
-          {messages.map((m,i)=>(
-            <div key={i} style={{display:"flex",gap:8,alignItems:"flex-start",flexDirection:m.role==="user"?"row-reverse":"row"}}>
-              {m.role==="assistant" && (
-                <div style={{width:24,height:24,background:C.amberG,border:`1px solid ${C.amber}44`,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:mono,fontSize:10,fontWeight:700,color:C.amber,flexShrink:0,marginTop:2}}>K</div>
-              )}
-              <div style={{
-                background:m.role==="user"?C.amberG:C.hi,
-                border:`1px solid ${m.role==="user"?C.amber+"33":C.border}`,
-                borderRadius:m.role==="user"?"8px 0 8px 8px":"0 8px 8px 8px",
-                padding:"10px 13px",fontSize:13,lineHeight:1.7,
-                color:m.role==="user"?C.amber:C.text,
-                maxWidth:"85%"
-              }}>{m.content}</div>
-            </div>
-          ))}
-          {loading && (
-            <div style={{display:"flex",gap:8,alignItems:"flex-start"}}>
-              <div style={{width:24,height:24,background:C.amberG,border:`1px solid ${C.amber}44`,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:mono,fontSize:10,fontWeight:700,color:C.amber,flexShrink:0}}>K</div>
-              <div style={{background:C.hi,border:`1px solid ${C.border}`,borderRadius:"0 8px 8px 8px",padding:"10px 13px",fontFamily:mono,fontSize:12,color:C.muted}}>thinking<span style={{animation:"blink 1s step-end infinite"}}>▌</span></div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Input */}
-      <div style={{borderTop:`1px solid ${C.border}`,paddingTop:12}}>
-        <div style={{display:"flex",gap:8,alignItems:"center"}}>
-          <input
-            value={input}
-            onChange={e=>setInput(e.target.value)}
-            onKeyDown={e=>e.key==="Enter"&&sendMessage(input)}
-            placeholder="Ask Kelly about your fabric..."
-            style={{flex:1,background:C.hi,border:`1px solid ${C.border}`,color:C.text,fontFamily:mono,fontSize:12,padding:"9px 13px",borderRadius:6,outline:"none"}}
-          />
-          <button onClick={()=>sendMessage(input)} style={{background:C.amber,border:"none",color:"#000",fontFamily:mono,fontSize:12,fontWeight:700,padding:"9px 13px",borderRadius:6,cursor:"pointer",flexShrink:0}}>→</button>
-        </div>
-        <div style={{fontSize:11,color:C.muted,marginTop:7,textAlign:"center"}}>
-          <span style={{color:C.amber,cursor:"pointer"}} onClick={()=>go("signup")}>upgrade to Desert Point for real SNTC data →</span>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ── Cisco verified advisory card with expandable detail panel
-function VerifiedAdvisoryCard({item, kellyTake}) {
-  const [open, setOpen] = useState(false);
-  const sev = SEV[item.sev] || SEV.MEDIUM;
-  return (
-    <div style={{marginBottom:8}}>
-      <div
-        onClick={()=>setOpen(!open)}
-        style={{background:C.hi,border:`1.5px solid #1a5276`,borderRadius:open?"8px 8px 0 0":8,padding:"12px 14px",cursor:"pointer"}}
-      >
-        <div style={{display:"flex",alignItems:"flex-start",gap:10}}>
-          <div style={{flex:1}}>
-            <div style={{display:"flex",alignItems:"center",gap:7,marginBottom:4,flexWrap:"wrap"}}>
-              <span style={{fontSize:13,fontWeight:600}}>{item.title}</span>
-              {item.id && <span style={{fontFamily:mono,fontSize:10,color:"#85B7EB",background:"#0c447c44",border:"1px solid #1a5276",padding:"1px 7px",borderRadius:3}}>{item.id}</span>}
-              <Badge level={item.sev} sm/>
-            </div>
-            <div style={{fontSize:12,color:C.muted}}>{item.platform} · {item.version}</div>
-          </div>
-          <span style={{fontFamily:mono,fontSize:11,color:"#85B7EB",flexShrink:0}}>{open?"▲":"details ↓"}</span>
-        </div>
-      </div>
-      {open && (
-        <div style={{background:C.surface,border:"1.5px solid #1a5276",borderTop:"none",borderRadius:"0 0 8px 8px",padding:"14px 16px"}}>
-          {/* Kelly take */}
-          <div style={{display:"flex",gap:8,alignItems:"flex-start",marginBottom:12}}>
-            <div style={{width:24,height:24,background:C.amberG,border:`1px solid ${C.amber}44`,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:mono,fontSize:10,fontWeight:700,color:C.amber,flexShrink:0}}>K</div>
-            <div style={{background:C.hi,border:`1px solid ${C.border}`,borderRadius:"0 8px 8px 8px",padding:"10px 13px",fontSize:13,lineHeight:1.7,color:C.text,flex:1}}>
-              {kellyTake || `${item.id} — ${item.detail}`}
-            </div>
-          </div>
-          {/* Advisory details */}
-          <div style={{background:C.faint,border:`1px solid ${C.border}`,borderRadius:6,padding:"12px 14px"}}>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"8px 16px",marginBottom:10}}>
-              {item.cvss && <div><div style={{fontFamily:mono,fontSize:10,color:C.muted,marginBottom:2}}>CVSS SCORE</div><div style={{fontFamily:mono,fontSize:13,fontWeight:600,color:sev.color}}>{item.cvss}</div></div>}
-              {item.fixedVersion && <div><div style={{fontFamily:mono,fontSize:10,color:C.muted,marginBottom:2}}>FIXED VERSION</div><div style={{fontFamily:mono,fontSize:13,fontWeight:600,color:C.green}}>{item.fixedVersion}</div></div>}
-              {item.affectedVersions && <div><div style={{fontFamily:mono,fontSize:10,color:C.muted,marginBottom:2}}>AFFECTED</div><div style={{fontFamily:mono,fontSize:12,color:C.dim}}>{item.affectedVersions}</div></div>}
-              {item.published && <div><div style={{fontFamily:mono,fontSize:10,color:C.muted,marginBottom:2}}>PUBLISHED</div><div style={{fontFamily:mono,fontSize:12,color:C.dim}}>{item.published}</div></div>}
-            </div>
-            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",paddingTop:10,borderTop:`1px solid ${C.border}`}}>
-              <span style={{fontFamily:mono,fontSize:10,color:C.green}}>✓ verified — Cisco PSIRT API</span>
-              {item.id && <a href={`https://tools.cisco.com/security/center/content/CiscoSecurityAdvisory/${item.id}`} target="_blank" rel="noreferrer" style={{fontFamily:mono,fontSize:11,color:"#85B7EB",textDecoration:"none"}}>view on cisco.com →</a>}
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ── Results component v3 — Cisco verified prioritised
-function Results({data, advisoryMap, reset, go, onShowSignup, showNudge, onDismissNudge}) {
-
-  const riskColor = {LOW:C.green, MEDIUM:C.yellow, HIGH:C.orange, CRITICAL:C.red};
-  const fabricRisk = data.fabricAnalysis?.risk || "LOW";
-
-  const verifiedItems = (data.netwrkrIntel?.items || []).filter(i=>i.verified);
-  const unverifiedItems = (data.netwrkrIntel?.items || []).filter(i=>!i.verified);
-  const verifiedCount = verifiedItems.length;
-  const mismatchCount = data.fabricAnalysis?.mismatches?.length || 0;
-
-  return (
-    <div style={{animation:"fadeUp 0.3s ease"}}>
-
-      {/* Sign up nudge */}
-      {showNudge && (
-        <div style={{background:C.amberG,border:`1px solid ${C.amber}44`,borderRadius:10,padding:"14px 18px",marginBottom:14,display:"flex",alignItems:"center",justifyContent:"space-between",gap:16}}>
-          <div>
-            <div style={{fontFamily:mono,fontSize:11,color:C.amber,marginBottom:4}}>// save your analysis history</div>
-            <div style={{fontSize:13,color:C.dim}}>Create a free account to keep your analyses and access them later.</div>
-          </div>
-          <div style={{display:"flex",gap:9,flexShrink:0}}>
-            <button onClick={onDismissNudge} style={{background:"none",border:`1px solid ${C.border}`,color:C.muted,fontFamily:mono,fontSize:11,padding:"7px 12px",borderRadius:6,cursor:"pointer"}}>dismiss</button>
-            <button onClick={()=>go("signup")} style={{background:C.amber,border:"none",color:"#000",fontFamily:mono,fontSize:11,fontWeight:700,padding:"7px 14px",borderRadius:6,cursor:"pointer"}}>create_account()</button>
-          </div>
-        </div>
-      )}
-
-      {/* Top bar */}
-      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14}}>
-        <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
-          <span style={{fontFamily:mono,fontSize:11,color:C.amber,letterSpacing:"0.1em",textTransform:"uppercase"}}>// analysis complete</span>
-          {verifiedCount > 0 && <span style={{fontFamily:mono,fontSize:10,color:"#85B7EB",background:"#0c447c44",border:"1px solid #1a5276",padding:"2px 8px",borderRadius:3}}>{verifiedCount} cisco verified</span>}
-          {mismatchCount > 0 && <span style={{fontFamily:mono,fontSize:10,color:C.red,background:C.red+"18",border:`1px solid ${C.red}30`,padding:"2px 8px",borderRadius:3}}>{mismatchCount} mismatch{mismatchCount!==1?"es":""}</span>}
-          <span style={{fontFamily:mono,fontSize:10,color:C.muted,background:C.faint,border:`1px solid ${C.border}`,padding:"2px 8px",borderRadius:3}}>{data.devices?.length||0} devices</span>
-        </div>
-        <div style={{display:"flex",gap:8}}>
-          <button onClick={reset} style={{background:"none",border:`1px solid ${C.border}`,color:C.dim,fontFamily:mono,fontSize:12,padding:"7px 13px",borderRadius:6,cursor:"pointer"}}>← new_analysis()</button>
-          <button style={{background:C.amber,border:"none",color:"#000",fontFamily:mono,fontSize:12,fontWeight:700,padding:"7px 13px",borderRadius:6,cursor:"pointer"}}>export_report()</button>
-        </div>
-      </div>
-
-      {/* Two tiles */}
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,alignItems:"start"}}>
-
-        {/* Tile 1 — Fabric Analysis */}
-        <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:10,padding:"18px 20px",display:"flex",flexDirection:"column",gap:16}}>
-
-          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",paddingBottom:12,borderBottom:`1px solid ${C.border}`}}>
-            <span style={{fontFamily:mono,fontSize:12,fontWeight:600}}>Fabric analysis</span>
-            <span style={{fontFamily:mono,fontSize:11,fontWeight:700,color:riskColor[fabricRisk]||C.green,background:(riskColor[fabricRisk]||C.green)+"22",border:`1px solid ${(riskColor[fabricRisk]||C.green)}44`,padding:"2px 10px",borderRadius:3}}>{fabricRisk} RISK</span>
-          </div>
-
-          {/* Cisco Verified — HERO SECTION */}
-          {verifiedItems.length > 0 && (
-            <div>
-              <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10,paddingBottom:8,borderBottom:`1px solid #1a527644`}}>
-                <div style={{width:8,height:8,borderRadius:"50%",background:"#378ADD"}}/>
-                <span style={{fontFamily:mono,fontSize:11,fontWeight:600,color:"#85B7EB",letterSpacing:"0.1em",textTransform:"uppercase"}}>cisco verified advisories</span>
-                <span style={{marginLeft:"auto",fontFamily:mono,fontSize:10,color:"#85B7EB",background:"#0c447c44",border:"1px solid #1a5276",padding:"1px 8px",borderRadius:3}}>live PSIRT</span>
-              </div>
-              {verifiedItems.map((item,i)=>(
-                <VerifiedAdvisoryCard key={i} item={item} kellyTake={null} />
-              ))}
-            </div>
-          )}
-
-          {/* Priority assessment */}
-          {data.priorityAssessment?.items && (
-            <div>
-              <div style={{fontFamily:mono,fontSize:10,color:C.amber,letterSpacing:"0.12em",textTransform:"uppercase",marginBottom:10,paddingBottom:7,borderBottom:`1px solid ${C.border}`}}>// priorities</div>
-              {data.priorityAssessment.items.map((item,i)=>{
-                const pColor = i===0?C.red:i===1?C.orange:C.yellow;
-                return (
-                  <div key={i} style={{background:C.hi,border:`1px solid ${C.border}`,borderLeft:`2px solid ${pColor}`,borderRadius:"0 6px 6px 0",padding:"10px 13px",marginBottom:7}}>
-                    <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:3}}>
-                      <span style={{fontFamily:mono,fontSize:10,fontWeight:700,color:pColor,background:pColor+"22",border:`1px solid ${pColor}44`,padding:"1px 7px",borderRadius:3}}>{item.priority}</span>
-                      <span style={{fontSize:13,fontWeight:500}}>{item.title}</span>
-                    </div>
-                    <div style={{fontSize:12,color:C.dim,marginLeft:36,lineHeight:1.5}}>{item.reason}</div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-
-          {/* Fabric mismatch */}
-          {data.fabricAnalysis?.mismatches?.length > 0 && (
-            <div>
-              <div style={{fontFamily:mono,fontSize:10,color:C.amber,letterSpacing:"0.12em",textTransform:"uppercase",marginBottom:10,paddingBottom:7,borderBottom:`1px solid ${C.border}`}}>// fabric risk</div>
-              <div style={{background:"#2A1400",border:`1px solid ${C.orange}33`,borderRadius:6,padding:"10px 13px"}}>
-                <div style={{fontFamily:mono,fontSize:10,color:C.orange,marginBottom:5}}>// version mismatch</div>
-                {data.fabricAnalysis.mismatches.map((m,i)=>(
-                  <div key={i} style={{fontSize:12,color:C.dim}}>{m}</div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Unverified intel — secondary */}
-          {unverifiedItems.length > 0 && (
-            <div>
-              <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10,paddingBottom:7,borderBottom:`1px solid ${C.border}`}}>
-                <span style={{fontFamily:mono,fontSize:10,color:C.muted,letterSpacing:"0.12em",textTransform:"uppercase"}}>// netwrkr intel</span>
-                <span style={{marginLeft:"auto",fontFamily:mono,fontSize:10,color:C.orange,background:C.orange+"11",border:`1px solid ${C.orange}33`,padding:"1px 8px",borderRadius:3}}>⚠ unverified</span>
-              </div>
-              {unverifiedItems.map((item,i)=>{
-                const s=SEV[item.sev]||SEV.MEDIUM;
-                return (
-                  <div key={i} style={{border:`1px solid ${s.bd}`,borderRadius:6,padding:"9px 12px",marginBottom:7,background:`${s.bg}88`}}>
-                    <div style={{display:"flex",alignItems:"center",gap:7,marginBottom:3,flexWrap:"wrap"}}>
-                      <Badge level={item.sev} sm/>
-                      <span style={{fontSize:12,fontWeight:500}}>{item.title}</span>
-                      <span style={{fontFamily:mono,fontSize:10,color:C.muted}}>{item.platform}</span>
-                    </div>
-                    <div style={{fontSize:12,color:C.dim,lineHeight:1.5,marginBottom:6}}>{item.detail}</div>
-                    <button onClick={()=>go("signup")} style={{background:"none",border:`1px solid ${C.amber}44`,color:C.amber,fontFamily:mono,fontSize:10,padding:"2px 9px",borderRadius:3,cursor:"pointer"}}>verify with enterprise →</button>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-
-          {/* Device breakdown */}
-          {data.devices?.length > 0 && (
-            <div>
-              <div style={{fontFamily:mono,fontSize:10,color:C.amber,letterSpacing:"0.12em",textTransform:"uppercase",marginBottom:10,paddingBottom:7,borderBottom:`1px solid ${C.border}`}}>// devices</div>
-              <div style={{background:C.hi,border:`1px solid ${C.border}`,borderRadius:6,overflow:"hidden"}}>
-                {data.devices.map((d,di)=>{
-                  const dotColor = SEV[d.fabricRisk]?.color||C.green;
-                  const isHighRisk = d.fabricRisk==="HIGH"||d.fabricRisk==="CRITICAL";
-                  return (
-                    <div key={di} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 12px",borderBottom:di<data.devices.length-1?`1px solid ${C.border}`:"none",background:isHighRisk?"#2A140088":"none",fontSize:12}}>
-                      <div style={{width:7,height:7,borderRadius:"50%",background:dotColor,flexShrink:0}}/>
-                      <div style={{flex:1,display:"flex",alignItems:"center",gap:7,flexWrap:"wrap"}}>
-                        <span style={{fontWeight:500}}>{d.name}</span>
-                        <span style={{fontFamily:mono,fontSize:11,color:isHighRisk?C.orange:C.muted}}>v{d.ver}</span>
-                        <span style={{fontFamily:mono,fontSize:9,color:C.muted,background:C.faint,padding:"1px 5px",borderRadius:2}}>{d.role}</span>
-                      </div>
-                      <Badge level={d.fabricRisk} sm/>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Tile 2 — Kelly */}
-        <div style={{position:"sticky",top:0}}>
-          <KellyPanel data={data} go={go} />
-        </div>
-
-      </div>
-    </div>
-  );
-}
-
-// ── SignupGate stub
-function SignupGate({onComplete, onDismiss}) {
-  return (
-    <div style={{position:"fixed",inset:0,background:"#080806EE",backdropFilter:"blur(8px)",zIndex:300,display:"flex",alignItems:"center",justifyContent:"center"}}>
-      <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:12,padding:"36px 44px",width:420}}>
-        <div style={{fontFamily:mono,fontSize:11,color:C.amber,marginBottom:12}}>// free analysis used</div>
-        <h2 style={{fontSize:20,fontWeight:300,marginBottom:10}}>Create a free account to continue</h2>
-        <p style={{fontSize:13,color:C.dim,marginBottom:20}}>Get 10 analyses/month free. No credit card required.</p>
-        <div style={{display:"flex",gap:10}}>
-          <button onClick={onDismiss} style={{flex:1,background:"none",border:`1px solid ${C.border}`,color:C.dim,fontFamily:mono,fontSize:12,padding:"10px",borderRadius:6,cursor:"pointer"}}>skip for now</button>
-          <button onClick={onComplete} style={{flex:1,background:C.amber,border:"none",color:"#000",fontFamily:mono,fontWeight:700,fontSize:12,padding:"10px",borderRadius:6,cursor:"pointer"}}>create_account()</button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function Analyse({go}) {
-  const { session } = useAuth();
-  const [screen,setScreen]           = useState("paste");
-  const [rawInput,setRawInput]       = useState("");
-  const [ctx,setCtx]                 = useState("");
-  const [parsing,setParsing]         = useState(false);
-  const [devices,setDevices]         = useState([]);
-  const [step,setStep]               = useState(0);
-  const [results,setResults]         = useState(null);
-  const [advisoryMap,setAdvisoryMap] = useState({});
-  const [showGate,setShowGate]       = useState(false);
-  const [showNudge,setShowNudge]     = useState(false);
-  const [pendingRun,setPendingRun]   = useState(false);
-  const ref = useRef();
-
-  const authHeaders = () => ({
-    "Content-Type": "application/json",
-    ...(session?.access_token ? { "Authorization": `Bearer ${session.access_token}` } : {}),
-  });
-
-  // ── Step 1: Extract devices via server
-  const parseInput = async () => {
-    if (!rawInput.trim()) return;
-    setParsing(true);
-    try {
-      const res = await fetch("/api/extract", {
-        method: "POST",
-        headers: authHeaders(),
-        body: JSON.stringify({ text: rawInput }),
-      });
-      const data = await res.json();
-      if (data.error) throw new Error(data.message || data.error);
-      setDevices(data.devices.map(d => ({ ...d, verMissing: !d.ver?.trim() })));
-      setScreen("review");
-    } catch(e) {
-      console.error("Extract error:", e);
-    }
-    setParsing(false);
-  };
-
-  const updateDevice = (i,field,val) => setDevices(prev=>prev.map((d,idx)=>idx===i?{...d,[field]:val,verMissing:field==="ver"?!val.trim():d.verMissing}:d));
-  const removeDevice = (i) => setDevices(prev=>prev.filter((_,idx)=>idx!==i));
-  const missingVersions = devices.filter(d=>d.verMissing).length;
-  const canAnalyse = devices.length > 0;
-
-  // ── Fetch PSIRT advisory data per device
-  const fetchAdvisoriesForDevices = async (devList) => {
-    const aciFabric = isAciFabric(devList);
-    const resultMap = {};
-    await Promise.all(devList.map(async (d) => {
-      if (!d.ver || d.ver === "not provided") return;
-      try {
-        const aciSwitch = isAciManagedSwitch(d, aciFabric);
-        const res = await fetch("/api/advisories", {
-          method: "POST",
-          headers: authHeaders(),
-          body: JSON.stringify({ platform: d.name, version: d.ver, isAciSwitch: aciSwitch }),
-        });
-        const data = await res.json();
-        resultMap[`${d.name}__${d.ver}`] = data;
-      } catch(e) {
-        console.error("Advisory fetch failed for", d.name, e);
-      }
-    }));
-    return resultMap;
-  };
-
-  const attemptAnalysis = () => {
-    const count = getCount();
-    const registered = isRegistered();
-    if (count >= 1 && !registered) {
-      setPendingRun(true);
-      setShowGate(true);
-      return;
-    }
-    runAnalysis();
-  };
-
-  // ── Step 3: Run full analysis via server
-  const runAnalysis = async () => {
-    setShowGate(false);
-    setPendingRun(false);
-    setScreen("analysing");
-    setStep(0);
-    let s = 0;
-    const timer = setInterval(() => { if (s < STEPS.length - 1) { s++; setStep(s); } }, 900);
-
-    // Fetch PSIRT data first
-    const advMap = await fetchAdvisoriesForDevices(devices);
-    setAdvisoryMap(advMap);
-
-    try {
-      // Send devices + advisory map to server for analysis
-      const res = await fetch("/api/advisories", {
-        method: "POST",
-        headers: authHeaders(),
-        body: JSON.stringify({
-          runAnalysis: true,
-          devices,
-          ctx,
-          advisoryMap: advMap,
-        }),
-      });
-
-      const parsed = await res.json();
-      if (parsed.error) throw new Error(parsed.message || parsed.error);
-
-      incCount();
-      const newCount = getCount();
-      clearInterval(timer);
-      setStep(STEPS.length);
-      setResults(parsed);
-      setScreen("results");
-
-      if (newCount === 1 && !isRegistered()) {
-        setShowNudge(true);
-      }
-
-    } catch(e) {
-      clearInterval(timer);
-      setResults(null);
-      setScreen("results");
-      console.error("Analysis error:", e);
-    }
-  };
-
-  const reset = () => { setScreen("paste"); setRawInput(""); setDevices([]); setCtx(""); setResults(null); setStep(0); setShowNudge(false); setAdvisoryMap({}); };
-
-  const inp = {fontFamily:mono,fontSize:13,background:C.hi,border:`1px solid ${C.border}`,color:C.text,borderRadius:8,padding:"11px 13px",width:"100%",outline:"none",lineHeight:1.7};
-
-  return (
-    <div style={{maxWidth:1100,margin:"0 auto",padding:"34px 36px"}}>
-      {screen==="analysing" && <Overlay step={step}/>}
-
-      {showGate && (
-        <SignupGate
-          onComplete={()=>runAnalysis()}
-          onDismiss={()=>{ setShowGate(false); setPendingRun(false); runAnalysis(); }}
-        />
-      )}
-
-      {screen==="paste" && (
-        <div style={{display:"grid",gridTemplateColumns:"1fr 290px",gap:20,alignItems:"start"}}>
-          <div>
-            <div style={{marginBottom:20}}>
-              <div style={{fontFamily:mono,fontSize:11,color:C.amber,letterSpacing:"0.12em",textTransform:"uppercase",marginBottom:5}}>// step 1 of 3</div>
-              <h1 style={{fontSize:24,fontWeight:300,letterSpacing:"-0.03em",marginBottom:4}}>Paste your inventory</h1>
-              <p style={{fontSize:13,color:C.dim,lineHeight:1.7}}>Paste anything — a CSV, a spreadsheet column, show version output, or just type your devices. We will extract what we need and ask you to confirm before running.</p>
-            </div>
-            <div onDragOver={e=>e.preventDefault()} onDrop={e=>{e.preventDefault();const f=e.dataTransfer.files[0];if(f){const r=new FileReader();r.onload=ev=>setRawInput(ev.target.result);r.readAsText(f);}}}
-              style={{border:`1px dashed ${rawInput?C.amber:C.border}`,borderRadius:10,marginBottom:11,transition:"border-color 0.2s",padding:"6px"}}>
-              <div style={{position:"relative"}}>
-                <textarea value={rawInput} onChange={e=>setRawInput(e.target.value)} rows={12} placeholder="Paste anything — CSV, spreadsheet, show version output, or free text..." style={{...inp,borderRadius:8,resize:"vertical"}}/>
-                {rawInput&&<button onClick={()=>setRawInput("")} style={{position:"absolute",top:9,right:9,background:C.surface,border:`1px solid ${C.border}`,color:C.muted,fontFamily:mono,fontSize:11,padding:"3px 9px",borderRadius:4,cursor:"pointer"}}>clear</button>}
-              </div>
-            </div>
-            <input ref={ref} type="file" accept=".csv,.txt,.log" onChange={e=>{const f=e.target.files[0];if(f){const r=new FileReader();r.onload=ev=>setRawInput(ev.target.result);r.readAsText(f);}}} style={{display:"none"}}/>
-            <div style={{display:"flex",gap:9,marginBottom:11}}>
-              <button onClick={()=>setRawInput(SAMPLE)} style={{flex:1,background:"none",border:`1px solid ${C.border}`,color:C.dim,fontFamily:mono,fontSize:12,padding:"8px",borderRadius:6,cursor:"pointer"}}>load_sample()</button>
-              <button onClick={()=>ref.current?.click()} style={{flex:1,background:"none",border:`1px solid ${C.border}`,color:C.dim,fontFamily:mono,fontSize:12,padding:"8px",borderRadius:6,cursor:"pointer"}}>upload_file()</button>
-            </div>
-            <div style={{marginBottom:14}}>
-              <label style={{fontFamily:mono,fontSize:11,color:C.muted,display:"block",marginBottom:6,letterSpacing:"0.08em"}}>CONTEXT <span style={{color:C.faint}}> // optional — improves accuracy</span></label>
-              <textarea value={ctx} onChange={e=>setCtx(e.target.value)} rows={2} placeholder="e.g. ACI fabric, VXLAN/EVPN, vPC pairs on leaf layer, maintenance window Saturday 02:00 UTC" style={{...inp,resize:"none"}}/>
-            </div>
-            <button onClick={parseInput} disabled={!rawInput.trim()||parsing}
-              style={{background:rawInput.trim()&&!parsing?C.amber:"#5A4800",color:"#000",border:"none",borderRadius:8,fontFamily:mono,fontWeight:700,fontSize:14,padding:"13px",cursor:rawInput.trim()&&!parsing?"pointer":"not-allowed",width:"100%",opacity:rawInput.trim()&&!parsing?1:.5,display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
-              {parsing?<><span style={{width:14,height:14,border:"2px solid #00000033",borderTopColor:"#000",borderRadius:"50%",animation:"spin .7s linear infinite"}}/> extracting_devices()</>:"extract_devices() →"}
-            </button>
-            <div style={{fontFamily:mono,fontSize:11,color:C.muted,textAlign:"center",marginTop:7}}>// we will show you what we found before running</div>
-          </div>
-          <div style={{display:"flex",flexDirection:"column",gap:11}}>
-            <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:10,padding:"14px 16px"}}>
-              <div style={{fontFamily:mono,fontSize:11,color:C.amber,marginBottom:10,letterSpacing:"0.1em",textTransform:"uppercase"}}>// works with anything</div>
-              {[["CSV file","Platform, Version, Role columns"],["Spreadsheet paste","Any column order"],["show version output","Cisco CLI output"],["Free text","4 spines on 10.2(4)"],["DCIM export","Most formats supported"]].map(([t,s])=>(
-                <div key={t} style={{display:"flex",gap:8,marginBottom:8}}>
-                  <span style={{color:C.amber,flexShrink:0,fontFamily:mono,fontSize:11}}>→</span>
-                  <div><div style={{fontSize:13,fontWeight:500}}>{t}</div><div style={{fontSize:11,color:C.muted}}>{s}</div></div>
-                </div>
-              ))}
-            </div>
-            <div style={{background:C.greenG,border:`1px solid ${C.green}30`,borderRadius:10,padding:"11px 13px"}}>
-              <div style={{fontFamily:mono,fontSize:11,color:C.green,marginBottom:5}}>// privacy</div>
-              <div style={{fontSize:12,color:C.dim,lineHeight:1.7}}>No hostnames, IPs, or credentials needed. Results are never stored.</div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {screen==="review" && (
-        <div style={{animation:"fadeUp 0.3s ease"}}>
-          <div style={{marginBottom:22}}>
-            <div style={{fontFamily:mono,fontSize:11,color:C.amber,letterSpacing:"0.12em",textTransform:"uppercase",marginBottom:5}}>// step 2 of 3</div>
-            <h1 style={{fontSize:24,fontWeight:300,letterSpacing:"-0.03em",marginBottom:4}}>Confirm your devices</h1>
-            <p style={{fontSize:13,color:C.dim,lineHeight:1.7}}>We found {devices.length} device{devices.length!==1?"s":""}. Check the details are correct — especially software versions — then run the analysis.</p>
-          </div>
-          {isAciFabric(devices) && (
-            <div style={{background:"#001A2A",border:`1px solid ${C.amber}44`,borderRadius:8,padding:"12px 16px",marginBottom:16,display:"flex",gap:12,alignItems:"flex-start"}}>
-              <span style={{color:C.amber,fontSize:16,flexShrink:0}}>ℹ</span>
-              <div>
-                <div style={{fontFamily:mono,fontSize:12,color:C.amber,marginBottom:3}}>// ACI fabric detected</div>
-                <div style={{fontSize:13,color:C.dim,lineHeight:1.6}}>APIC found in inventory. Nexus switches will be queried using their ACI NX-OS version (APIC major version + 10). APIC advisory lookup uses ACI release versioning.</div>
-              </div>
-            </div>
-          )}
-          {missingVersions>0 && (
-            <div style={{background:"#2A1400",border:`1px solid ${C.orange}44`,borderRadius:8,padding:"12px 16px",marginBottom:16,display:"flex",gap:12,alignItems:"flex-start"}}>
-              <span style={{color:C.orange,fontSize:16,flexShrink:0}}>⚠</span>
-              <div>
-                <div style={{fontFamily:mono,fontSize:12,color:C.orange,marginBottom:3}}>// {missingVersions} device{missingVersions!==1?"s":""} missing version</div>
-                <div style={{fontSize:13,color:C.dim,lineHeight:1.6}}>Bug and CVE analysis requires software version. Add versions below or run without them — missing versions will be clearly flagged in results.</div>
-              </div>
-            </div>
-          )}
-          <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:10,overflow:"hidden",marginBottom:16}}>
-            <div style={{display:"grid",gridTemplateColumns:"2fr 1.5fr 1fr 32px",gap:0,background:C.hi,padding:"10px 16px",borderBottom:`1px solid ${C.border}`}}>
-              {["PLATFORM","VERSION","ROLE",""].map(h=><div key={h} style={{fontFamily:mono,fontSize:10,color:C.muted,letterSpacing:"0.1em"}}>{h}</div>)}
-            </div>
-            {devices.map((d,i)=>(
-              <div key={i} style={{display:"grid",gridTemplateColumns:"2fr 1.5fr 1fr 32px",gap:0,padding:"10px 16px",borderBottom:`1px solid ${C.border}`,alignItems:"center",background:d.verMissing?"#2A140022":"transparent"}}>
-                <div style={{fontFamily:mono,fontSize:13,color:C.text,paddingRight:8}}>{d.name}</div>
-                <div style={{paddingRight:8}}>
-                  <input value={d.ver} onChange={e=>updateDevice(i,"ver",e.target.value)} placeholder="e.g. 9.3(9)"
-                    style={{background:d.verMissing?C.hi:"transparent",border:`1px solid ${d.verMissing?C.orange:C.border}`,color:d.verMissing?C.orange:C.text,fontFamily:mono,fontSize:12,padding:"4px 8px",borderRadius:4,outline:"none",width:"100%"}}/>
-                </div>
-                <div style={{paddingRight:8}}>
-                  <input value={d.role} onChange={e=>updateDevice(i,"role",e.target.value)} placeholder="e.g. Leaf"
-                    style={{background:"transparent",border:`1px solid ${C.border}`,color:C.dim,fontFamily:mono,fontSize:12,padding:"4px 8px",borderRadius:4,outline:"none",width:"100%"}}/>
-                </div>
-                <button onClick={()=>removeDevice(i)} style={{background:"none",border:"none",color:C.muted,cursor:"pointer",fontSize:14,padding:"2px"}}>✕</button>
-              </div>
-            ))}
-          </div>
-          <div style={{display:"flex",gap:10}}>
-            <button onClick={()=>setScreen("paste")} style={{background:"none",border:`1px solid ${C.border}`,color:C.dim,fontFamily:mono,fontSize:13,padding:"12px 20px",borderRadius:8,cursor:"pointer"}}>← back()</button>
-            <button onClick={attemptAnalysis} disabled={!canAnalyse}
-              style={{flex:1,background:canAnalyse?C.amber:"#5A4800",color:"#000",border:"none",borderRadius:8,fontFamily:mono,fontWeight:700,fontSize:14,padding:"13px",cursor:canAnalyse?"pointer":"not-allowed",opacity:canAnalyse?1:.5}}>
-              run_analysis() →
-            </button>
-          </div>
-          <div style={{fontFamily:mono,fontSize:11,color:C.muted,textAlign:"center",marginTop:7}}>
-            {missingVersions>0?`// ${missingVersions} device${missingVersions!==1?"s":""} will be analysed for topology issues only`:"// all devices have version data — full analysis enabled"}
-          </div>
-        </div>
-      )}
-
-      {screen==="results" && results && (
-        <Results
-          data={results}
-          advisoryMap={advisoryMap}
-          reset={reset}
-          go={go}
-          onShowSignup={()=>setShowGate(true)}
-          showNudge={showNudge}
-          onDismissNudge={()=>setShowNudge(false)}
-        />
-      )}
-    </div>
-  );
-}
-
-export default function AnalysisApp() {
-  const { session } = useAuth();
-
-  const go = p => {
-    if (p === "login")    { window.location.href = "/login";    return; }
-    if (p === "signup")   { window.location.href = "/signup";   return; }
-    if (p === "settings") { window.location.href = "/settings"; return; }
-    window.scrollTo?.(0, 0);
-  };
-
-  return (
-    <div style={{background:C.bg,color:C.text,minHeight:"100vh",fontFamily:"'DM Sans',system-ui,sans-serif",display:"flex",flexDirection:"column"}}>
+    <div style={{background:C.bg,color:C.text,minHeight:"100vh",fontFamily:sans}}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&display=swap');
         *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
-        ::selection{background:${C.amber}30;color:${C.amberB};}
+        ::selection{background:#D4A00040;color:#8B6400;}
         ::-webkit-scrollbar{width:4px;}::-webkit-scrollbar-track{background:${C.bg};}::-webkit-scrollbar-thumb{background:${C.border};border-radius:2px;}
         @keyframes fadeUp{from{opacity:0;transform:translateY(11px);}to{opacity:1;transform:translateY(0);}}
-        @keyframes spin{to{transform:rotate(360deg);}}
         @keyframes pulse{0%,100%{opacity:1;}50%{opacity:.3;}}
-        @keyframes blink{50%{opacity:0;}}
       `}</style>
-      <div style={{position:"fixed",inset:0,backgroundImage:`linear-gradient(${C.border}55 1px,transparent 1px),linear-gradient(90deg,${C.border}55 1px,transparent 1px)`,backgroundSize:"72px 72px",pointerEvents:"none",zIndex:0,opacity:.4}}/>
-      <div style={{position:"fixed",top:"15%",left:"50%",transform:"translateX(-50%)",width:680,height:480,background:`radial-gradient(ellipse,${C.amber}06 0%,transparent 65%)`,pointerEvents:"none",zIndex:0}}/>
-      <div style={{position:"relative",zIndex:1,display:"flex",flexDirection:"column",minHeight:"100vh"}}>
-        <Nav go={go} authed={!!session}/>
-        <div style={{flex:1,display:"flex",flexDirection:"column"}}>
-          <Analyse go={go}/>
+
+      <HomeNav authed={authed}/>
+
+      {/* Hero */}
+      <div style={{maxWidth:960,margin:"0 auto",padding:"100px 36px 80px"}}>
+        <div style={{display:"inline-flex",alignItems:"center",gap:8,background:C.surface,border:`1px solid ${C.border}`,borderRadius:4,padding:"5px 13px",marginBottom:28,boxShadow:`0 1px 4px ${C.shadow}`}}>
+          <span style={{width:6,height:6,borderRadius:"50%",background:C.green,animation:"pulse 2s infinite"}}/>
+          <span style={{fontFamily:mono,fontSize:11,color:C.muted}}>cloudbreak // live now</span>
+          <span style={{width:1,height:11,background:C.border}}/>
+          <span style={{fontFamily:mono,fontSize:11,color:C.amber}}>ghost ships // the destination</span>
+        </div>
+
+        <h1 style={{fontSize:34,fontWeight:300,letterSpacing:"-0.03em",lineHeight:1.25,marginBottom:24,color:C.text,maxWidth:700}}>
+          netwrkr.ai will autonomously monitor, diagnose and operate your data centre fabric.
+        </h1>
+
+        <p style={{fontSize:16,color:C.dim,lineHeight:1.85,marginBottom:36,maxWidth:620}}>
+          Data centre networks are complex to operate. They carry bugs, version drift, and accumulated risk that engineers spend their careers managing manually. netwrkr.ai is the AI layer that changes that — giving engineers the intelligence to make better decisions today, and building toward a fabric that monitors, diagnoses, and operates itself.
+        </p>
+
+        <div style={{display:"flex",gap:12,marginBottom:56}}>
+          <button onClick={()=>window.location.href="/analyse"} style={{background:C.amber,color:"#FFF",border:"none",borderRadius:6,fontFamily:mono,fontWeight:700,fontSize:13,padding:"13px 28px",cursor:"pointer",boxShadow:`0 2px 8px ${C.amber}40`}}>
+            analyse_my_fabric() // free
+          </button>
+          <button onClick={()=>window.location.href="/signup"} style={{background:"none",border:`1px solid ${C.border}`,color:C.dim,borderRadius:6,fontFamily:mono,fontSize:13,padding:"13px 22px",cursor:"pointer"}}>
+            get_started →
+          </button>
+        </div>
+
+        {/* Phase strip */}
+        <div style={{borderTop:`1px solid ${C.border}`,paddingTop:28}}>
+          <div style={{fontFamily:mono,fontSize:10,color:C.muted,letterSpacing:"0.12em",textTransform:"uppercase",marginBottom:16}}>// roadmap</div>
+          <div style={{display:"flex",gap:0,background:C.border,borderRadius:8,overflow:"hidden",boxShadow:`0 1px 6px ${C.shadow}`}}>
+            {[
+              {code:"Cloudbreak", label:"Live now",    desc:"Analysis & advisory intelligence",   color:C.green,  status:"live"},
+              {code:"Desert Point",label:"Building",   desc:"Continuous monitoring",               color:C.amber,  status:"building"},
+              {code:"Jaws",       label:"Next",        desc:"Autonomous remediation",              color:C.orange, status:"planned"},
+              {code:"Ghost Ships",label:"Destination", desc:"Fully autonomous operations",         color:C.red,    status:"vision"},
+            ].map((p,i,arr)=>(
+              <div key={p.code} style={{flex:1,background:C.surface,padding:"16px 18px",borderRight:i<arr.length-1?`1px solid ${C.border}`:"none"}}>
+                <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:8}}>
+                  <span style={{fontFamily:mono,fontSize:9,color:p.color,background:p.color+"15",border:`1px solid ${p.color}30`,padding:"2px 7px",letterSpacing:"0.06em"}}>{p.label}</span>
+                  {p.status==="live"&&<span style={{width:6,height:6,borderRadius:"50%",background:C.green,animation:"pulse 2s infinite"}}/>}
+                </div>
+                <div style={{fontFamily:mono,fontSize:12,fontWeight:700,color:p.color,marginBottom:4}}>{p.code}</div>
+                <div style={{fontSize:11,color:C.dim,lineHeight:1.5}}>{p.desc}</div>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
+
+      {/* Footer */}
+      <footer style={{borderTop:`1px solid ${C.border}`,padding:"20px 36px",background:C.surface}}>
+        <div style={{maxWidth:960,margin:"0 auto",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <span style={{fontFamily:mono,fontSize:13,fontWeight:700,color:C.text}}>netwrkr<span style={{color:C.amber}}>.ai</span></span>
+          <div style={{display:"flex",gap:16}}>
+            {["privacy","terms","security","contact"].map(l=>(
+              <button key={l} onClick={()=>window.location.href=`/${l}`} style={{background:"none",border:"none",color:C.muted,fontFamily:mono,fontSize:11,cursor:"pointer"}}>{l}</button>
+            ))}
+          </div>
+          <span style={{fontFamily:mono,fontSize:11,color:C.muted}}>// cloudbreak → desert point → jaws → ghost ships</span>
+        </div>
+      </footer>
     </div>
+  );
+}
+
+function HistoryStub() {
+  return (
+    <div style={{background:C.bg,minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",color:C.text,fontFamily:mono}}>
+      <div style={{textAlign:"center"}}>
+        <div style={{fontSize:11,color:C.amber,letterSpacing:"0.14em",textTransform:"uppercase",marginBottom:16}}>// coming soon</div>
+        <div style={{fontSize:24,fontWeight:300,marginBottom:12}}>Analysis history</div>
+        <div style={{fontSize:13,color:C.dim,marginBottom:24}}>Full history with member attribution — Phase 2.</div>
+        <button onClick={()=>window.location.href="/app"} style={{background:C.amber,color:"#FFF",border:"none",borderRadius:6,fontFamily:mono,fontWeight:700,fontSize:12,padding:"9px 18px",cursor:"pointer"}}>
+          ← back_to_dashboard()
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function RootPage() {
+  const { session, loading } = useAuth();
+  useEffect(() => { if (!loading && session) window.location.replace("/app"); }, [session, loading]);
+  if (loading) return null;
+  if (session) return null;
+  return <Home authed={false}/>;
+}
+
+function Router() {
+  const path = window.location.pathname;
+  if (path === '/login')                  return <LoginPage />;
+  if (path === '/signup')                 return <SignupPage />;
+  if (path === '/accept-invite')          return <AcceptInvitePage />;
+  if (path === '/reset-password')         return <ForgotPasswordPage />;
+  if (path === '/reset-password/confirm') return <SetNewPasswordPage />;
+  if (path === '/analyse')                return <AnalysisApp />;
+  if (path === '/app')                    return <AuthGuard><RinconChatPrototype /></AuthGuard>;
+  if (path === '/settings')               return <AuthGuard><SettingsPage /></AuthGuard>;
+  if (path === '/strategy')               return <StrategyPage />;
+  if (path === '/model')                  return <ModelPage />;
+  if (path === '/history')                return <AuthGuard><HistoryStub /></AuthGuard>;
+  if (path === '/' || path === '')        return <RootPage />;
+  window.location.replace('/');
+  return null;
+}
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <Router />
+    </AuthProvider>
   );
 }
