@@ -1,6 +1,6 @@
 // api/advisories.js
 // Vercel serverless function — Cisco PSIRT openVuln API + fabric analysis
-// v3.0 — consolidated analysis prompt, system/user split, P2 priority fix
+// v3.1 — deterministic risk scoring (fabricRisk, intelRisk, fabricAnalysis.risk calculated in code, not by AI)
 
 const { createClient } = require('@supabase/supabase-js');
 
@@ -12,6 +12,169 @@ const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
+
+// ─────────────────────────────────────────────
+// DETERMINISTIC RISK SCORING
+// Risk levels are calculated from real data — never set by AI
+// ─────────────────────────────────────────────
+
+// Parse a version string into comparable parts
+function parseVersion(ver) {
+  if (!ver || ver === "not provided") return null;
+  // Handles formats like 9.3(9), 10.2(5), 15.2(8e), 7.2(1), 17.3(4a)
+  const match = ver.match(/^(\d+)[\.\(](\d+)/);
+  if (!match) return null;
+  return { major: parseInt(match[1], 10), minor: parseInt(match[2], 10) };
+}
+
+// Calculate fabricRisk for each device based on version consistency within its tier
+function calculateFabricRisk(devices) {
+  // Group devices by tier (excluding tier 4 — firewalls/distribution don't affect fabric risk)
+  const tierGroups = {};
+  devices.forEach(d => {
+    const tier = d.tier || 3;
+    if (tier >= 4) return; // tier 4 never drives fabric risk
+    if (!tierGroups[tier]) tierGroups[tier] = [];
+    tierGroups[tier].push(d);
+  });
+
+  // Find all unique versions per tier
+  const tierVersions = {};
+  Object.entries(tierGroups).forEach(([tier, devs]) => {
+    const versions = [...new Set(devs.map(d => d.ver).filter(v => v && v !== "not provided"))];
+    tierVersions[tier] = versions;
+  });
+
+  // Check for cross-tier major version splits (spine vs leaf)
+  const spineVersions   = (tierVersions[2] || []).map(parseVersion).filter(Boolean);
+  const leafVersions    = (tierVersions[3] || []).map(parseVersion).filter(Boolean);
+  const controllerVersions = (tierVersions[1] || []).map(parseVersion).filter(Boolean);
+
+  let overallFabricRisk = "LOW";
+
+  // Major version split across tiers = HIGH
+  if (spineVersions.length > 0 && leafVersions.length > 0) {
+    const spineMajors = [...new Set(spineVersions.map(v => v.major))];
+    const leafMajors  = [...new Set(leafVersions.map(v => v.major))];
+    const majorsSplit = spineMajors.some(m => !leafMajors.includes(m));
+    if (majorsSplit) overallFabricRisk = "HIGH";
+  }
+
+  // Version drift within a tier = MEDIUM (if not already HIGH)
+  Object.values(tierVersions).forEach(versions => {
+    if (versions.length > 1 && overallFabricRisk === "LOW") {
+      overallFabricRisk = "MEDIUM";
+    }
+  });
+
+  // Now calculate per-device fabricRisk
+  return devices.map(d => {
+    const tier = d.tier || 3;
+
+    // Controllers: LOW unless mismatch between controllers themselves
+    if (tier === 1) {
+      const ctrlVersions = [...new Set(
+        devices.filter(x => x.tier === 1 && x.ver && x.ver !== "not provided").map(x => x.ver)
+      )];
+      return { ...d, fabricRisk: ctrlVersions.length > 1 ? "MEDIUM" : "LOW" };
+    }
+
+    // Tier 4: always LOW fabric risk
+    if (tier >= 4) return { ...d, fabricRisk: "LOW" };
+
+    // No version provided: can't assess
+    if (!d.ver || d.ver === "not provided") return { ...d, fabricRisk: "LOW" };
+
+    const dv = parseVersion(d.ver);
+    if (!dv) return { ...d, fabricRisk: "LOW" };
+
+    // Check if this device is an outlier in its tier
+    const sameTier = devices.filter(x => x.tier === tier && x.ver && x.ver !== "not provided" && x !== d);
+    if (sameTier.length === 0) {
+      // Only device in its tier — check cross-tier alignment
+      return { ...d, fabricRisk: overallFabricRisk === "HIGH" ? "HIGH" : "LOW" };
+    }
+
+    const sameTierVersions = sameTier.map(x => parseVersion(x.ver)).filter(Boolean);
+    const isOutlier = sameTierVersions.some(v => v.major !== dv.major || v.minor !== dv.minor);
+
+    if (!isOutlier) {
+      // Consistent within tier — reflect cross-tier risk
+      return { ...d, fabricRisk: overallFabricRisk };
+    } else {
+      // This device is the outlier
+      const majorMismatch = sameTierVersions.some(v => v.major !== dv.major);
+      return { ...d, fabricRisk: majorMismatch ? "HIGH" : "MEDIUM" };
+    }
+  });
+}
+
+// Calculate intelRisk for each device based on PSIRT advisory severity
+// Tier 4 devices capped at MEDIUM
+function calculateIntelRisk(devices, advMap) {
+  return devices.map(d => {
+    const tier = d.tier || 3;
+    const key  = `${d.name}__${d.ver}`;
+    const data = advMap[key];
+
+    if (!data || !data.advisories || data.advisories.length === 0) {
+      return { ...d, intelRisk: "LOW" };
+    }
+
+    const hasHigh     = data.advisories.some(a => a.impact === "High" || a.impact === "Critical");
+    const hasMedium   = data.advisories.some(a => a.impact === "Medium");
+
+    let risk = "LOW";
+    if (hasMedium) risk = "MEDIUM";
+    if (hasHigh)   risk = "HIGH";
+
+    // Tier 4 cap
+    if (tier >= 4 && risk === "HIGH") risk = "MEDIUM";
+
+    // Border leaf minimum HIGH
+    if ((d.role === "Border Leaf" || d.role === "border-leaf") && risk === "LOW") risk = "MEDIUM";
+
+    return { ...d, intelRisk: risk };
+  });
+}
+
+// Calculate overall fabricAnalysis.risk from mismatch data
+function calculateOverallFabricRisk(devices) {
+  const tieredDevices = devices.filter(d => (d.tier || 3) < 4 && d.ver && d.ver !== "not provided");
+
+  if (tieredDevices.length === 0) return "LOW";
+
+  // Group by tier
+  const byTier = {};
+  tieredDevices.forEach(d => {
+    const t = d.tier || 3;
+    if (!byTier[t]) byTier[t] = [];
+    byTier[t].push(parseVersion(d.ver));
+  });
+
+  // Cross-tier major split = HIGH
+  const tiers = Object.keys(byTier).map(Number).sort();
+  for (let i = 0; i < tiers.length - 1; i++) {
+    const tierA = byTier[tiers[i]].filter(Boolean);
+    const tierB = byTier[tiers[i+1]].filter(Boolean);
+    if (tierA.length && tierB.length) {
+      const majorsA = [...new Set(tierA.map(v => v.major))];
+      const majorsB = [...new Set(tierB.map(v => v.major))];
+      if (majorsA.some(m => !majorsB.includes(m))) return "HIGH";
+    }
+  }
+
+  // Within-tier drift = MEDIUM
+  for (const versions of Object.values(byTier)) {
+    const valid = versions.filter(Boolean);
+    const uniqueMajors = [...new Set(valid.map(v => v.major))];
+    const uniqueMinors = [...new Set(valid.map(v => `${v.major}.${v.minor}`))];
+    if (uniqueMajors.length > 1) return "HIGH";
+    if (uniqueMinors.length > 1) return "MEDIUM";
+  }
+
+  return "LOW";
+}
 
 // ─────────────────────────────────────────────
 // PID NORMALISATION
@@ -139,8 +302,7 @@ async function fetchEoX(token, pid) {
 
 // ─────────────────────────────────────────────
 // ANALYSIS SYSTEM PROMPT
-// Single source of truth for all fabric analysis logic.
-// Updated: P2 priority fix — observed structural findings always outrank advisory findings.
+// AI focuses on narrative, priorities, findings — NOT risk scores
 // ─────────────────────────────────────────────
 function buildAnalysisSystemPrompt(aciFabric) {
   return `You are netwrkr.ai, an expert Cisco data centre network engineer.
@@ -151,40 +313,35 @@ ABSOLUTE RULES:
 3. Version mismatches can ONLY be reported when multiple devices of the same type show DIFFERENT explicit versions.
 4. Every finding must end with [observed], [inferred], or [assumed].
 5. [observed] = directly from the data. [inferred] = logical conclusion. [assumed] = no evidence, low confidence only.
-6. CRITICAL or HIGH severity requires explicit version evidence. No version = maximum MEDIUM risk.
-7. If any device has ver="not provided", include this finding: "Software version not provided for X device(s) — bug and CVE analysis unavailable for those devices [observed]"
-8. NEVER add devices that are not in the submitted inventory. The devices array must contain EXACTLY the same devices as the submitted inventory — no additions, no omissions.
-9. Sort devices in the output by infrastructure tier in this strict order: Controllers (APIC, DNAC, NSO) → Spine → Border Leaf → Leaf → Distribution/Firewall/Edge.
-10. Identify Border Leaf from: device name or role containing "BORDER-LEAF", "BORDER_LEAF", "Border Leaf", "border-leaf", or "BL-". Assign tier:2 to Border Leaf.
-11. Border Leaf devices must have intelRisk "HIGH" minimum.
-12. Tier 4 devices (Distribution, Firewall, Catalyst, Firepower) must never exceed intelRisk "MEDIUM".
-13. APIC controllers always appear first in the devices array, before Spines.
-14. Controllers (APIC, DNAC, NSO) must have fabricRisk "LOW" unless there is a version mismatch between the controllers themselves.
-15. Border Leaf device recommendations must never use directive upgrade language. Use advisory language such as "Review upgrade target against current fabric baseline".
-16. P1/P2/P3 priority assessment titles must never contain the word "Critical".
-17. Observed structural fabric findings (version mismatches, topology inconsistencies detected directly from inventory data) always rank above intel advisory findings in priority order, regardless of advisory severity. A verified HIGH advisory on a controller is P2 only if no observed structural fabric risk exists in the inventory. If both are present, the structural risk is P1 and the advisory remediation is P3.
-18. fabricAnalysis findings must never reference advisory counts, CVEs, or bug data — topology facts from the submitted inventory only.
-19. EoL findings disabled pending enterprise SNTC credentials.${aciFabric ? `
-20. This is an ACI fabric (APIC detected). APIC version uses ACI release numbering. Nexus switches in this fabric run NX-OS with major version = APIC major version + 10 (e.g. APIC 6.1(5e) → NX-OS 16.1(5e)). Note this version relationship in fabric analysis findings.` : ""}
+6. If any device has ver="not provided", include this finding: "Software version not provided for X device(s) — bug and CVE analysis unavailable for those devices [observed]"
+7. NEVER add devices that are not in the submitted inventory. The devices array must contain EXACTLY the same devices as submitted — no additions, no omissions.
+8. Sort devices in the output by infrastructure tier: Controllers → Spine → Border Leaf → Leaf → Distribution/Firewall/Edge.
+9. Border Leaf devices must have rec using advisory language only — never directive upgrade language.
+10. P1/P2/P3 priority assessment titles must never contain the word "Critical".
+11. Observed structural fabric findings always rank above intel advisory findings in priority order.
+12. fabricAnalysis findings must never reference advisory counts, CVEs, or bug data — topology facts only.
+13. EoL findings disabled pending enterprise SNTC credentials.
+14. DO NOT set fabricRisk or intelRisk values — these will be calculated and applied by the system after your response. Set all fabricRisk and intelRisk to "LOW" as placeholders only.${aciFabric ? `
+15. This is an ACI fabric (APIC detected). APIC version uses ACI release numbering. Nexus NX-OS major = APIC major + 10.` : ""}
 
 INFRASTRUCTURE TIER GUIDE:
-- Tier 1: Controllers — APIC, DNAC, NSO. Shapes upgrade path for entire fabric. Always appears first.
-- Tier 2a: Spine — core fabric stability
-- Tier 2b: Border Leaf — external routing, BGP, WAN-facing (HIGH intel minimum)
-- Tier 3: Leaf — forwarding fabric
-- Tier 4: Distribution, Firewall, Catalyst, Firepower (cap intel at MEDIUM)
+- Tier 1: Controllers — APIC, DNAC, NSO
+- Tier 2a: Spine
+- Tier 2b: Border Leaf — external routing, BGP, WAN-facing
+- Tier 3: Leaf
+- Tier 4: Distribution, Firewall, Catalyst, Firepower
 
 Respond ONLY with valid JSON (no markdown):
 {
   "priorityAssessment": {"items": [{"priority":"P1","title":"...","reason":"...","devices":["..."]},{"priority":"P2","title":"...","reason":"...","devices":["..."]},{"priority":"P3","title":"...","reason":"...","devices":["..."]}]},
-  "fabricAnalysis": {"risk":"LOW|MEDIUM|HIGH","consistent":false,"mismatches":["Platform: version1 vs version2 — description [observed]"],"missingVersions":[],"findings":["finding [observed|inferred]"]},
+  "fabricAnalysis": {"risk":"LOW","consistent":false,"mismatches":["Platform: version1 vs version2 — description [observed]"],"missingVersions":[],"findings":["finding [observed|inferred]"]},
   "netwrkrIntel": {"hasIntel":true,"summary":"brief summary","items":[{"platform":"","version":"","title":"","detail":"","id":"","verified":false,"sev":"MEDIUM"}]},
   "devices": [{"name":"","ver":"","role":"","tier":1,"fabricRisk":"LOW","intelRisk":"LOW","rec":""}]
 }`;
 }
 
 // ─────────────────────────────────────────────
-// FABRIC ANALYSIS — called when devices + advisorySummary are provided
+// FABRIC ANALYSIS
 // ─────────────────────────────────────────────
 async function runFabricAnalysis(devices, advisorySummary, aciFabric, ctx, advMap) {
   const apiKey = process.env.ANTHROPIC_API_KEY;
@@ -207,8 +364,8 @@ ${advisorySummary}
   const response = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
-      "Content-Type":    "application/json",
-      "x-api-key":       apiKey,
+      "Content-Type":      "application/json",
+      "x-api-key":         apiKey,
       "anthropic-version": "2023-06-01",
     },
     body: JSON.stringify({
@@ -225,13 +382,12 @@ ${advisorySummary}
   const raw    = data.content[0].text.replace(/```json|```/g, "").trim();
   const parsed = JSON.parse(raw);
 
-  // Cross-check verified flags against real advisory IDs from PSIRT API
+  // ── Cross-check verified flags against real advisory IDs
   const realIds = new Set(
     Object.values(advMap)
       .flatMap(d => (d.advisories || []).map(a => a.id))
       .filter(Boolean)
   );
-
   if (parsed.netwrkrIntel?.items) {
     parsed.netwrkrIntel.items = parsed.netwrkrIntel.items.map(item => ({
       ...item,
@@ -239,17 +395,19 @@ ${advisorySummary}
     }));
   }
 
+  // ── DETERMINISTIC RISK SCORING
+  // Apply calculated risk scores — overwrite whatever AI returned
+  const devicesWithFabricRisk = calculateFabricRisk(parsed.devices || devices);
+  const devicesWithAllRisk    = calculateIntelRisk(devicesWithFabricRisk, advMap);
+
+  parsed.devices = devicesWithAllRisk;
+  parsed.fabricAnalysis.risk = calculateOverallFabricRisk(devices);
+
   return parsed;
 }
 
 // ─────────────────────────────────────────────
 // MAIN HANDLER
-// Handles two modes:
-//   1. PSIRT lookup only  — { platform, version, isAciSwitch } — always public
-//   2. Full analysis      — { devices, ctx, runAnalysis: true }
-//      Auth is OPTIONAL:
-//      - Authenticated: writes audit record, increments quota
-//      - Unauthenticated (free tier): runs analysis, no audit record
 // ─────────────────────────────────────────────
 module.exports = async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -260,10 +418,8 @@ module.exports = async function handler(req, res) {
   if (req.method !== "POST")   return res.status(405).json({ error: "Method not allowed" });
 
   // ── MODE 1: Full fabric analysis
-  // Client sends { runAnalysis: true, devices, ctx, advisoryMap }
   if (req.body.runAnalysis === true) {
 
-    // ── Optional auth — try to identify the member but don't block if missing
     let member = null;
     const token = req.headers.authorization?.split(" ")[1];
     if (token) {
@@ -276,11 +432,9 @@ module.exports = async function handler(req, res) {
             .eq("user_id", user.id)
             .single();
           if (memberData) {
-            // Viewer role cannot run analyses even when authenticated
             if (memberData.role === "viewer") {
               return res.status(403).json({ error: "insufficient_role" });
             }
-            // Licence check for authenticated users
             const { data: licence } = await supabase
               .from("licences")
               .select("plan, status, analyses_used, analyses_limit")
@@ -296,7 +450,6 @@ module.exports = async function handler(req, res) {
           }
         }
       } catch (e) {
-        // Auth failed silently — continue as free tier
         console.warn("Auth check failed (continuing as free tier):", e.message);
       }
     }
@@ -319,7 +472,6 @@ module.exports = async function handler(req, res) {
     try {
       const result = await runFabricAnalysis(devices, advisorySummary, aciFabric, ctx, advisoryMap || {});
 
-      // Write audit record only for authenticated members
       if (member) {
         await supabase.from("analyses").insert({
           org_id:           member.org_id,
@@ -339,8 +491,7 @@ module.exports = async function handler(req, res) {
     }
   }
 
-  // ── MODE 2: PSIRT advisory lookup (existing behaviour)
-  // Client sends { platform, version, isAciSwitch }
+  // ── MODE 2: PSIRT advisory lookup
   const { platform, version, isAciSwitch } = req.body;
 
   if (!platform || !version) {
@@ -404,4 +555,4 @@ module.exports = async function handler(req, res) {
     console.error("advisories.js error:", err.message);
     return res.status(200).json({ advisories: [], eol: null, verified: false, message: err.message });
   }
-}
+};
