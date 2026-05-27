@@ -119,7 +119,7 @@ function Nav({go, authed}) {
   return (
     <nav style={{borderBottom:`1px solid ${C.border}`,padding:"0 36px",background:`${C.bg}F0`,backdropFilter:"blur(20px)",position:"sticky",top:0,zIndex:100}}>
       <div style={{maxWidth:1140,margin:"0 auto",display:"flex",alignItems:"center",justifyContent:"space-between",height:54}}>
-        <div style={{display:"flex",alignItems:"center",gap:9,cursor:"pointer"}} onClick={()=>go("analyse")}>
+        <div style={{display:"flex",alignItems:"center",gap:9,cursor:"pointer"}} onClick={()=>window.location.href="/"}>
           <div style={{width:27,height:27,background:C.amberG,border:`1px solid ${C.amber}44`,borderRadius:6,display:"flex",alignItems:"center",justifyContent:"center"}}>
             <svg width="13" height="13" viewBox="0 0 14 14" fill="none"><polyline points="1,10 4,6 7,8.5 10,3.5 13,5.5" stroke={C.amber} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
           </div>
@@ -282,7 +282,7 @@ function KellyPanel({data, go}) {
 
       {/* Chat thread */}
       {messages.length > 0 && (
-        <div ref={el=>{if(el)el.scrollTop=el.scrollHeight;}} style={{display:"flex",flexDirection:"column",gap:10,maxHeight:240,overflowY:"auto"}}>
+        <div ref={el=>{if(el)el.scrollTop=el.scrollHeight;}} style={{display:"flex",flexDirection:"column",gap:10}}>
           {messages.map((m,i)=>(
             <div key={i} style={{display:"flex",gap:8,alignItems:"flex-start",flexDirection:m.role==="user"?"row-reverse":"row"}}>
               {m.role==="assistant"&&<div style={{width:24,height:24,background:C.amberG,border:`1px solid ${C.amber}44`,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:mono,fontSize:10,fontWeight:700,color:C.amber,flexShrink:0,marginTop:2}}>K</div>}
@@ -493,7 +493,7 @@ function Results({data, reset, go, showNudge, onDismissNudge}) {
         </div>
 
         {/* Kelly tile */}
-        <div style={{position:"sticky",top:0}}>
+        <div style={{alignSelf:"flex-start"}}>
           <KellyPanel data={data} go={go}/>
         </div>
       </div>
