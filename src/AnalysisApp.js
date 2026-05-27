@@ -1,5 +1,5 @@
 // AnalysisApp.js
-// v2.4 — light theme, cohesive with homepage
+// v2.5 — deterministic language tier for Kelly briefing
 
 import { useState, useRef } from "react";
 import { useAuth } from './Auth';
@@ -183,11 +183,21 @@ function KellyPanel({data, go}) {
       try {
         const cscIds = verifiedItems.map(i=>i.id).filter(Boolean).join(", ");
         const summary = `${verifiedCount > 0 ? verifiedCount + " verified advisories: " + cscIds + "." : "No verified advisories."} Priority: ${p1?.title || "no critical issues"}. Fabric risk: ${fabricRisk}. ${mismatch ? "Mismatch: " + mismatch : "No version mismatches."}`;
+        // Determine language tier from risk source — not from AI judgment
+        // Tier 1 (strong): verified HIGH advisory present
+        // Tier 2 (measured): version drift only, no verified HIGH advisory
+        const hasVerifiedHigh = verifiedItems.some(i => i.sev === "HIGH" || i.sev === "CRITICAL");
+        const languageTier = hasVerifiedHigh ? 1 : 2;
+
+        const languageInstruction = languageTier === 1
+          ? `A verified HIGH severity Cisco advisory is present. You may use strong, direct language about the risk.`
+          : `The risk here is version drift — a best-practice violation, not a verified outage cause. Use measured language only. Say "bad practice", "should be resolved before the next change window", "creates operational risk". Do NOT say: critical, severe, split-brain, blackholing, cascades, showstopper, or any synonym. Do not use the word "immediately" unless a verified CVE requires it.`;
+
         const res = await fetch("/api/chat", {
           method: "POST",
           headers: {"Content-Type":"application/json"},
           body: JSON.stringify({
-            system: `You are Kelly — a senior DC network engineer with 20 years of hands-on fabric experience. Short sentences. Direct opinions. No padding. No markdown asterisks. Get straight to the point. End with a single concrete next action on a new line prefixed with →. Max 3 sentences before the action line.`,
+            system: `You are Kelly — a senior DC network engineer with 20 years of hands-on fabric experience. Short sentences. Direct opinions. No padding. No markdown asterisks. Get straight to the point. End with a single concrete next action on a new line prefixed with →. Max 3 sentences before the action line. ${languageInstruction}`,
             messages: [{role:"user", content:`Give me a direct engineer's briefing on this fabric: ${summary}. Lead with the most urgent issue.`}]
           })
         });
