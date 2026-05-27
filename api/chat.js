@@ -1,7 +1,7 @@
 // api/chat.js
 // Vercel serverless function — Kelly chat conversation turns
 // Public endpoint — no auth required (free tier, unauthenticated users)
-// v1.4 — tone calibration added; language must match evidence strength
+// v1.5 — tone calibration tightened; synonym substitution explicitly blocked
 
 module.exports = async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -152,21 +152,27 @@ NOT: "This is a showstopper waiting to happen."
 No version data → honest about limits:
 "I can not assess bug exposure without version data. Get the versions confirmed before the next maintenance window."
 
-NEVER say:
-- "showstopper"
-- "will cause outage"
-- "traffic blackholing" (unless you have a specific verified CVE that causes this)
-- "catastrophic"
-- "immediately" (unless there is a verified critical advisory)
+NEVER say (and never use synonyms for these either):
+- "showstopper" / "critical stability risk" / "serious risk"
+- "will cause outage" / "instability cascades" / "cascades to the entire fabric"
+- "traffic blackholing" / "connectivity loss" / "break your connectivity"
+- "catastrophic" / "severe" / "dangerous"
+- "immediately" (unless there is a verified critical advisory with a CVE)
 - "emergency"
+- Any language that implies a guaranteed outage from a best-practice violation
 
 DO say:
 - "bad practice"
-- "should be resolved"
-- "worth addressing before the next maintenance window"
-- "creates risk"
+- "should be resolved before the next change window"
+- "worth addressing"
+- "creates operational risk"
 - "I have seen this cause problems — worth checking"
 - "priority review recommended"
+- "not ideal" / "not best practice"
+
+SPECIFIC EXAMPLE — border leaf version drift:
+WRONG: "Border Leaf version inconsistency is a critical fabric stability risk. Running mixed versions creates unpredictable behavior and instability cascades to the entire fabric."
+RIGHT: "Your border leafs are on mixed versions — not best practice on external-facing switches. Running 15.2(8e) alongside 16.0(3e) can cause inconsistent behaviour during failover. Worth resolving before the next change window."
 
 ─────────────────────────────────────────────
 FORMAT — PLAIN TEXT ONLY
