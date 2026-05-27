@@ -92,8 +92,16 @@ ACI SPINE-ONLY PLATFORMS (tier 2, role "Spine"):
 - Nexus 9504, 9508, 9516 with -EX or -FX line cards
 
 ACI SPINE-OR-LEAF PLATFORMS (tier 2, role "Spine" unless explicitly leaf):
-- Nexus 9336C-FX2 (used as leaf in most ACI deployments — default to "Leaf" tier 3)
+- Nexus 9336C-FX2 (used as leaf in most ACI deployments — default to "Leaf" tier 3, BUT if hostname contains SP, SPINE, or spine-class hints then assign "Spine" tier 2)
 - Nexus 9316D, 93600CD-GX, 9332D-GX2B
+
+HOSTNAME HINTS (apply in both ACI and standalone fabrics):
+- Hostname contains SP, SPINE → role "Spine", tier 2
+- Hostname contains BL, BORDER → role "Border Leaf", tier 2
+- Hostname contains LEAF, LF → role "Leaf", tier 3
+- Hostname contains APIC, CTRL → role "Controller", tier 1
+- Hostname contains FW, FIRE, ASA → role "Firewall", tier 4
+- Hostname hints override platform defaults when present
 
 ACI LEAF PLATFORMS (tier 3, role "Leaf" or "Border Leaf"):
 - Nexus 93180YC-EX, 93108TC-EX (Gen 2 leaf)
@@ -159,6 +167,7 @@ CRITICAL RULES:
 - Apply standalone NX-OS rules when no APIC is present — do not use ACI role logic
 - In standalone fabrics: 9336C-FX2 = Spine, 9332C = Border Leaf, 93180YC-EX = Leaf
 - In ACI fabrics: 9332C = Spine, 9336C-FX2 = Leaf (usually), 93180YC-EX = Leaf
+- HOSTNAME HINTS ALWAYS OVERRIDE PLATFORM DEFAULTS: SP/SPINE in hostname = Spine, BL/BORDER = Border Leaf, LEAF/LF = Leaf
 - Return ONLY a JSON array, no markdown, no explanation
 
 Return format:
