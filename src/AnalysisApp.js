@@ -1,5 +1,5 @@
 // AnalysisApp.js
-// v2.7 — review screen filtering for large fabrics
+// v2.8 — fix ACI NX-OS version mapping for mixed fabric inventories
 
 import { useState, useRef } from "react";
 import { useAuth } from './Auth';
@@ -59,7 +59,15 @@ function isAciFabric(devList) {
 function isAciManagedSwitch(device, aciFabric) {
   if (!aciFabric) return false;
   const upper = (device.name || "").toUpperCase();
-  return upper.includes("NEXUS")||upper.includes("N9K")||upper.includes("N7K")||upper.includes("N5K")||upper.includes("N3K")||upper.includes("MDS");
+  const isNexus = upper.includes("NEXUS")||upper.includes("N9K")||upper.includes("N7K")||upper.includes("N5K")||upper.includes("N3K")||upper.includes("MDS");
+  if (!isNexus) return false;
+  // Only flag as ACI-managed if version looks like ACI NX-OS (major >= 11)
+  // Standalone NX-OS uses 7.x, 8.x, 9.x, 10.x — ACI NX-OS starts at 11.x (APIC 1.x)
+  const ver = device.ver || "";
+  const majorMatch = ver.match(/^(\d+)[\.(]/);
+  if (!majorMatch) return true; // no version — assume ACI if APIC present
+  const major = parseInt(majorMatch[1], 10);
+  return major >= 11;
 }
 
 function getCount() { try { return parseInt(localStorage.getItem("nw_count")||"0",10); } catch { return 0; } }
