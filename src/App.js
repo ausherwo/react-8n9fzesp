@@ -1,5 +1,5 @@
 // App.js
-// App v3.8 — dedicated mobile layout, desktop unchanged
+// App v3.9 — mobile roadmap stack fix, CSS-only no inline override
 
 import { useState, useEffect, useRef } from "react";
 import AnalysisApp from "./AnalysisApp";
@@ -63,7 +63,7 @@ function HomeNav({ authed }) {
 
 function Home({ authed }) {
   return (
-    <div style={{background:C.bg,color:C.text,fontFamily:sans}}>
+    <div style={{background:C.bg,color:C.text,fontFamily:sans,overflowX:'hidden'}}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&display=swap');
         *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
@@ -81,24 +81,26 @@ function Home({ authed }) {
         .hero-btns button{flex-shrink:0;}
         .roadmap-section{border-top:1px solid ${C.border};padding-top:28px;}
         .roadmap-label{font-family:${mono};font-size:10px;color:${C.muted};letter-spacing:0.12em;text-transform:uppercase;margin-bottom:16px;}
-        .roadmap-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:${C.border};border-radius:8px;overflow:hidden;box-shadow:0 1px 6px ${C.shadow};}
+        .roadmap-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;}
+        .roadmap-cell{background:#FFFFFF;padding:16px 18px;}
         .roadmap-cell{background:${C.surface};padding:16px 18px;}
         .footer-inner{max-width:960px;margin:0 auto;display:flex;justify-content:space-between;align-items:center;}
         .footer-tagline{font-family:${mono};font-size:11px;color:${C.muted};}
 
         /* ── MOBILE */
         @media(max-width:680px){
-          .nav-inner{padding:0 20px;}
-          .hero{padding:40px 20px 36px;}
-          .hero-h1{font-size:26px;line-height:1.2;margin-bottom:16px;}
-          .hero-p{font-size:16px;line-height:1.75;margin-bottom:28px;}
-          .hero-btns{flex-direction:column;gap:10px;margin-bottom:32px;}
-          .hero-btns button{width:100%;font-size:15px;padding:14px 20px;}
-          .roadmap-grid{grid-template-columns:1fr;}
-          .roadmap-cell{padding:14px 16px;border-bottom:1px solid ${C.border};}
-          .roadmap-cell:last-child{border-bottom:none;}
-          .footer-inner{flex-direction:column;gap:14px;text-align:center;}
-          .footer-tagline{display:none;}
+          .nav-inner{padding:0 20px!important;}
+          .hero{padding:40px 20px 36px!important;}
+          .hero-h1{font-size:26px!important;line-height:1.2!important;margin-bottom:16px!important;}
+          .hero-p{font-size:16px!important;line-height:1.75!important;margin-bottom:28px!important;}
+          .hero-btns{flex-direction:column!important;gap:10px!important;margin-bottom:32px!important;}
+          .hero-btns button{width:100%!important;font-size:15px!important;padding:14px 20px!important;}
+          .roadmap-grid{grid-template-columns:1fr!important;gap:0!important;}
+          .roadmap-cell{padding:14px 16px!important;border-bottom:1px solid ${C.border}!important;}
+          .roadmap-cell:last-child{border-bottom:none!important;}
+          .footer-inner{flex-direction:column!important;gap:14px!important;text-align:center!important;}
+          .footer-tagline{display:none!important;}
+          footer{padding:20px!important;}
         }
       `}</style>
 
@@ -133,7 +135,7 @@ function Home({ authed }) {
         {/* Roadmap */}
         <div className="roadmap-section">
           <div className="roadmap-label">// roadmap</div>
-          <div className="roadmap-grid">
+          <div className="roadmap-grid" style={{background:C.border,borderRadius:8,overflow:"hidden",boxShadow:`0 1px 6px ${C.shadow}`}}>
             {[
               {code:"Cloudbreak",  label:"Live now",    desc:"Analysis & advisory intelligence",  color:C.green,  live:true},
               {code:"Desert Point",label:"Building",    desc:"Continuous monitoring",              color:C.amber,  live:false},
