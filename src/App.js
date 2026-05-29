@@ -1,5 +1,5 @@
 // App.js
-// App v3.9 — mobile roadmap stack fix, CSS-only no inline override
+// App v3.10 — JS-based mobile detection, no CSS specificity issues
 
 import { useState, useEffect, useRef } from "react";
 import AnalysisApp from "./AnalysisApp";
@@ -31,8 +31,14 @@ const mono = "JetBrains Mono, Fira Code, monospace";
 const sans = "'DM Sans', system-ui, sans-serif";
 
 function HomeNav({ authed }) {
+  const [isMobile, setIsMobile] = useState(typeof window !== 'undefined' && window.innerWidth <= 680);
+  useEffect(() => {
+    const handle = () => setIsMobile(window.innerWidth <= 680);
+    window.addEventListener('resize', handle);
+    return () => window.removeEventListener('resize', handle);
+  }, []);
   return (
-    <nav style={{borderBottom:`1px solid ${C.border}`,padding:"0 36px",background:`${C.bg}F0`,backdropFilter:"blur(20px)",position:"sticky",top:0,zIndex:100}}>
+    <nav style={{borderBottom:`1px solid ${C.border}`,padding:isMobile?"0 20px":"0 36px",background:`${C.bg}F0`,backdropFilter:"blur(20px)",position:"sticky",top:0,zIndex:100}}>
       <div className="nav-inner" style={{maxWidth:960,margin:"0 auto",display:"flex",alignItems:"center",justifyContent:"space-between",height:56}}>
         <div style={{display:"flex",alignItems:"center",gap:9,cursor:"pointer"}} onClick={()=>window.location.href="/"}>
           <div style={{width:27,height:27,background:C.amberG,border:`1px solid ${C.amber}44`,borderRadius:6,display:"flex",alignItems:"center",justifyContent:"center"}}>
@@ -62,8 +68,14 @@ function HomeNav({ authed }) {
 }
 
 function Home({ authed }) {
+  const [isMobile, setIsMobile] = useState(typeof window !== 'undefined' && window.innerWidth <= 680);
+  useEffect(() => {
+    const handle = () => setIsMobile(window.innerWidth <= 680);
+    window.addEventListener('resize', handle);
+    return () => window.removeEventListener('resize', handle);
+  }, []);
   return (
-    <div style={{background:C.bg,color:C.text,fontFamily:sans,overflowX:'hidden'}}>
+    <div style={{background:C.bg,color:C.text,fontFamily:sans}}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&display=swap');
         *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
@@ -115,7 +127,7 @@ function Home({ authed }) {
           <span style={{fontFamily:mono,fontSize:11,color:C.amber}}>ghost ships // the destination</span>
         </div>
 
-        <h1 className="hero-h1">
+        <h1 style={{fontSize:isMobile?26:34,fontWeight:300,letterSpacing:"-0.03em",lineHeight:isMobile?1.2:1.25,marginBottom:isMobile?16:24,color:C.text,maxWidth:700}}>
           netwrkr.ai will autonomously monitor, diagnose and operate your data centre fabric.
         </h1>
 
@@ -123,11 +135,11 @@ function Home({ authed }) {
           Data centre networks are complex to operate. They carry bugs, version drift, and accumulated risk that engineers spend their careers managing manually. netwrkr.ai is the AI layer that changes that — giving engineers the intelligence to make better decisions today, and building toward a fabric that monitors, diagnoses, and operates itself.
         </p>
 
-        <div className="hero-btns">
-          <button onClick={()=>window.location.href="/analyse"} style={{background:C.amber,color:"#FFF",border:"none",borderRadius:6,fontFamily:mono,fontWeight:700,fontSize:13,padding:"13px 28px",cursor:"pointer",boxShadow:`0 2px 8px ${C.amber}40`}}>
+        <div style={{display:"flex",flexDirection:isMobile?"column":"row",gap:12,marginBottom:48}}>
+          <button onClick={()=>window.location.href="/analyse"} style={{background:C.amber,color:"#FFF",border:"none",borderRadius:6,fontFamily:mono,fontWeight:700,fontSize:isMobile?15:13,padding:isMobile?"14px":"13px 28px",cursor:"pointer",boxShadow:`0 2px 8px ${C.amber}40`,width:isMobile?"100%":"auto"}}>
             analyse_my_fabric() // free
           </button>
-          <button onClick={()=>window.location.href="/signup"} style={{background:"none",border:`1px solid ${C.border}`,color:C.dim,borderRadius:6,fontFamily:mono,fontSize:13,padding:"13px 22px",cursor:"pointer"}}>
+          <button onClick={()=>window.location.href="/signup"} style={{background:"none",border:`1px solid ${C.border}`,color:C.dim,borderRadius:6,fontFamily:mono,fontSize:isMobile?15:13,padding:isMobile?"14px":"13px 22px",cursor:"pointer",width:isMobile?"100%":"auto"}}>
             get_started →
           </button>
         </div>
@@ -135,14 +147,14 @@ function Home({ authed }) {
         {/* Roadmap */}
         <div className="roadmap-section">
           <div className="roadmap-label">// roadmap</div>
-          <div className="roadmap-grid" style={{background:C.border,borderRadius:8,overflow:"hidden",boxShadow:`0 1px 6px ${C.shadow}`}}>
+          <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"repeat(4,1fr)",gap:1,background:C.border,borderRadius:8,overflow:"hidden",boxShadow:`0 1px 6px ${C.shadow}`}}>
             {[
               {code:"Cloudbreak",  label:"Live now",    desc:"Analysis & advisory intelligence",  color:C.green,  live:true},
               {code:"Desert Point",label:"Building",    desc:"Continuous monitoring",              color:C.amber,  live:false},
               {code:"Jaws",        label:"Next",        desc:"Autonomous remediation",             color:C.orange, live:false},
               {code:"Ghost Ships", label:"Destination", desc:"Fully autonomous operations",        color:C.red,    live:false},
             ].map((p)=>(
-              <div key={p.code} className="roadmap-cell">
+              <div key={p.code} style={{background:C.surface,padding:isMobile?"14px 16px":"16px 18px",borderBottom:isMobile?`1px solid ${C.border}`:"none"}}>
                 <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:8}}>
                   <span style={{fontFamily:mono,fontSize:9,color:p.color,background:p.color+"15",border:`1px solid ${p.color}30`,padding:"2px 7px",letterSpacing:"0.06em"}}>{p.label}</span>
                   {p.live&&<span style={{width:6,height:6,borderRadius:"50%",background:C.green,animation:"pulse 2s infinite"}}/>}
@@ -157,14 +169,14 @@ function Home({ authed }) {
 
       {/* Footer */}
       <footer style={{borderTop:`1px solid ${C.border}`,padding:"22px 36px",background:C.surface}}>
-        <div className="footer-inner">
+        <div style={{maxWidth:960,margin:"0 auto",display:"flex",flexDirection:isMobile?"column":"row",justifyContent:"space-between",alignItems:"center",gap:isMobile?12:0,textAlign:isMobile?"center":"left"}}>
           <span style={{fontFamily:mono,fontSize:13,fontWeight:700,color:C.text}}>netwrkr<span style={{color:C.amber}}>.ai</span></span>
           <div style={{display:"flex",gap:16,flexWrap:"wrap",justifyContent:"center"}}>
             {["privacy","terms","security","contact"].map(l=>(
               <button key={l} onClick={()=>window.location.href=`/${l}`} style={{background:"none",border:"none",color:C.muted,fontFamily:mono,fontSize:11,cursor:"pointer"}}>{l}</button>
             ))}
           </div>
-          <span className="footer-tagline">// cloudbreak → desert point → jaws → ghost ships</span>
+          {!isMobile&&<span style={{fontFamily:mono,fontSize:11,color:C.muted}}>// cloudbreak → desert point → jaws → ghost ships</span>}
         </div>
       </footer>
     </div>
