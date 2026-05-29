@@ -1,5 +1,5 @@
 // AnalysisApp.js
-// v2.6 — editable fields warning on review screen
+// v2.7 — review screen filtering for large fabrics
 
 import { useState, useRef } from "react";
 import { useAuth } from './Auth';
@@ -539,6 +539,7 @@ function Analyse({go}) {
   const [advisoryMap,setAdvisoryMap] = useState({});
   const [showGate,setShowGate]       = useState(false);
   const [showNudge,setShowNudge]     = useState(false);
+  const [reviewFilter,setReviewFilter] = useState("all");
   const ref = useRef();
 
   const authHeaders = () => ({
@@ -612,7 +613,7 @@ function Analyse({go}) {
     }
   };
 
-  const reset = () => { setScreen("paste");setRawInput("");setDevices([]);setCtx("");setResults(null);setStep(0);setShowNudge(false);setAdvisoryMap({}); };
+  const reset = () => { setScreen("paste");setRawInput("");setDevices([]);setCtx("");setResults(null);setStep(0);setShowNudge(false);setAdvisoryMap({});setReviewFilter("all"); };
 
   const inp = {fontFamily:mono,fontSize:13,background:C.hi,border:`1px solid ${C.border}`,color:C.text,borderRadius:8,padding:"11px 13px",width:"100%",outline:"none",lineHeight:1.7};
 
@@ -676,6 +677,38 @@ function Analyse({go}) {
             <h1 style={{fontSize:24,fontWeight:300,letterSpacing:"-0.03em",marginBottom:4,color:C.text}}>Confirm your devices</h1>
             <p style={{fontSize:13,color:C.dim,lineHeight:1.7}}>We found {devices.length} device{devices.length!==1?"s":""}. Check the details are correct — especially software versions — then run the analysis.</p>
           </div>
+
+          {/* Filter controls — only show when fabric is large enough to need it */}
+          {devices.length > 8 && (() => {
+            const mismatchCount = (() => {
+              const byRole = {};
+              devices.forEach(d => { if (!byRole[d.role]) byRole[d.role]=[]; byRole[d.role].push(d.ver); });
+              return devices.filter(d => {
+                const versions = byRole[d.role] || [];
+                const unique = [...new Set(versions.filter(Boolean))];
+                return unique.length > 1;
+              }).length;
+            })();
+            const missingCount = devices.filter(d=>d.verMissing).length;
+            const modifiedCount = devices.filter(d=>d.modified?.ver||d.modified?.role).length;
+            const issueCount = mismatchCount + missingCount;
+            return (
+              <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12,flexWrap:"wrap"}}>
+                <span style={{fontFamily:mono,fontSize:10,color:C.muted,letterSpacing:"0.08em"}}>// show:</span>
+                {[
+                  ["all",`all ${devices.length}`],
+                  ["issues", issueCount > 0 ? `issues (${issueCount})` : "issues"],
+                  ["missing", missingCount > 0 ? `missing version (${missingCount})` : "missing version"],
+                  ["modified", modifiedCount > 0 ? `modified (${modifiedCount})` : "modified"],
+                ].map(([key,label])=>(
+                  <button key={key} onClick={()=>setReviewFilter(key)}
+                    style={{background:reviewFilter===key?C.amber:"none",color:reviewFilter===key?"#FFF":C.muted,border:`1px solid ${reviewFilter===key?C.amber:C.border}`,fontFamily:mono,fontSize:10,padding:"4px 10px",borderRadius:4,cursor:"pointer"}}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+            );
+          })()}
           {isAciFabric(devices)&&(
             <div style={{background:C.amberG,border:`1px solid ${C.amber}44`,borderRadius:8,padding:"12px 16px",marginBottom:16,display:"flex",gap:12,alignItems:"flex-start"}}>
               <span style={{color:C.amber,fontSize:16,flexShrink:0}}>ℹ</span>
@@ -698,8 +731,24 @@ function Analyse({go}) {
             <div style={{display:"grid",gridTemplateColumns:"2fr 1.5fr 1fr 32px",gap:0,background:C.hi,padding:"10px 16px",borderBottom:`1px solid ${C.border}`}}>
               {["PLATFORM","VERSION","ROLE",""].map(h=><div key={h} style={{fontFamily:mono,fontSize:10,color:C.muted,letterSpacing:"0.1em"}}>{h}</div>)}
             </div>
-            {devices.map((d,i)=>(
-              <div key={i} style={{display:"grid",gridTemplateColumns:"2fr 1.5fr 1fr 32px",gap:0,padding:"10px 16px",borderBottom:`1px solid ${C.border}`,alignItems:"center"}}>
+            {(() => {
+              const byRole = {};
+              devices.forEach(d => { if (!byRole[d.role]) byRole[d.role]=[]; byRole[d.role].push(d.ver); });
+              const filteredDevices = devices.filter((d,i) => {
+                if (reviewFilter === "all") return true;
+                const roleVersions = [...new Set((byRole[d.role]||[]).filter(Boolean))];
+                const hasMismatch = roleVersions.length > 1;
+                if (reviewFilter === "issues") return d.verMissing || hasMismatch || d.modified?.ver || d.modified?.role;
+                if (reviewFilter === "missing") return d.verMissing;
+                if (reviewFilter === "modified") return d.modified?.ver || d.modified?.role;
+                return true;
+              });
+              const hidden = devices.length - filteredDevices.length;
+              return (<>
+                {filteredDevices.map((d,i)=>{
+                  const originalIdx = devices.indexOf(d);
+                  return (
+              <div key={originalIdx} style={{display:"grid",gridTemplateColumns:"2fr 1.5fr 1fr 32px",gap:0,padding:"10px 16px",borderBottom:`1px solid ${C.border}`,alignItems:"center"}}>
                 <div style={{fontFamily:mono,fontSize:13,color:C.text,paddingRight:8}}>{d.name}</div>
                 <div style={{paddingRight:8}}>
                   <input value={d.ver} onChange={e=>updateDevice(i,"ver",e.target.value)} placeholder="e.g. 9.3(9)"
@@ -711,9 +760,18 @@ function Analyse({go}) {
                     style={{background:d.modified?.role?"#FFFBF0":"transparent",border:`1px solid ${d.modified?.role?C.amber:C.border}`,color:d.modified?.role?C.amber:C.dim,fontFamily:mono,fontSize:12,padding:"4px 8px",borderRadius:4,outline:"none",width:"100%"}}/>
                   {d.modified?.role&&<div style={{fontFamily:mono,fontSize:9,color:C.amber,marginTop:2,letterSpacing:"0.04em"}}>// modified</div>}
                 </div>
-                <button onClick={()=>removeDevice(i)} style={{background:"none",border:"none",color:C.muted,cursor:"pointer",fontSize:14,padding:"2px"}}>✕</button>
+                <button onClick={()=>removeDevice(originalIdx)} style={{background:"none",border:"none",color:C.muted,cursor:"pointer",fontSize:14,padding:"2px"}}>✕</button>
               </div>
-            ))}
+                  );
+                })}
+                {hidden > 0 && (
+                  <div style={{padding:"10px 16px",fontFamily:mono,fontSize:11,color:C.muted,textAlign:"center",borderBottom:`1px solid ${C.border}`}}>
+                    // {hidden} device{hidden!==1?"s":""} hidden by filter —
+                    <span style={{color:C.amber,cursor:"pointer",marginLeft:4}} onClick={()=>setReviewFilter("all")}>show all</span>
+                  </div>
+                )}
+              </>);
+            })()}
           </div>
           <div style={{display:"flex",gap:10}}>
             <button onClick={()=>setScreen("paste")} style={{background:"none",border:`1px solid ${C.border}`,color:C.dim,fontFamily:mono,fontSize:13,padding:"12px 20px",borderRadius:8,cursor:"pointer"}}>← back()</button>
