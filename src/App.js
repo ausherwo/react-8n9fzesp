@@ -1,5 +1,5 @@
 // App.js
-// App v3.7 — mobile font sizes increased, empty space fixed
+// App v3.8 — dedicated mobile layout, desktop unchanged
 
 import { useState, useEffect, useRef } from "react";
 import AnalysisApp from "./AnalysisApp";
@@ -33,7 +33,7 @@ const sans = "'DM Sans', system-ui, sans-serif";
 function HomeNav({ authed }) {
   return (
     <nav style={{borderBottom:`1px solid ${C.border}`,padding:"0 36px",background:`${C.bg}F0`,backdropFilter:"blur(20px)",position:"sticky",top:0,zIndex:100}}>
-      <div className="home-nav-max" style={{maxWidth:960,margin:"0 auto",display:"flex",alignItems:"center",justifyContent:"space-between",height:56}}>
+      <div className="nav-inner" style={{maxWidth:960,margin:"0 auto",display:"flex",alignItems:"center",justifyContent:"space-between",height:56}}>
         <div style={{display:"flex",alignItems:"center",gap:9,cursor:"pointer"}} onClick={()=>window.location.href="/"}>
           <div style={{width:27,height:27,background:C.amberG,border:`1px solid ${C.amber}44`,borderRadius:6,display:"flex",alignItems:"center",justifyContent:"center"}}>
             <svg width="13" height="13" viewBox="0 0 14 14" fill="none"><polyline points="1,10 4,6 7,8.5 10,3.5 13,5.5" stroke={C.amber} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
@@ -71,42 +71,57 @@ function Home({ authed }) {
         ::-webkit-scrollbar{width:4px;}::-webkit-scrollbar-track{background:${C.bg};}::-webkit-scrollbar-thumb{background:${C.border};border-radius:2px;}
         @keyframes fadeUp{from{opacity:0;transform:translateY(11px);}to{opacity:1;transform:translateY(0);}}
         @keyframes pulse{0%,100%{opacity:1;}50%{opacity:.3;}}
-        .home-hero{padding:60px 24px 48px;}
-        .home-btns{flex-direction:row;flex-wrap:wrap;}
-        .roadmap-grid{display:grid;grid-template-columns:repeat(4,1fr);}
+
+        /* ── DESKTOP (default) */
+        .nav-inner{padding:0 36px;}
+        .hero{max-width:960px;margin:0 auto;padding:80px 36px 64px;}
+        .hero-h1{font-size:34px;font-weight:300;letter-spacing:-0.03em;line-height:1.25;margin-bottom:24px;color:${C.text};max-width:700px;}
+        .hero-p{font-size:16px;color:${C.dim};line-height:1.85;margin-bottom:36px;max-width:620px;}
+        .hero-btns{display:flex;gap:12px;margin-bottom:48px;}
+        .hero-btns button{flex-shrink:0;}
+        .roadmap-section{border-top:1px solid ${C.border};padding-top:28px;}
+        .roadmap-label{font-family:${mono};font-size:10px;color:${C.muted};letter-spacing:0.12em;text-transform:uppercase;margin-bottom:16px;}
+        .roadmap-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:${C.border};border-radius:8px;overflow:hidden;box-shadow:0 1px 6px ${C.shadow};}
+        .roadmap-cell{background:${C.surface};padding:16px 18px;}
+        .footer-inner{max-width:960px;margin:0 auto;display:flex;justify-content:space-between;align-items:center;}
+        .footer-tagline{font-family:${mono};font-size:11px;color:${C.muted};}
+
+        /* ── MOBILE */
         @media(max-width:680px){
-          .home-hero{padding:36px 20px 32px;}
-          .home-btns{flex-direction:column;}
-          .home-btns button{width:100%;font-size:15px!important;padding:14px 20px!important;}
-          .roadmap-grid{grid-template-columns:1fr 1fr!important;}
-          .home-nav-max{padding:0 20px;}
-          .home-max{padding-left:20px;padding-right:20px;}
-          p{font-size:16px!important;line-height:1.85!important;}
-          .roadmap-grid div{padding:14px!important;}
-          .roadmap-grid div div:last-child{font-size:13px!important;}
+          .nav-inner{padding:0 20px;}
+          .hero{padding:40px 20px 36px;}
+          .hero-h1{font-size:26px;line-height:1.2;margin-bottom:16px;}
+          .hero-p{font-size:16px;line-height:1.75;margin-bottom:28px;}
+          .hero-btns{flex-direction:column;gap:10px;margin-bottom:32px;}
+          .hero-btns button{width:100%;font-size:15px;padding:14px 20px;}
+          .roadmap-grid{grid-template-columns:1fr;}
+          .roadmap-cell{padding:14px 16px;border-bottom:1px solid ${C.border};}
+          .roadmap-cell:last-child{border-bottom:none;}
+          .footer-inner{flex-direction:column;gap:14px;text-align:center;}
+          .footer-tagline{display:none;}
         }
       `}</style>
 
       <HomeNav authed={authed}/>
 
       {/* Hero */}
-      <div className="home-max" style={{maxWidth:960,margin:"0 auto",padding:"100px 36px 80px"}}>
-        <div style={{display:"inline-flex",alignItems:"center",gap:8,background:C.surface,border:`1px solid ${C.border}`,borderRadius:4,padding:"5px 13px",marginBottom:28,boxShadow:`0 1px 4px ${C.shadow}`}}>
+      <div className="hero">
+        <div style={{display:"inline-flex",alignItems:"center",gap:8,background:C.surface,border:`1px solid ${C.border}`,borderRadius:4,padding:"5px 13px",marginBottom:24,boxShadow:`0 1px 4px ${C.shadow}`}}>
           <span style={{width:6,height:6,borderRadius:"50%",background:C.green,animation:"pulse 2s infinite"}}/>
           <span style={{fontFamily:mono,fontSize:11,color:C.muted}}>cloudbreak // live now</span>
           <span style={{width:1,height:11,background:C.border}}/>
           <span style={{fontFamily:mono,fontSize:11,color:C.amber}}>ghost ships // the destination</span>
         </div>
 
-        <h1 style={{fontSize:"clamp(22px, 4vw, 34px)",fontWeight:300,letterSpacing:"-0.03em",lineHeight:1.25,marginBottom:24,color:C.text,maxWidth:700}}>
+        <h1 className="hero-h1">
           netwrkr.ai will autonomously monitor, diagnose and operate your data centre fabric.
         </h1>
 
-        <p style={{fontSize:17,color:C.dim,lineHeight:1.85,marginBottom:36,maxWidth:620}}>
+        <p className="hero-p">
           Data centre networks are complex to operate. They carry bugs, version drift, and accumulated risk that engineers spend their careers managing manually. netwrkr.ai is the AI layer that changes that — giving engineers the intelligence to make better decisions today, and building toward a fabric that monitors, diagnoses, and operates itself.
         </p>
 
-        <div className="home-btns" style={{display:"flex",gap:12,marginBottom:48}}>
+        <div className="hero-btns">
           <button onClick={()=>window.location.href="/analyse"} style={{background:C.amber,color:"#FFF",border:"none",borderRadius:6,fontFamily:mono,fontWeight:700,fontSize:13,padding:"13px 28px",cursor:"pointer",boxShadow:`0 2px 8px ${C.amber}40`}}>
             analyse_my_fabric() // free
           </button>
@@ -115,23 +130,23 @@ function Home({ authed }) {
           </button>
         </div>
 
-        {/* Phase strip */}
-        <div style={{borderTop:`1px solid ${C.border}`,paddingTop:28}}>
-          <div style={{fontFamily:mono,fontSize:10,color:C.muted,letterSpacing:"0.12em",textTransform:"uppercase",marginBottom:16}}>// roadmap</div>
-          <div className="roadmap-grid" style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:1,background:C.border,borderRadius:8,overflow:"hidden",boxShadow:`0 1px 6px ${C.shadow}`}}>
+        {/* Roadmap */}
+        <div className="roadmap-section">
+          <div className="roadmap-label">// roadmap</div>
+          <div className="roadmap-grid">
             {[
-              {code:"Cloudbreak", label:"Live now",    desc:"Analysis & advisory intelligence",   color:C.green,  status:"live"},
-              {code:"Desert Point",label:"Building",   desc:"Continuous monitoring",               color:C.amber,  status:"building"},
-              {code:"Jaws",       label:"Next",        desc:"Autonomous remediation",              color:C.orange, status:"planned"},
-              {code:"Ghost Ships",label:"Destination", desc:"Fully autonomous operations",         color:C.red,    status:"vision"},
-            ].map((p,i,arr)=>(
-              <div key={p.code} style={{background:C.surface,padding:"14px 16px"}}>
+              {code:"Cloudbreak",  label:"Live now",    desc:"Analysis & advisory intelligence",  color:C.green,  live:true},
+              {code:"Desert Point",label:"Building",    desc:"Continuous monitoring",              color:C.amber,  live:false},
+              {code:"Jaws",        label:"Next",        desc:"Autonomous remediation",             color:C.orange, live:false},
+              {code:"Ghost Ships", label:"Destination", desc:"Fully autonomous operations",        color:C.red,    live:false},
+            ].map((p)=>(
+              <div key={p.code} className="roadmap-cell">
                 <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:8}}>
                   <span style={{fontFamily:mono,fontSize:9,color:p.color,background:p.color+"15",border:`1px solid ${p.color}30`,padding:"2px 7px",letterSpacing:"0.06em"}}>{p.label}</span>
-                  {p.status==="live"&&<span style={{width:6,height:6,borderRadius:"50%",background:C.green,animation:"pulse 2s infinite"}}/>}
+                  {p.live&&<span style={{width:6,height:6,borderRadius:"50%",background:C.green,animation:"pulse 2s infinite"}}/>}
                 </div>
                 <div style={{fontFamily:mono,fontSize:12,fontWeight:700,color:p.color,marginBottom:4}}>{p.code}</div>
-                <div style={{fontSize:11,color:C.dim,lineHeight:1.5}}>{p.desc}</div>
+                <div style={{fontSize:12,color:C.dim,lineHeight:1.5}}>{p.desc}</div>
               </div>
             ))}
           </div>
@@ -139,15 +154,15 @@ function Home({ authed }) {
       </div>
 
       {/* Footer */}
-      <footer style={{borderTop:`1px solid ${C.border}`,padding:"20px 36px",background:C.surface}}>
-        <div style={{maxWidth:960,margin:"0 auto",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+      <footer style={{borderTop:`1px solid ${C.border}`,padding:"22px 36px",background:C.surface}}>
+        <div className="footer-inner">
           <span style={{fontFamily:mono,fontSize:13,fontWeight:700,color:C.text}}>netwrkr<span style={{color:C.amber}}>.ai</span></span>
-          <div style={{display:"flex",gap:16}}>
+          <div style={{display:"flex",gap:16,flexWrap:"wrap",justifyContent:"center"}}>
             {["privacy","terms","security","contact"].map(l=>(
               <button key={l} onClick={()=>window.location.href=`/${l}`} style={{background:"none",border:"none",color:C.muted,fontFamily:mono,fontSize:11,cursor:"pointer"}}>{l}</button>
             ))}
           </div>
-          <span style={{fontFamily:mono,fontSize:11,color:C.muted}}>// cloudbreak → desert point → jaws → ghost ships</span>
+          <span className="footer-tagline">// cloudbreak → desert point → jaws → ghost ships</span>
         </div>
       </footer>
     </div>
