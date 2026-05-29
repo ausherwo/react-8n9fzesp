@@ -1,5 +1,5 @@
 // AnalysisApp.js
-// v2.5 — deterministic language tier for Kelly briefing
+// v2.6 — editable fields warning on review screen
 
 import { useState, useRef } from "react";
 import { useAuth } from './Auth';
@@ -559,7 +559,7 @@ function Analyse({go}) {
     setParsing(false);
   };
 
-  const updateDevice = (i,field,val) => setDevices(prev=>prev.map((d,idx)=>idx===i?{...d,[field]:val,verMissing:field==="ver"?!val.trim():d.verMissing}:d));
+  const updateDevice = (i,field,val) => setDevices(prev=>prev.map((d,idx)=>idx===i?{...d,[field]:val,verMissing:field==="ver"?!val.trim():d.verMissing,modified:{...d.modified,[field]:true}}:d));
   const removeDevice = (i) => setDevices(prev=>prev.filter((_,idx)=>idx!==i));
   const missingVersions = devices.filter(d=>d.verMissing).length;
   const canAnalyse = devices.length > 0;
@@ -703,11 +703,13 @@ function Analyse({go}) {
                 <div style={{fontFamily:mono,fontSize:13,color:C.text,paddingRight:8}}>{d.name}</div>
                 <div style={{paddingRight:8}}>
                   <input value={d.ver} onChange={e=>updateDevice(i,"ver",e.target.value)} placeholder="e.g. 9.3(9)"
-                    style={{background:d.verMissing?SEV.HIGH.bg:"transparent",border:`1px solid ${d.verMissing?SEV.HIGH.bd:C.border}`,color:d.verMissing?C.orange:C.text,fontFamily:mono,fontSize:12,padding:"4px 8px",borderRadius:4,outline:"none",width:"100%"}}/>
+                    style={{background:d.verMissing?SEV.HIGH.bg:d.modified?.ver?"#FFFBF0":"transparent",border:`1px solid ${d.verMissing?SEV.HIGH.bd:d.modified?.ver?C.amber:C.border}`,color:d.verMissing?C.orange:d.modified?.ver?C.amber:C.text,fontFamily:mono,fontSize:12,padding:"4px 8px",borderRadius:4,outline:"none",width:"100%"}}/>
+                  {d.modified?.ver&&<div style={{fontFamily:mono,fontSize:9,color:C.amber,marginTop:2,letterSpacing:"0.04em"}}>// modified — analysis uses this value</div>}
                 </div>
                 <div style={{paddingRight:8}}>
                   <input value={d.role} onChange={e=>updateDevice(i,"role",e.target.value)} placeholder="e.g. Leaf"
-                    style={{background:"transparent",border:`1px solid ${C.border}`,color:C.dim,fontFamily:mono,fontSize:12,padding:"4px 8px",borderRadius:4,outline:"none",width:"100%"}}/>
+                    style={{background:d.modified?.role?"#FFFBF0":"transparent",border:`1px solid ${d.modified?.role?C.amber:C.border}`,color:d.modified?.role?C.amber:C.dim,fontFamily:mono,fontSize:12,padding:"4px 8px",borderRadius:4,outline:"none",width:"100%"}}/>
+                  {d.modified?.role&&<div style={{fontFamily:mono,fontSize:9,color:C.amber,marginTop:2,letterSpacing:"0.04em"}}>// modified</div>}
                 </div>
                 <button onClick={()=>removeDevice(i)} style={{background:"none",border:"none",color:C.muted,cursor:"pointer",fontSize:14,padding:"2px"}}>✕</button>
               </div>
