@@ -1,5 +1,5 @@
 // App.js
-// App v3.6 — mobile responsive homepage
+// App v3.7 — mobile font sizes increased, empty space fixed
 
 import { useState, useEffect, useRef } from "react";
 import AnalysisApp from "./AnalysisApp";
@@ -63,7 +63,7 @@ function HomeNav({ authed }) {
 
 function Home({ authed }) {
   return (
-    <div style={{background:C.bg,color:C.text,minHeight:"100vh",fontFamily:sans}}>
+    <div style={{background:C.bg,color:C.text,fontFamily:sans}}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&display=swap');
         *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
@@ -77,10 +77,13 @@ function Home({ authed }) {
         @media(max-width:680px){
           .home-hero{padding:36px 20px 32px;}
           .home-btns{flex-direction:column;}
-          .home-btns button{width:100%;}
+          .home-btns button{width:100%;font-size:15px!important;padding:14px 20px!important;}
           .roadmap-grid{grid-template-columns:1fr 1fr!important;}
           .home-nav-max{padding:0 20px;}
           .home-max{padding-left:20px;padding-right:20px;}
+          p{font-size:16px!important;line-height:1.85!important;}
+          .roadmap-grid div{padding:14px!important;}
+          .roadmap-grid div div:last-child{font-size:13px!important;}
         }
       `}</style>
 
@@ -99,7 +102,7 @@ function Home({ authed }) {
           netwrkr.ai will autonomously monitor, diagnose and operate your data centre fabric.
         </h1>
 
-        <p style={{fontSize:16,color:C.dim,lineHeight:1.85,marginBottom:36,maxWidth:620}}>
+        <p style={{fontSize:17,color:C.dim,lineHeight:1.85,marginBottom:36,maxWidth:620}}>
           Data centre networks are complex to operate. They carry bugs, version drift, and accumulated risk that engineers spend their careers managing manually. netwrkr.ai is the AI layer that changes that — giving engineers the intelligence to make better decisions today, and building toward a fabric that monitors, diagnoses, and operates itself.
         </p>
 
