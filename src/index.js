@@ -5,7 +5,7 @@ import { PostHogProvider } from '@posthog/react';
 import App from './App';
 
 const posthogOptions = {
-  api_host: process.env.REACT_APP_POSTHOG_HOST,
+  api_host: 'https://eu.i.posthog.com',
   };
 
   const rootElement = document.getElementById('root');
@@ -14,7 +14,7 @@ const posthogOptions = {
   root.render(
     <StrictMode>
         <PostHogProvider
-              apiKey={process.env.REACT_APP_POSTHOG_KEY}
+              apiKey='phc_vePWJTHvVnUFDy5eVtDqkD42t7xkoXLF5EmFCxg2bWcv'
                     options={posthogOptions}
                         >
                               <App />
