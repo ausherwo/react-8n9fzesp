@@ -1,5 +1,5 @@
 // AnalysisApp.js
-// v3.1 — grouped device review; count badges; editing applies to whole group
+// v3.2 — count badges on results device breakdown
 
 import { useState, useRef } from "react";
 import { useAuth } from './Auth';
@@ -477,13 +477,18 @@ function Results({data, reset, go, showNudge, onDismissNudge}) {
               <div style={{background:C.hi,border:`1px solid ${C.border}`,borderRadius:6,overflow:"hidden"}}>
                 {data.devices.map((d,di)=>{
                   const dotColor=SEV[d.fabricRisk]?.color||C.green;
+                  // Parse count from name if present e.g. "Nexus 93180YC-EX (x20)"
+                  const countMatch = d.name?.match(/\(x(\d+)\)$/);
+                  const count = countMatch ? parseInt(countMatch[1], 10) : (d.count || 1);
+                  const cleanName = countMatch ? d.name.replace(/\s*\(x\d+\)$/, "") : d.name;
                   return (
                     <div key={di} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 12px",borderBottom:di<data.devices.length-1?`1px solid ${C.border}`:"none",fontSize:12}}>
                       <div style={{width:7,height:7,borderRadius:"50%",background:dotColor,flexShrink:0}}/>
                       <div style={{flex:1,display:"flex",alignItems:"center",gap:7,flexWrap:"wrap"}}>
-                        <span style={{fontWeight:500,color:C.text}}>{d.name}</span>
+                        <span style={{fontWeight:500,color:C.text}}>{cleanName}</span>
                         <span style={{fontFamily:mono,fontSize:11,color:C.muted}}>v{d.ver}</span>
                         <span style={{fontFamily:mono,fontSize:9,color:C.muted,background:C.faint,padding:"1px 5px",borderRadius:2}}>{d.role}</span>
+                        {count > 1 && <span style={{fontFamily:mono,fontSize:10,fontWeight:700,color:C.amber,background:C.amberG,border:`1px solid ${C.amber}44`,padding:"1px 7px",borderRadius:3}}>x{count}</span>}
                       </div>
                       <Badge level={d.fabricRisk} sm/>
                     </div>
