@@ -65,7 +65,7 @@ function isAciManagedSwitch(device, aciFabric) {
   const majorMatch = ver.match(/^(\d+)[\.(]/);
   if (!majorMatch) return true;
   const major = parseInt(majorMatch[1], 10);
-  return major >= 11;
+  return major < 11;
 }
 
 function getCount() { try { return parseInt(localStorage.getItem("nw_count")||"0",10); } catch { return 0; } }
