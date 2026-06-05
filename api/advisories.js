@@ -1,6 +1,6 @@
 // api/advisories.js
 // Vercel serverless function — Cisco PSIRT openVuln API + fabric analysis
-// v3.1 — deterministic risk scoring (fabricRisk, intelRisk, fabricAnalysis.risk calculated in code, not by AI)
+// v3.2 — fix ACI version false positive; rule 16 added (fabricRisk, intelRisk, fabricAnalysis.risk calculated in code, not by AI)
 
 const { createClient } = require('@supabase/supabase-js');
 
@@ -297,7 +297,8 @@ ABSOLUTE RULES:
 12. fabricAnalysis findings must never reference advisory counts, CVEs, or bug data — topology facts only.
 13. EoL findings disabled pending enterprise SNTC credentials.
 14. DO NOT set fabricRisk or intelRisk values — these will be calculated and applied by the system after your response. Set all fabricRisk and intelRisk to "LOW" as placeholders only.${aciFabric ? `
-15. This is an ACI fabric (APIC detected). APIC version uses ACI release numbering. Nexus NX-OS major = APIC major + 10.` : ""}
+15. This is an ACI fabric (APIC detected). APIC version uses ACI release numbering. Nexus NX-OS major = APIC major + 10.
+16. In an ACI fabric, APIC controllers and Nexus switches run on DIFFERENT version numbering schemes by design. APIC 6.0(3e) and NX-OS 16.0(3e) are the SAME release — this is NOT a mismatch and must NOT be reported as one. Never flag APIC version vs NX-OS version as a mismatch in an ACI fabric.` : ""}
 
 INFRASTRUCTURE TIER GUIDE:
 - Tier 1: Controllers — APIC, DNAC, NSO

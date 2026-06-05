@@ -1,5 +1,5 @@
 // AnalysisApp.js
-// v3.2 — count badges on results device breakdown
+// v3.3 — no advisories found message; ACI version false positive fix
 
 import { useState, useRef } from "react";
 import { useAuth } from './Auth';
@@ -65,7 +65,7 @@ function isAciManagedSwitch(device, aciFabric) {
   const majorMatch = ver.match(/^(\d+)[\.(]/);
   if (!majorMatch) return true;
   const major = parseInt(majorMatch[1], 10);
-  return major < 11;
+  return major >= 11;
 }
 
 function getCount() { try { return parseInt(localStorage.getItem("nw_count")||"0",10); } catch { return 0; } }
@@ -409,16 +409,23 @@ function Results({data, reset, go, showNudge, onDismissNudge}) {
             <span style={{fontFamily:mono,fontSize:11,fontWeight:700,color:riskColor[fabricRisk]||C.green,background:(riskColor[fabricRisk]||C.green)+"18",border:`1px solid ${(riskColor[fabricRisk]||C.green)}40`,padding:"2px 10px",borderRadius:3}}>{fabricRisk} RISK</span>
           </div>
 
-          {verifiedItems.length>0&&(
-            <div>
-              <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10,paddingBottom:8,borderBottom:`1px solid ${C.blueBd}44`}}>
-                <div style={{width:8,height:8,borderRadius:"50%",background:C.blue}}/>
-                <span style={{fontFamily:mono,fontSize:11,fontWeight:600,color:C.blue,letterSpacing:"0.1em",textTransform:"uppercase"}}>cisco verified advisories</span>
-                <span style={{marginLeft:"auto",fontFamily:mono,fontSize:10,color:C.blue,background:C.blueG,border:`1px solid ${C.blueBd}`,padding:"1px 8px",borderRadius:3}}>live PSIRT</span>
-              </div>
-              {verifiedItems.map((item,i)=><VerifiedAdvisoryCard key={i} item={item}/>)}
+          <div>
+            <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10,paddingBottom:8,borderBottom:`1px solid ${C.blueBd}44`}}>
+              <div style={{width:8,height:8,borderRadius:"50%",background:C.blue}}/>
+              <span style={{fontFamily:mono,fontSize:11,fontWeight:600,color:C.blue,letterSpacing:"0.1em",textTransform:"uppercase"}}>cisco verified advisories</span>
+              <span style={{marginLeft:"auto",fontFamily:mono,fontSize:10,color:C.blue,background:C.blueG,border:`1px solid ${C.blueBd}`,padding:"1px 8px",borderRadius:3}}>live PSIRT</span>
             </div>
-          )}
+            {verifiedItems.length>0
+              ? verifiedItems.map((item,i)=><VerifiedAdvisoryCard key={i} item={item}/>)
+              : <div style={{background:C.greenG,border:`1px solid ${C.green}30`,borderRadius:6,padding:"10px 13px",display:"flex",alignItems:"center",gap:8}}>
+                  <span style={{color:C.green,fontSize:14,flexShrink:0}}>✓</span>
+                  <div>
+                    <div style={{fontFamily:mono,fontSize:12,color:C.green,marginBottom:2}}>No advisories found</div>
+                    <div style={{fontSize:12,color:C.dim}}>Cisco PSIRT returned no known advisories for the versions in this fabric.</div>
+                  </div>
+                </div>
+            }
+          </div>
 
           {data.priorityAssessment?.items&&(
             <div>
