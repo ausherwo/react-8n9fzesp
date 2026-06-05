@@ -1,5 +1,5 @@
 // AnalysisApp.js
-// v2.9 — fix attemptAnalysis stray brace; syntax error resolved
+// v3.0 — deduplicate advisory prefetch and analysis payload for large inventories
 
 import { useState, useRef } from "react";
 import { useAuth } from './Auth';
@@ -560,10 +560,18 @@ function Analyse({go}) {
   const fetchAdvisoriesForDevices = async (devList) => {
     const aciFabric = isAciFabric(devList);
     const resultMap = {};
-    await Promise.all(devList.map(async (d) => {
-      if (!d.ver||d.ver==="not provided") return;
+    // Deduplicate — only fetch once per unique platform+version
+    const seen = new Set();
+    const uniqueDevices = devList.filter(d => {
+      if (!d.ver || d.ver === "not provided") return false;
+      const key = `${d.name}__${d.ver}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+    await Promise.all(uniqueDevices.map(async (d) => {
       try {
-        const aciSwitch = isAciManagedSwitch(d,aciFabric);
+        const aciSwitch = isAciManagedSwitch(d, aciFabric);
         const res = await fetch("/api/advisories", { method:"POST", headers:authHeaders(), body:JSON.stringify({platform:d.name,version:d.ver,isAciSwitch:aciSwitch}) });
         const data = await res.json();
         resultMap[`${d.name}__${d.ver}`] = data;
@@ -593,7 +601,21 @@ function Analyse({go}) {
     const advMap = await fetchAdvisoriesForDevices(devices);
     setAdvisoryMap(advMap);
     try {
-      const res = await fetch("/api/advisories", { method:"POST", headers:authHeaders(), body:JSON.stringify({runAnalysis:true,devices,ctx,advisoryMap:advMap}) });
+      // Deduplicate devices for analysis — send one representative per unique platform+version+role
+      // Full device list is preserved in UI; AI only needs unique combinations with counts
+      const seen = new Map();
+      devices.forEach(d => {
+        const key = `${d.name}__${d.ver}__${d.role}`;
+        if (!seen.has(key)) {
+          seen.set(key, { ...d, count: 1 });
+        } else {
+          seen.get(key).count += 1;
+        }
+      });
+      const dedupedDevices = Array.from(seen.values()).map(d =>
+        d.count > 1 ? { ...d, name: `${d.name} (x${d.count})` } : d
+      );
+      const res = await fetch("/api/advisories", { method:"POST", headers:authHeaders(), body:JSON.stringify({runAnalysis:true,devices:dedupedDevices,ctx,advisoryMap:advMap}) });
       const parsed = await res.json();
       if (parsed.error) throw new Error(parsed.message||parsed.error);
       incCount();
