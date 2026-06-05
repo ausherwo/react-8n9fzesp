@@ -9,6 +9,11 @@ import { ForgotPasswordPage, SetNewPasswordPage } from './PasswordReset';
 import { SettingsPage } from './SettingsPage';
 import { StrategyPage } from './StrategyPage';
 import { ModelPage } from './ModelPage';
+import posthog from 'posthog-js';
+posthog.init('phc_YOUR_KEY_HERE', {
+  api_host: 'https://eu.i.posthog.com',
+    person_profiles: 'identified_only'
+    });
 
 const C = {
   bg:      "#F7F5F0",
@@ -207,6 +212,16 @@ function RootPage() {
 }
 
 function Router() {
+    const { member, org } = useAuth();
+      useEffect(() => {
+          if (member) {
+                posthog.identify(member.id, {
+                        org_id: org.id,
+                                org_slug: org.slug,
+                                        role: member.role
+                                              });
+                                                  }
+                                                    }, [member]);
   const path = window.location.pathname;
   if (path === '/login')                  return <LoginPage />;
   if (path === '/signup')                 return <SignupPage />;

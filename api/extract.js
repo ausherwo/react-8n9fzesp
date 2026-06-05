@@ -1,6 +1,6 @@
 // api/extract.js
 // Vercel serverless function — device extraction from raw inventory text
-// v1.3 — standalone NX-OS role inference improved; context-aware ACI vs NX-OS detection
+// v1.4 — extended timeout for large inventories; max_tokens increased
 
 module.exports = async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -30,7 +30,7 @@ module.exports = async function handler(req, res) {
       },
       body: JSON.stringify({
         model: "claude-sonnet-4-20250514",
-        max_tokens: 2000,
+        max_tokens: 8000,
         system: `You are a data extraction engine for a Cisco network analysis tool.
 Your only job is to extract network devices from text and return structured JSON.
 You never guess or infer software versions — only extract what is explicitly written.
@@ -174,7 +174,7 @@ Return format:
 [{"name":"...","ver":"...","role":"...","tier":3,"isAciSwitch":false,"hwGen":""}]
 
 Text to parse:
-${text.slice(0, 12000)}`,
+${text.slice(0, 20000)}`,
         }],
       }),
     });
@@ -202,4 +202,9 @@ ${text.slice(0, 12000)}`,
     console.error("extract.js error:", err.message);
     return res.status(502).json({ error: "upstream_error", message: err.message });
   }
+};
+
+// Vercel function config — extended timeout for large inventories
+module.exports.config = {
+  maxDuration: 60,
 };

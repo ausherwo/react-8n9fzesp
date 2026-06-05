@@ -1,8 +1,9 @@
 // AnalysisApp.js
-// v2.8 — fix ACI NX-OS version mapping for mixed fabric inventories
+// v2.9 — fix attemptAnalysis stray brace; syntax error resolved
 
 import { useState, useRef } from "react";
 import { useAuth } from './Auth';
+import posthog from 'posthog-js';
 
 const C = {
   bg:      "#F7F5F0",
@@ -23,7 +24,6 @@ const C = {
   muted:   "#7A7060",
   faint:   "#E8E4DB",
   shadow:  "rgba(0,0,0,0.06)",
-  // verified blue — keep distinct on light bg
   blue:    "#1A5C9C",
   blueG:   "#1A5C9C12",
   blueBd:  "#2A6CAC",
@@ -61,11 +61,9 @@ function isAciManagedSwitch(device, aciFabric) {
   const upper = (device.name || "").toUpperCase();
   const isNexus = upper.includes("NEXUS")||upper.includes("N9K")||upper.includes("N7K")||upper.includes("N5K")||upper.includes("N3K")||upper.includes("MDS");
   if (!isNexus) return false;
-  // Only flag as ACI-managed if version looks like ACI NX-OS (major >= 11)
-  // Standalone NX-OS uses 7.x, 8.x, 9.x, 10.x — ACI NX-OS starts at 11.x (APIC 1.x)
   const ver = device.ver || "";
   const majorMatch = ver.match(/^(\d+)[\.(]/);
-  if (!majorMatch) return true; // no version — assume ACI if APIC present
+  if (!majorMatch) return true;
   const major = parseInt(majorMatch[1], 10);
   return major >= 11;
 }
@@ -144,7 +142,6 @@ function Nav({go, authed}) {
   );
 }
 
-// ── Inline markdown renderer
 function renderMarkdown(text) {
   if (!text) return null;
   return text.split('\n').map((line, i) => {
@@ -191,16 +188,11 @@ function KellyPanel({data, go}) {
       try {
         const cscIds = verifiedItems.map(i=>i.id).filter(Boolean).join(", ");
         const summary = `${verifiedCount > 0 ? verifiedCount + " verified advisories: " + cscIds + "." : "No verified advisories."} Priority: ${p1?.title || "no critical issues"}. Fabric risk: ${fabricRisk}. ${mismatch ? "Mismatch: " + mismatch : "No version mismatches."}`;
-        // Determine language tier from risk source — not from AI judgment
-        // Tier 1 (strong): verified HIGH advisory present
-        // Tier 2 (measured): version drift only, no verified HIGH advisory
         const hasVerifiedHigh = verifiedItems.some(i => i.sev === "HIGH" || i.sev === "CRITICAL");
         const languageTier = hasVerifiedHigh ? 1 : 2;
-
         const languageInstruction = languageTier === 1
           ? `A verified HIGH severity Cisco advisory is present. You may use strong, direct language about the risk.`
           : `The risk here is version drift — a best-practice violation, not a verified outage cause. Use measured language only. Say "bad practice", "should be resolved before the next change window", "creates operational risk". Do NOT say: critical, severe, split-brain, blackholing, cascades, showstopper, or any synonym. Do not use the word "immediately" unless a verified CVE requires it.`;
-
         const res = await fetch("/api/chat", {
           method: "POST",
           headers: {"Content-Type":"application/json"},
@@ -260,7 +252,6 @@ function KellyPanel({data, go}) {
 
   return (
     <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:10,padding:"18px 20px",display:"flex",flexDirection:"column",gap:14,boxShadow:`0 2px 12px ${C.shadow}`}}>
-      {/* Header */}
       <div style={{display:"flex",alignItems:"center",gap:9,paddingBottom:12,borderBottom:`1px solid ${C.border}`}}>
         <div style={{width:28,height:28,background:C.amberG,border:`1px solid ${C.amber}44`,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:mono,fontSize:11,fontWeight:700,color:C.amber,flexShrink:0}}>K</div>
         <div>
@@ -270,7 +261,6 @@ function KellyPanel({data, go}) {
         <span style={{marginLeft:"auto",fontFamily:mono,fontSize:10,color:C.green,background:C.greenG,border:`1px solid ${C.green}33`,padding:"2px 8px",borderRadius:3}}>● online</span>
       </div>
 
-      {/* Briefing */}
       <div>
         <div style={{fontFamily:mono,fontSize:10,color:C.amber,letterSpacing:"0.12em",textTransform:"uppercase",marginBottom:8}}>// briefing</div>
         <div style={{display:"flex",gap:8,alignItems:"flex-start"}}>
@@ -284,7 +274,6 @@ function KellyPanel({data, go}) {
         </div>
       </div>
 
-      {/* Suggestions */}
       {messages.length === 0 && (
         <div>
           <div style={{fontFamily:mono,fontSize:10,color:C.muted,letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:8}}>// ask kelly</div>
@@ -298,7 +287,6 @@ function KellyPanel({data, go}) {
         </div>
       )}
 
-      {/* Chat thread */}
       {messages.length > 0 && (
         <div ref={el=>{if(el)el.scrollTop=el.scrollHeight;}} style={{display:"flex",flexDirection:"column",gap:10}}>
           {messages.map((m,i)=>(
@@ -324,7 +312,6 @@ function KellyPanel({data, go}) {
         </div>
       )}
 
-      {/* Input */}
       <div style={{borderTop:`1px solid ${C.border}`,paddingTop:12}}>
         <div style={{display:"flex",gap:8,alignItems:"center"}}>
           <input value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&sendMessage(input)}
@@ -369,7 +356,7 @@ function VerifiedAdvisoryCard({item}) {
             </div>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",paddingTop:10,borderTop:`1px solid ${C.border}`}}>
               <span style={{fontFamily:mono,fontSize:10,color:C.green}}>✓ verified — Cisco PSIRT API</span>
-              {item.id&&<a href={`https://tools.cisco.com/security/center/content/CiscoSecurityAdvisory/${item.id}`} target="_blank" rel="noreferrer" style={{fontFamily:mono,fontSize:11,color:C.blue,textDecoration:"none"}}>view on cisco.com →</a>}
+              {item.id&&<a onClick={()=>posthog.capture('intel_card_verify_clicked')} href={`https://tools.cisco.com/security/center/content/CiscoSecurityAdvisory/${item.id}`} target="_blank" rel="noreferrer" style={{fontFamily:mono,fontSize:11,color:C.blue,textDecoration:"none"}}>view on cisco.com →</a>}
             </div>
           </div>
           <div style={{fontSize:13,color:C.dim,lineHeight:1.6}}>{item.detail}</div>
@@ -402,7 +389,6 @@ function Results({data, reset, go, showNudge, onDismissNudge}) {
         </div>
       )}
 
-      {/* Top bar */}
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14}}>
         <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
           <span style={{fontFamily:mono,fontSize:11,color:C.amber,letterSpacing:"0.1em",textTransform:"uppercase"}}>// analysis complete</span>
@@ -412,13 +398,11 @@ function Results({data, reset, go, showNudge, onDismissNudge}) {
         </div>
         <div style={{display:"flex",gap:8}}>
           <button onClick={reset} style={{background:"none",border:`1px solid ${C.border}`,color:C.dim,fontFamily:mono,fontSize:12,padding:"7px 13px",borderRadius:6,cursor:"pointer"}}>← new_analysis()</button>
-          <button style={{background:C.amber,border:"none",color:"#FFF",fontFamily:mono,fontSize:12,fontWeight:700,padding:"7px 13px",borderRadius:6,cursor:"pointer"}}>export_report()</button>
+          <button style={{background:C.amber,border:"none",color:"#FFF",fontFamily:mono,fontSize:12,fontWeight:700,padding:"7px 13px",borderRadius:6,cursor:"pointer"}} onClick={()=>posthog.capture('export_clicked')}>export_report()</button>
         </div>
       </div>
 
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,alignItems:"start"}}>
-
-        {/* Fabric analysis tile */}
         <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:10,padding:"18px 20px",display:"flex",flexDirection:"column",gap:16,boxShadow:`0 2px 12px ${C.shadow}`}}>
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",paddingBottom:12,borderBottom:`1px solid ${C.border}`}}>
             <span style={{fontFamily:mono,fontSize:12,fontWeight:600,color:C.text}}>Fabric analysis</span>
@@ -510,7 +494,6 @@ function Results({data, reset, go, showNudge, onDismissNudge}) {
           )}
         </div>
 
-        {/* Kelly tile */}
         <div style={{alignSelf:"flex-start"}}>
           <KellyPanel data={data} go={go}/>
         </div>
@@ -525,7 +508,7 @@ function SignupGate({onComplete, onDismiss}) {
       <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:12,padding:"36px 44px",width:420,boxShadow:`0 8px 40px ${C.shadow}`}}>
         <div style={{fontFamily:mono,fontSize:11,color:C.amber,marginBottom:12}}>// free analysis used</div>
         <h2 style={{fontSize:20,fontWeight:300,marginBottom:10,color:C.text}}>Create a free account to continue</h2>
-        <p style={{fontSize:13,color:C.dim,marginBottom:20}}>Get 10 analyses/month free. No credit card required.</p>
+        <p style={{fontSize:13,color:C.dim,marginBottom:20}}>Get 5 analyses/month free. No credit card required.</p>
         <div style={{display:"flex",gap:10}}>
           <button onClick={onDismiss} style={{flex:1,background:"none",border:`1px solid ${C.border}`,color:C.dim,fontFamily:mono,fontSize:12,padding:"10px",borderRadius:6,cursor:"pointer"}}>skip for now</button>
           <button onClick={onComplete} style={{flex:1,background:C.amber,border:"none",color:"#FFF",fontFamily:mono,fontWeight:700,fontSize:12,padding:"10px",borderRadius:6,cursor:"pointer"}}>create_account()</button>
@@ -563,6 +546,7 @@ function Analyse({go}) {
       const data = await res.json();
       if (data.error) throw new Error(data.message||data.error);
       setDevices(data.devices.map(d=>({...d,verMissing:!d.ver?.trim()})));
+      posthog.capture('paste_submitted');
       setScreen("review");
     } catch(e) { console.error("Extract error:",e); }
     setParsing(false);
@@ -590,13 +574,18 @@ function Analyse({go}) {
 
   const attemptAnalysis = () => {
     const count = getCount();
+    posthog.capture('extraction_confirmed', { device_count: devices.length });
     const registered = isRegistered();
-    if (count >= 1 && !registered) { setShowGate(true); return; }
+    if (count >= 3 && !registered) {
+      posthog.capture('quota_gate_hit', { analyses_used: count, analyses_limit: 3 });
+      setShowGate(true); return;
+    }
     runAnalysis();
   };
 
   const runAnalysis = async () => {
     setShowGate(false);
+    posthog.capture('analysis_run', { device_count: devices.length, preflight_status: missingVersions > 0 ? 'has_missing' : 'clean' });
     setScreen("analysing");
     setStep(0);
     let s = 0;
@@ -612,7 +601,7 @@ function Analyse({go}) {
       setStep(STEPS.length);
       setResults(parsed);
       setScreen("results");
-      if (getCount()===1&&!isRegistered()) setShowNudge(true);
+      if (getCount()===3&&!isRegistered()) setShowNudge(true);
     } catch(e) {
       clearInterval(timer);
       setResults(null);
@@ -686,7 +675,6 @@ function Analyse({go}) {
             <p style={{fontSize:13,color:C.dim,lineHeight:1.7}}>We found {devices.length} device{devices.length!==1?"s":""}. Check the details are correct — especially software versions — then run the analysis.</p>
           </div>
 
-          {/* Filter controls — only show when fabric is large enough to need it */}
           {devices.length > 8 && (() => {
             const mismatchCount = (() => {
               const byRole = {};
@@ -717,6 +705,7 @@ function Analyse({go}) {
               </div>
             );
           })()}
+
           {isAciFabric(devices)&&(
             <div style={{background:C.amberG,border:`1px solid ${C.amber}44`,borderRadius:8,padding:"12px 16px",marginBottom:16,display:"flex",gap:12,alignItems:"flex-start"}}>
               <span style={{color:C.amber,fontSize:16,flexShrink:0}}>ℹ</span>
@@ -742,7 +731,7 @@ function Analyse({go}) {
             {(() => {
               const byRole = {};
               devices.forEach(d => { if (!byRole[d.role]) byRole[d.role]=[]; byRole[d.role].push(d.ver); });
-              const filteredDevices = devices.filter((d,i) => {
+              const filteredDevices = devices.filter((d) => {
                 if (reviewFilter === "all") return true;
                 const roleVersions = [...new Set((byRole[d.role]||[]).filter(Boolean))];
                 const hasMismatch = roleVersions.length > 1;
@@ -753,23 +742,23 @@ function Analyse({go}) {
               });
               const hidden = devices.length - filteredDevices.length;
               return (<>
-                {filteredDevices.map((d,i)=>{
+                {filteredDevices.map((d)=>{
                   const originalIdx = devices.indexOf(d);
                   return (
-              <div key={originalIdx} style={{display:"grid",gridTemplateColumns:"2fr 1.5fr 1fr 32px",gap:0,padding:"10px 16px",borderBottom:`1px solid ${C.border}`,alignItems:"center"}}>
-                <div style={{fontFamily:mono,fontSize:13,color:C.text,paddingRight:8}}>{d.name}</div>
-                <div style={{paddingRight:8}}>
-                  <input value={d.ver} onChange={e=>updateDevice(i,"ver",e.target.value)} placeholder="e.g. 9.3(9)"
-                    style={{background:d.verMissing?SEV.HIGH.bg:d.modified?.ver?"#FFFBF0":"transparent",border:`1px solid ${d.verMissing?SEV.HIGH.bd:d.modified?.ver?C.amber:C.border}`,color:d.verMissing?C.orange:d.modified?.ver?C.amber:C.text,fontFamily:mono,fontSize:12,padding:"4px 8px",borderRadius:4,outline:"none",width:"100%"}}/>
-                  {d.modified?.ver&&<div style={{fontFamily:mono,fontSize:9,color:C.amber,marginTop:2,letterSpacing:"0.04em"}}>// modified — analysis uses this value</div>}
-                </div>
-                <div style={{paddingRight:8}}>
-                  <input value={d.role} onChange={e=>updateDevice(i,"role",e.target.value)} placeholder="e.g. Leaf"
-                    style={{background:d.modified?.role?"#FFFBF0":"transparent",border:`1px solid ${d.modified?.role?C.amber:C.border}`,color:d.modified?.role?C.amber:C.dim,fontFamily:mono,fontSize:12,padding:"4px 8px",borderRadius:4,outline:"none",width:"100%"}}/>
-                  {d.modified?.role&&<div style={{fontFamily:mono,fontSize:9,color:C.amber,marginTop:2,letterSpacing:"0.04em"}}>// modified</div>}
-                </div>
-                <button onClick={()=>removeDevice(originalIdx)} style={{background:"none",border:"none",color:C.muted,cursor:"pointer",fontSize:14,padding:"2px"}}>✕</button>
-              </div>
+                    <div key={originalIdx} style={{display:"grid",gridTemplateColumns:"2fr 1.5fr 1fr 32px",gap:0,padding:"10px 16px",borderBottom:`1px solid ${C.border}`,alignItems:"center"}}>
+                      <div style={{fontFamily:mono,fontSize:13,color:C.text,paddingRight:8}}>{d.name}</div>
+                      <div style={{paddingRight:8}}>
+                        <input value={d.ver} onChange={e=>updateDevice(originalIdx,"ver",e.target.value)} placeholder="e.g. 9.3(9)"
+                          style={{background:d.verMissing?SEV.HIGH.bg:d.modified?.ver?"#FFFBF0":"transparent",border:`1px solid ${d.verMissing?SEV.HIGH.bd:d.modified?.ver?C.amber:C.border}`,color:d.verMissing?C.orange:d.modified?.ver?C.amber:C.text,fontFamily:mono,fontSize:12,padding:"4px 8px",borderRadius:4,outline:"none",width:"100%"}}/>
+                        {d.modified?.ver&&<div style={{fontFamily:mono,fontSize:9,color:C.amber,marginTop:2,letterSpacing:"0.04em"}}>// modified — analysis uses this value</div>}
+                      </div>
+                      <div style={{paddingRight:8}}>
+                        <input value={d.role} onChange={e=>updateDevice(originalIdx,"role",e.target.value)} placeholder="e.g. Leaf"
+                          style={{background:d.modified?.role?"#FFFBF0":"transparent",border:`1px solid ${d.modified?.role?C.amber:C.border}`,color:d.modified?.role?C.amber:C.dim,fontFamily:mono,fontSize:12,padding:"4px 8px",borderRadius:4,outline:"none",width:"100%"}}/>
+                        {d.modified?.role&&<div style={{fontFamily:mono,fontSize:9,color:C.amber,marginTop:2,letterSpacing:"0.04em"}}>// modified</div>}
+                      </div>
+                      <button onClick={()=>removeDevice(originalIdx)} style={{background:"none",border:"none",color:C.muted,cursor:"pointer",fontSize:14,padding:"2px"}}>✕</button>
+                    </div>
                   );
                 })}
                 {hidden > 0 && (
