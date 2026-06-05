@@ -9,12 +9,6 @@ import { ForgotPasswordPage, SetNewPasswordPage } from './PasswordReset';
 import { SettingsPage } from './SettingsPage';
 import { StrategyPage } from './StrategyPage';
 import { ModelPage } from './ModelPage';
-import posthog from 'posthog-js';
-posthog.init('phc_vePWJTHvVnUFDy5eVtDqkD42t7xkoXLF5EmFCxg2bWcv', {
-  api_host: 'https://eu.i.posthog.com',
-    person_profiles: 'identified_only'
-    });
-
 const C = {
   bg:      "#F7F5F0",
   surface: "#FFFFFF",
