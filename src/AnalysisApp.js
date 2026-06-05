@@ -1,5 +1,5 @@
 // AnalysisApp.js
-// v3.0 — deduplicate advisory prefetch and analysis payload for large inventories
+// v3.1 — grouped device review; count badges; editing applies to whole group
 
 import { useState, useRef } from "react";
 import { useAuth } from './Auth';
@@ -538,6 +538,25 @@ function Analyse({go}) {
     ...(session?.access_token ? { "Authorization": `Bearer ${session.access_token}` } : {}),
   });
 
+  // Group raw devices into unique platform+version+role combinations with counts
+  const groupDevices = (rawDevices) => {
+    const map = new Map();
+    rawDevices.forEach(d => {
+      const key = `${d.name}__${d.ver || ""}__${d.role || ""}`;
+      if (map.has(key)) {
+        map.get(key).count += 1;
+      } else {
+        map.set(key, { ...d, verMissing: !d.ver?.trim(), count: 1 });
+      }
+    });
+    return Array.from(map.values());
+  };
+
+  // Expand grouped devices back to flat list for analysis
+  const expandGroups = (groupedDevices) => {
+    return groupedDevices.flatMap(d => Array(d.count).fill(null).map(() => ({ ...d })));
+  };
+
   const parseInput = async () => {
     if (!rawInput.trim()) return;
     setParsing(true);
@@ -545,15 +564,20 @@ function Analyse({go}) {
       const res = await fetch("/api/extract", { method:"POST", headers:authHeaders(), body:JSON.stringify({text:rawInput}) });
       const data = await res.json();
       if (data.error) throw new Error(data.message||data.error);
-      setDevices(data.devices.map(d=>({...d,verMissing:!d.ver?.trim()})));
+      setDevices(groupDevices(data.devices));
       posthog.capture('paste_submitted');
       setScreen("review");
     } catch(e) { console.error("Extract error:",e); }
     setParsing(false);
   };
 
-  const updateDevice = (i,field,val) => setDevices(prev=>prev.map((d,idx)=>idx===i?{...d,[field]:val,verMissing:field==="ver"?!val.trim():d.verMissing,modified:{...d.modified,[field]:true}}:d));
-  const removeDevice = (i) => setDevices(prev=>prev.filter((_,idx)=>idx!==i));
+  const updateDevice = (i, field, val) => setDevices(prev => prev.map((d, idx) => {
+    if (idx !== i) return d;
+    const updated = { ...d, [field]: val, verMissing: field === "ver" ? !val.trim() : d.verMissing, modified: { ...d.modified, [field]: true } };
+    return updated;
+  }));
+  const removeDevice = (i) => setDevices(prev => prev.filter((_, idx) => idx !== i));
+  const totalDeviceCount = devices.reduce((sum, d) => sum + (d.count || 1), 0);
   const missingVersions = devices.filter(d=>d.verMissing).length;
   const canAnalyse = devices.length > 0;
 
@@ -598,22 +622,13 @@ function Analyse({go}) {
     setStep(0);
     let s = 0;
     const timer = setInterval(()=>{ if(s<STEPS.length-1){s++;setStep(s);} },900);
+    // devices is already grouped — expand for advisory prefetch keys, send grouped to analysis
     const advMap = await fetchAdvisoriesForDevices(devices);
     setAdvisoryMap(advMap);
     try {
-      // Deduplicate devices for analysis — send one representative per unique platform+version+role
-      // Full device list is preserved in UI; AI only needs unique combinations with counts
-      const seen = new Map();
-      devices.forEach(d => {
-        const key = `${d.name}__${d.ver}__${d.role}`;
-        if (!seen.has(key)) {
-          seen.set(key, { ...d, count: 1 });
-        } else {
-          seen.get(key).count += 1;
-        }
-      });
-      const dedupedDevices = Array.from(seen.values()).map(d =>
-        d.count > 1 ? { ...d, name: `${d.name} (x${d.count})` } : d
+      // Send grouped devices to analysis with (xN) suffix so Claude understands scale
+      const dedupedDevices = devices.map(d =>
+        (d.count || 1) > 1 ? { ...d, name: `${d.name} (x${d.count})` } : d
       );
       const res = await fetch("/api/advisories", { method:"POST", headers:authHeaders(), body:JSON.stringify({runAnalysis:true,devices:dedupedDevices,ctx,advisoryMap:advMap}) });
       const parsed = await res.json();
@@ -694,7 +709,7 @@ function Analyse({go}) {
           <div style={{marginBottom:22}}>
             <div style={{fontFamily:mono,fontSize:11,color:C.amber,letterSpacing:"0.12em",textTransform:"uppercase",marginBottom:5}}>// step 2 of 3</div>
             <h1 style={{fontSize:24,fontWeight:300,letterSpacing:"-0.03em",marginBottom:4,color:C.text}}>Confirm your devices</h1>
-            <p style={{fontSize:13,color:C.dim,lineHeight:1.7}}>We found {devices.length} device{devices.length!==1?"s":""}. Check the details are correct — especially software versions — then run the analysis.</p>
+            <p style={{fontSize:13,color:C.dim,lineHeight:1.7}}>We found {totalDeviceCount} device{totalDeviceCount!==1?"s":""} across {devices.length} unique platform group{devices.length!==1?"s":""}. Check the details are correct — especially software versions — then run the analysis.</p>
           </div>
 
           {devices.length > 8 && (() => {
@@ -747,8 +762,8 @@ function Analyse({go}) {
             </div>
           )}
           <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:10,overflow:"hidden",marginBottom:16,boxShadow:`0 1px 6px ${C.shadow}`}}>
-            <div style={{display:"grid",gridTemplateColumns:"2fr 1.5fr 1fr 32px",gap:0,background:C.hi,padding:"10px 16px",borderBottom:`1px solid ${C.border}`}}>
-              {["PLATFORM","VERSION","ROLE",""].map(h=><div key={h} style={{fontFamily:mono,fontSize:10,color:C.muted,letterSpacing:"0.1em"}}>{h}</div>)}
+            <div style={{display:"grid",gridTemplateColumns:"2fr 1.5fr 1fr 60px 32px",gap:0,background:C.hi,padding:"10px 16px",borderBottom:`1px solid ${C.border}`}}>
+              {["PLATFORM","VERSION","ROLE","COUNT",""].map(h=><div key={h} style={{fontFamily:mono,fontSize:10,color:C.muted,letterSpacing:"0.1em"}}>{h}</div>)}
             </div>
             {(() => {
               const byRole = {};
@@ -766,18 +781,25 @@ function Analyse({go}) {
               return (<>
                 {filteredDevices.map((d)=>{
                   const originalIdx = devices.indexOf(d);
+                  const count = d.count || 1;
                   return (
-                    <div key={originalIdx} style={{display:"grid",gridTemplateColumns:"2fr 1.5fr 1fr 32px",gap:0,padding:"10px 16px",borderBottom:`1px solid ${C.border}`,alignItems:"center"}}>
+                    <div key={originalIdx} style={{display:"grid",gridTemplateColumns:"2fr 1.5fr 1fr 60px 32px",gap:0,padding:"10px 16px",borderBottom:`1px solid ${C.border}`,alignItems:"center"}}>
                       <div style={{fontFamily:mono,fontSize:13,color:C.text,paddingRight:8}}>{d.name}</div>
                       <div style={{paddingRight:8}}>
                         <input value={d.ver} onChange={e=>updateDevice(originalIdx,"ver",e.target.value)} placeholder="e.g. 9.3(9)"
                           style={{background:d.verMissing?SEV.HIGH.bg:d.modified?.ver?"#FFFBF0":"transparent",border:`1px solid ${d.verMissing?SEV.HIGH.bd:d.modified?.ver?C.amber:C.border}`,color:d.verMissing?C.orange:d.modified?.ver?C.amber:C.text,fontFamily:mono,fontSize:12,padding:"4px 8px",borderRadius:4,outline:"none",width:"100%"}}/>
-                        {d.modified?.ver&&<div style={{fontFamily:mono,fontSize:9,color:C.amber,marginTop:2,letterSpacing:"0.04em"}}>// modified — analysis uses this value</div>}
+                        {d.modified?.ver&&<div style={{fontFamily:mono,fontSize:9,color:C.amber,marginTop:2,letterSpacing:"0.04em"}}>// modified — applies to all {count} device{count!==1?"s":""}</div>}
                       </div>
                       <div style={{paddingRight:8}}>
                         <input value={d.role} onChange={e=>updateDevice(originalIdx,"role",e.target.value)} placeholder="e.g. Leaf"
                           style={{background:d.modified?.role?"#FFFBF0":"transparent",border:`1px solid ${d.modified?.role?C.amber:C.border}`,color:d.modified?.role?C.amber:C.dim,fontFamily:mono,fontSize:12,padding:"4px 8px",borderRadius:4,outline:"none",width:"100%"}}/>
                         {d.modified?.role&&<div style={{fontFamily:mono,fontSize:9,color:C.amber,marginTop:2,letterSpacing:"0.04em"}}>// modified</div>}
+                      </div>
+                      <div style={{paddingRight:8}}>
+                        {count > 1
+                          ? <span style={{fontFamily:mono,fontSize:11,fontWeight:700,color:C.amber,background:C.amberG,border:`1px solid ${C.amber}44`,padding:"2px 8px",borderRadius:3}}>x{count}</span>
+                          : <span style={{fontFamily:mono,fontSize:11,color:C.muted}}>x1</span>
+                        }
                       </div>
                       <button onClick={()=>removeDevice(originalIdx)} style={{background:"none",border:"none",color:C.muted,cursor:"pointer",fontSize:14,padding:"2px"}}>✕</button>
                     </div>
@@ -785,7 +807,7 @@ function Analyse({go}) {
                 })}
                 {hidden > 0 && (
                   <div style={{padding:"10px 16px",fontFamily:mono,fontSize:11,color:C.muted,textAlign:"center",borderBottom:`1px solid ${C.border}`}}>
-                    // {hidden} device{hidden!==1?"s":""} hidden by filter —
+                    // {hidden} group{hidden!==1?"s":""} hidden by filter —
                     <span style={{color:C.amber,cursor:"pointer",marginLeft:4}} onClick={()=>setReviewFilter("all")}>show all</span>
                   </div>
                 )}
