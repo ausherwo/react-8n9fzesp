@@ -13,7 +13,7 @@ const C = {
   bg:      "#F7F5F0",
   surface: "#FFFFFF",
   hi:      "#F0EDE6",
-  border:  "#DDD9CF"
+  border:  "#DDD9CF",
   amber:   "#B8860B",
   amberB:  "#D4A000",
   amberG:  "#D4A00012",
@@ -65,15 +65,6 @@ function HomeNav({ authed }) {
     </nav>
   );
 }
-
-// REPLACEMENT: Home function for App.js
-// Replace the entire Home({ authed }) function with this version.
-// Changes:
-//   1. Removed cloudbreak / ghost ships badge
-//   2. Updated h1
-//   3. Replaced body paragraph with new paragraph + bullets
-//   4. Removed roadmap section
-//   5. Cleaned up footer tagline
 
 function Home({ authed }) {
   const [isMobile, setIsMobile] = useState(typeof window !== 'undefined' && window.innerWidth <= 680);
