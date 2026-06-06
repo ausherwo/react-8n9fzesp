@@ -13,7 +13,7 @@ const C = {
   bg:      "#F7F5F0",
   surface: "#FFFFFF",
   hi:      "#F0EDE6",
-  border:  "#DDD9CF",
+  border:  "#DDD9CF"
   amber:   "#B8860B",
   amberB:  "#D4A000",
   amberG:  "#D4A00012",
@@ -66,6 +66,15 @@ function HomeNav({ authed }) {
   );
 }
 
+// REPLACEMENT: Home function for App.js
+// Replace the entire Home({ authed }) function with this version.
+// Changes:
+//   1. Removed cloudbreak / ghost ships badge
+//   2. Updated h1
+//   3. Replaced body paragraph with new paragraph + bullets
+//   4. Removed roadmap section
+//   5. Cleaned up footer tagline
+
 function Home({ authed }) {
   const [isMobile, setIsMobile] = useState(typeof window !== 'undefined' && window.innerWidth <= 680);
   useEffect(() => {
@@ -87,14 +96,11 @@ function Home({ authed }) {
         .nav-inner{padding:0 36px;}
         .hero{max-width:960px;margin:0 auto;padding:80px 36px 64px;}
         .hero-h1{font-size:34px;font-weight:300;letter-spacing:-0.03em;line-height:1.25;margin-bottom:24px;color:${C.text};max-width:700px;}
-        .hero-p{font-size:16px;color:${C.dim};line-height:1.85;margin-bottom:36px;max-width:620px;}
+        .hero-p{font-size:16px;color:${C.dim};line-height:1.85;margin-bottom:16px;max-width:620px;}
+        .hero-ul{font-size:15px;color:${C.dim};line-height:1.85;margin-bottom:36px;max-width:620px;padding-left:20px;}
+        .hero-ul li{margin-bottom:10px;}
         .hero-btns{display:flex;gap:12px;margin-bottom:48px;}
         .hero-btns button{flex-shrink:0;}
-        .roadmap-section{border-top:1px solid ${C.border};padding-top:28px;}
-        .roadmap-label{font-family:${mono};font-size:10px;color:${C.muted};letter-spacing:0.12em;text-transform:uppercase;margin-bottom:16px;}
-        .roadmap-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;}
-        .roadmap-cell{background:#FFFFFF;padding:16px 18px;}
-        .roadmap-cell{background:${C.surface};padding:16px 18px;}
         .footer-inner{max-width:960px;margin:0 auto;display:flex;justify-content:space-between;align-items:center;}
         .footer-tagline{font-family:${mono};font-size:11px;color:${C.muted};}
 
@@ -103,12 +109,10 @@ function Home({ authed }) {
           .nav-inner{padding:0 20px!important;}
           .hero{padding:40px 20px 36px!important;}
           .hero-h1{font-size:26px!important;line-height:1.2!important;margin-bottom:16px!important;}
-          .hero-p{font-size:16px!important;line-height:1.75!important;margin-bottom:28px!important;}
+          .hero-p{font-size:16px!important;line-height:1.75!important;margin-bottom:12px!important;}
+          .hero-ul{font-size:15px!important;line-height:1.75!important;margin-bottom:28px!important;}
           .hero-btns{flex-direction:column!important;gap:10px!important;margin-bottom:32px!important;}
           .hero-btns button{width:100%!important;font-size:15px!important;padding:14px 20px!important;}
-          .roadmap-grid{grid-template-columns:1fr!important;gap:0!important;}
-          .roadmap-cell{padding:14px 16px!important;border-bottom:1px solid ${C.border}!important;}
-          .roadmap-cell:last-child{border-bottom:none!important;}
           .footer-inner{flex-direction:column!important;gap:14px!important;text-align:center!important;}
           .footer-tagline{display:none!important;}
           footer{padding:20px!important;}
@@ -119,20 +123,20 @@ function Home({ authed }) {
 
       {/* Hero */}
       <div className="hero">
-        <div style={{display:"inline-flex",alignItems:"center",gap:8,background:C.surface,border:`1px solid ${C.border}`,borderRadius:4,padding:"5px 13px",marginBottom:24,boxShadow:`0 1px 4px ${C.shadow}`}}>
-          <span style={{width:6,height:6,borderRadius:"50%",background:C.green,animation:"pulse 2s infinite"}}/>
-          <span style={{fontFamily:mono,fontSize:11,color:C.muted}}>cloudbreak // live now</span>
-          <span style={{width:1,height:11,background:C.border}}/>
-          <span style={{fontFamily:mono,fontSize:11,color:C.amber}}>ghost ships // the destination</span>
-        </div>
-
         <h1 style={{fontSize:isMobile?26:34,fontWeight:300,letterSpacing:"-0.03em",lineHeight:isMobile?1.2:1.25,marginBottom:isMobile?16:24,color:C.text,maxWidth:700}}>
-          netwrkr.ai will autonomously monitor, diagnose and operate your data centre fabric.
+          netwrkr.ai analyses your data centre network topology and tells you what security and software risks are present, ranked by priority based on your specific fabric.
         </h1>
 
         <p className="hero-p">
-          Data centre networks are complex to operate. They carry bugs, version drift, and accumulated risk that engineers spend their careers managing manually. netwrkr.ai is the AI layer that changes that — giving engineers the intelligence to make better decisions today, and building toward a fabric that monitors, diagnoses, and operates itself.
+          netwrkr.ai accepts device inventory in any format and extracts a structured device list for your review before any analysis runs.
         </p>
+
+        <ul className="hero-ul">
+          <li>Live Cisco PSIRT API integration — verified advisories matched to your platform versions</li>
+          <li>Risk scoring weighted by infrastructure role — spines, border leafs, and controllers assessed differently</li>
+          <li>Pre-flight check blocks submission if hostnames, serial numbers, or other identifying data are detected</li>
+          <li>Results returned as three prioritised items: act now, schedule, monitor</li>
+        </ul>
 
         <div style={{display:"flex",flexDirection:isMobile?"column":"row",gap:12,marginBottom:48}}>
           <button onClick={()=>window.location.href="/analyse"} style={{background:C.amber,color:"#FFF",border:"none",borderRadius:6,fontFamily:mono,fontWeight:700,fontSize:isMobile?15:13,padding:isMobile?"14px":"13px 28px",cursor:"pointer",boxShadow:`0 2px 8px ${C.amber}40`,width:isMobile?"100%":"auto"}}>
@@ -141,28 +145,6 @@ function Home({ authed }) {
           <button onClick={()=>window.location.href="/signup"} style={{background:"none",border:`1px solid ${C.border}`,color:C.dim,borderRadius:6,fontFamily:mono,fontSize:isMobile?15:13,padding:isMobile?"14px":"13px 22px",cursor:"pointer",width:isMobile?"100%":"auto"}}>
             get_started →
           </button>
-        </div>
-
-        {/* Roadmap */}
-        <div className="roadmap-section">
-          <div className="roadmap-label">// roadmap</div>
-          <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"repeat(4,1fr)",gap:1,background:C.border,borderRadius:8,overflow:"hidden",boxShadow:`0 1px 6px ${C.shadow}`}}>
-            {[
-              {code:"Cloudbreak",  label:"Live now",    desc:"Analysis & advisory intelligence",  color:C.green,  live:true},
-              {code:"Desert Point",label:"Building",    desc:"Continuous monitoring",              color:C.amber,  live:false},
-              {code:"Jaws",        label:"Next",        desc:"Autonomous remediation",             color:C.orange, live:false},
-              {code:"Ghost Ships", label:"Destination", desc:"Fully autonomous operations",        color:C.red,    live:false},
-            ].map((p)=>(
-              <div key={p.code} style={{background:C.surface,padding:isMobile?"14px 16px":"16px 18px",borderBottom:isMobile?`1px solid ${C.border}`:"none"}}>
-                <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:8}}>
-                  <span style={{fontFamily:mono,fontSize:9,color:p.color,background:p.color+"15",border:`1px solid ${p.color}30`,padding:"2px 7px",letterSpacing:"0.06em"}}>{p.label}</span>
-                  {p.live&&<span style={{width:6,height:6,borderRadius:"50%",background:C.green,animation:"pulse 2s infinite"}}/>}
-                </div>
-                <div style={{fontFamily:mono,fontSize:12,fontWeight:700,color:p.color,marginBottom:4}}>{p.code}</div>
-                <div style={{fontSize:12,color:C.dim,lineHeight:1.5}}>{p.desc}</div>
-              </div>
-            ))}
-          </div>
         </div>
       </div>
 
@@ -175,7 +157,7 @@ function Home({ authed }) {
               <button key={l} onClick={()=>window.location.href=`/${l}`} style={{background:"none",border:"none",color:C.muted,fontFamily:mono,fontSize:11,cursor:"pointer"}}>{l}</button>
             ))}
           </div>
-          {!isMobile&&<span style={{fontFamily:mono,fontSize:11,color:C.muted}}>// cloudbreak → desert point → jaws → ghost ships</span>}
+          {!isMobile&&<span style={{fontFamily:mono,fontSize:11,color:C.muted}}>// cloudbreak</span>}
         </div>
       </footer>
     </div>
