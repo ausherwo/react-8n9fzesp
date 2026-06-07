@@ -75,7 +75,12 @@ function isAciManagedSwitch(device, aciFabric) {
 // ─────────────────────────────────────────────
 function buildPsirtContext(advMap, devices) {
   if (!advMap || Object.keys(advMap).length === 0) return null;
-  const lines = ["PSIRT ADVISORY RESULTS (live Cisco PSIRT API):"];
+  const timestamp = new Date().toUTCString();
+  const lines = [
+    `PSIRT check ran: ${timestamp}`,
+    `Devices queried: ${devices.length}`,
+    "PSIRT ADVISORY RESULTS (live Cisco PSIRT API):",
+  ];
   let totalAdvisories = 0;
   for (const device of devices) {
     const key = `${device.name}__${device.ver}`;

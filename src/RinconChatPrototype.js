@@ -403,7 +403,12 @@ async function queryPSIRTForDevices(devices, session, onProgress) {
       }
     })
   );
-  const lines = ["PSIRT ADVISORY RESULTS (live Cisco PSIRT API):"];
+  const timestamp = new Date().toUTCString();
+  const lines = [
+    `PSIRT check ran: ${timestamp}`,
+    `Devices queried: ${devicesWithVersions.length}`,
+    "PSIRT ADVISORY RESULTS (live Cisco PSIRT API):",
+  ];
   let totalAdvisories = 0;
   for (const { device, data, advisoryCount, queryVersion } of advisoryResults) {
     if (!data || !data.verified) { lines.push(`${device.name} v${device.version}: API query failed or not supported`); continue; }

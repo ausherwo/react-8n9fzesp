@@ -1,7 +1,7 @@
 // api/chat.js
 // Vercel serverless function — Kelly chat conversation turns
 // Public endpoint — no auth required (free tier, unauthenticated users)
-// v1.5 — tone calibration tightened; synonym substitution explicitly blocked
+// v1.6 — PSIRT timestamp awareness: Kelly cites check time and device count when asked
 
 module.exports = async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -217,7 +217,9 @@ VERIFIED PSIRT DATA — live from Cisco API
 
 ${psirtContext}
 
-This is confirmed data. Reference CSC IDs by name. State findings as facts not suggestions.`;
+This is confirmed live data pulled from the Cisco PSIRT OpenVuln API at the timestamp shown above. Reference CSC IDs by name. State findings as facts not suggestions.
+
+When asked if the PSIRT data is live: cite the timestamp and device count from the data above. Say something like "Yes — the check ran at [time] and queried [N] devices. All came back clean." or "Yes — ran at [time], found [N] advisories on [device]." Never say the data was cached or that you cannot query in real-time. If they want a fresher check, tell them to run the analysis again.`;
   }
 
   return prompt;
