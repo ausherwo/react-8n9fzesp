@@ -27,8 +27,8 @@ const C = {
   shadow:  "rgba(0,0,0,0.5)",
 };
 
-const mono = "JetBrains Mono, Fira Code, monospace";
-const sans = "'DM Sans', system-ui, sans-serif";
+const mono = "'IBM Plex Mono', monospace";
+const sans = "'IBM Plex Sans', system-ui, sans-serif";
 
 function HomeNav({ authed }) {
   const [isMobile, setIsMobile] = useState(typeof window !== 'undefined' && window.innerWidth <= 680);
@@ -77,7 +77,7 @@ function Home({ authed }) {
   return (
     <div style={{background:C.bg,color:C.text,fontFamily:sans,minHeight:"100vh"}}>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap');
         *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
         ::selection{background:#4ADE8030;color:#4ADE80;}
         ::-webkit-scrollbar{width:4px;}
@@ -90,17 +90,17 @@ function Home({ authed }) {
         /* ── DESKTOP (default) */
         .nav-inner{padding:0 36px;}
         .hero{max-width:960px;margin:0 auto;padding:80px 36px 64px;}
-        .hero-p{font-size:16px;color:${C.dim};line-height:1.85;margin-bottom:16px;max-width:620px;}
-        .hero-ul{font-size:15px;color:${C.dim};line-height:1.85;margin-bottom:36px;max-width:620px;list-style:none;padding-left:0;}
+        .hero-p{font-size:18px;color:${C.dim};line-height:1.8;margin-bottom:16px;max-width:620px;}
+        .hero-ul{font-size:18px;color:${C.dim};line-height:1.8;margin-bottom:36px;max-width:620px;list-style:none;padding-left:0;}
         .hero-ul li{margin-bottom:10px;padding-left:20px;position:relative;}
-        .hero-ul li::before{content:"›";position:absolute;left:0;color:${C.green};font-family:${mono};font-weight:700;}
+        .hero-ul li::before{content:"›";position:absolute;left:0;color:${C.amber};font-family:${mono};font-weight:500;}
 
         /* ── MOBILE */
         @media(max-width:680px){
           .nav-inner{padding:0 20px!important;}
           .hero{padding:40px 20px 36px!important;}
-          .hero-p{font-size:16px!important;line-height:1.75!important;margin-bottom:12px!important;}
-          .hero-ul{font-size:15px!important;line-height:1.75!important;margin-bottom:28px!important;}
+          .hero-p{font-size:18px!important;line-height:1.75!important;margin-bottom:12px!important;}
+          .hero-ul{font-size:17px!important;line-height:1.75!important;margin-bottom:28px!important;}
           footer{padding:20px!important;}
         }
       `}</style>
@@ -109,7 +109,7 @@ function Home({ authed }) {
 
       {/* Hero */}
       <div className="hero">
-        <h1 style={{fontSize:isMobile?26:34,fontWeight:300,letterSpacing:"-0.03em",lineHeight:isMobile?1.2:1.25,marginBottom:isMobile?16:24,color:C.text,maxWidth:700}}>
+        <h1 style={{fontSize:isMobile?26:36,fontFamily:sans,fontWeight:600,letterSpacing:"-0.02em",lineHeight:isMobile?1.2:1.25,marginBottom:isMobile?16:24,color:C.text,maxWidth:700}}>
           netwrkr.ai analyses your data centre network topology and tells you what security and software risks are present, ranked by priority based on your specific fabric.
         </h1>
 
@@ -154,7 +154,7 @@ function HistoryStub() {
   return (
     <div style={{background:C.bg,minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",color:C.text,fontFamily:mono}}>
       <div style={{textAlign:"center"}}>
-        <div style={{fontSize:11,color:C.green,letterSpacing:"0.14em",textTransform:"uppercase",marginBottom:16}}>// coming soon</div>
+        <div style={{fontSize:11,color:C.amber,letterSpacing:"0.14em",textTransform:"uppercase",marginBottom:16}}>// coming soon</div>
         <div style={{fontSize:24,fontWeight:300,marginBottom:12}}>Analysis history</div>
         <div style={{fontSize:13,color:C.dim,marginBottom:24}}>Full history with member attribution — Phase 2.</div>
         <button onClick={()=>window.location.href="/app"} style={{background:C.amber,color:"#000",border:"none",borderRadius:6,fontFamily:mono,fontWeight:700,fontSize:12,padding:"9px 18px",cursor:"pointer"}}>
