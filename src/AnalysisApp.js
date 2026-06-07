@@ -1,5 +1,5 @@
 // AnalysisApp.js
-// v3.3 — no advisories found message; ACI version false positive fix
+// v3.4 — fix: psirtContext threaded to KellyPanel; system prompt overrides removed so buildKellyPrompt runs correctly
 
 import { useState, useRef } from "react";
 import { useAuth } from './Auth';
@@ -66,6 +66,43 @@ function isAciManagedSwitch(device, aciFabric) {
   if (!majorMatch) return true;
   const major = parseInt(majorMatch[1], 10);
   return major >= 11;
+}
+
+// ─────────────────────────────────────────────
+// BUILD PSIRT CONTEXT STRING
+// Converts the advMap (keyed by "name__ver") into the same
+// plain-text format that buildKellyPrompt() in chat.js expects.
+// ─────────────────────────────────────────────
+function buildPsirtContext(advMap, devices) {
+  if (!advMap || Object.keys(advMap).length === 0) return null;
+  const lines = ["PSIRT ADVISORY RESULTS (live Cisco PSIRT API):"];
+  let totalAdvisories = 0;
+  for (const device of devices) {
+    const key = `${device.name}__${device.ver}`;
+    const data = advMap[key];
+    if (!data) continue;
+    if (!data.verified) {
+      lines.push(`${device.name} v${device.ver}: API query failed or not supported`);
+      continue;
+    }
+    const count = data.advisories?.length || 0;
+    totalAdvisories += count;
+    if (count === 0) {
+      lines.push(`${device.name} v${device.ver} [${data.family||""}]: No advisories found — VERIFIED CLEAN`);
+    } else {
+      lines.push(`${device.name} v${device.ver} [${data.family||""}]: ${count} advisories`);
+      const sorted = [...(data.advisories||[])].sort(
+        (a,b)=>({Critical:4,High:3,Medium:2,Low:1}[b.impact]||0)-({Critical:4,High:3,Medium:2,Low:1}[a.impact]||0)
+      );
+      for (const adv of sorted.slice(0,5)) {
+        lines.push(`  - [${adv.impact?.toUpperCase()||"UNKNOWN"}] ${adv.id} — ${adv.title}${adv.firstFixed?` | Fixed: ${adv.firstFixed}`:""}`);
+      }
+      if (count > 5) lines.push(`  - ... and ${count-5} more`);
+    }
+  }
+  const queried = devices.filter(d => advMap[`${d.name}__${d.ver}`]?.verified).length;
+  lines.push(`SUMMARY: ${totalAdvisories} total advisories across ${queried} devices queried`);
+  return lines.join("\n");
 }
 
 function getCount() { try { return parseInt(localStorage.getItem("nw_count")||"0",10); } catch { return 0; } }
@@ -170,7 +207,12 @@ function renderInline(text) {
   });
 }
 
-function KellyPanel({data, go}) {
+// ─────────────────────────────────────────────
+// KELLY PANEL
+// psirtContext prop — the plain-text PSIRT string from buildPsirtContext().
+// Passed to /api/chat so buildKellyPrompt() injects it into the system prompt.
+// ─────────────────────────────────────────────
+function KellyPanel({data, go, psirtContext}) {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -183,26 +225,41 @@ function KellyPanel({data, go}) {
   const verifiedItems = data.netwrkrIntel?.items?.filter(i=>i.verified) || [];
   const verifiedCount = verifiedItems.length;
 
+  // Fabric context string for /api/chat — structured summary of the analysis results
+  const fabricContextStr = JSON.stringify({
+    priorityAssessment: data.priorityAssessment,
+    fabricAnalysis:     data.fabricAnalysis,
+    devices:            data.devices,
+    netwrkrIntel:       data.netwrkrIntel,
+  });
+
   useState(() => {
     const generateBriefing = async () => {
       try {
         const cscIds = verifiedItems.map(i=>i.id).filter(Boolean).join(", ");
         const summary = `${verifiedCount > 0 ? verifiedCount + " verified advisories: " + cscIds + "." : "No verified advisories."} Priority: ${p1?.title || "no critical issues"}. Fabric risk: ${fabricRisk}. ${mismatch ? "Mismatch: " + mismatch : "No version mismatches."}`;
         const hasVerifiedHigh = verifiedItems.some(i => i.sev === "HIGH" || i.sev === "CRITICAL");
-        const languageTier = hasVerifiedHigh ? 1 : 2;
-        const languageInstruction = languageTier === 1
-          ? `A verified HIGH severity Cisco advisory is present. You may use strong, direct language about the risk.`
-          : `The risk here is version drift — a best-practice violation, not a verified outage cause. Use measured language only. Say "bad practice", "should be resolved before the next change window", "creates operational risk". Do NOT say: critical, severe, split-brain, blackholing, cascades, showstopper, or any synonym. Do not use the word "immediately" unless a verified CVE requires it.`;
+        // Language tier instruction moves into the user message so we can drop the system override
+        // and let buildKellyPrompt() in chat.js run with full psirtContext injected.
+        const languageInstruction = hasVerifiedHigh
+          ? `A verified HIGH severity Cisco advisory is present — use strong, direct language about the risk.`
+          : `The risk here is version drift, a best-practice violation not a verified outage cause. Use measured language only: "bad practice", "should be resolved before the next change window". Do not say: critical, severe, split-brain, blackholing, cascades, showstopper, or immediately (unless a verified CVE requires it).`;
+
         const res = await fetch("/api/chat", {
           method: "POST",
           headers: {"Content-Type":"application/json"},
           body: JSON.stringify({
-            system: `You are Kelly — a senior DC network engineer with 20 years of hands-on fabric experience. Short sentences. Direct opinions. No padding. No markdown asterisks. Get straight to the point. End with a single concrete next action on a new line prefixed with →. Max 3 sentences before the action line. ${languageInstruction}`,
-            messages: [{role:"user", content:`Give me a direct engineer's briefing on this fabric: ${summary}. Lead with the most urgent issue.`}]
-          })
+            // No 'system' override — let buildKellyPrompt() run with psirtContext injected
+            fabricContext: fabricContextStr,
+            psirtContext:  psirtContext || null,
+            messages: [{
+              role: "user",
+              content: `Give me a direct engineer's briefing on this fabric: ${summary}. Lead with the most urgent issue. Max 3 sentences, then a single concrete next action on a new line prefixed with →. ${languageInstruction}`,
+            }],
+          }),
         });
         const d = await res.json();
-        setBriefing(d.content || "Analysis complete. Ask me anything about your fabric.");
+        setBriefing(d.text || d.content || "Analysis complete. Ask me anything about your fabric.");
       } catch {
         setBriefing("Analysis complete. Ask me anything about your fabric.");
       } finally {
@@ -220,17 +277,18 @@ function KellyPanel({data, go}) {
     setInput("");
     setLoading(true);
     try {
-      const context = JSON.stringify({ priorityAssessment:data.priorityAssessment, fabricAnalysis:data.fabricAnalysis, devices:data.devices, netwrkrIntel:data.netwrkrIntel });
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: {"Content-Type":"application/json"},
         body: JSON.stringify({
-          system: `You are Kelly, a senior DC network engineer assistant for netwrkr.ai. Fabric analysis: ${context}. Be direct, specific, actionable. 2-4 sentences unless a sequence is needed.`,
-          messages: newMessages
-        })
+          // No 'system' override — buildKellyPrompt() in chat.js injects both contexts correctly
+          fabricContext: fabricContextStr,
+          psirtContext:  psirtContext || null,
+          messages: newMessages,
+        }),
       });
       const d = await res.json();
-      setMessages([...newMessages, {role:"assistant", content: d.content || "I couldn't process that request."}]);
+      setMessages([...newMessages, {role:"assistant", content: d.text || d.content || "I couldn't process that request."}]);
     } catch {
       setMessages([...newMessages, {role:"assistant", content:"Something went wrong. Please try again."}]);
     } finally {
@@ -366,7 +424,7 @@ function VerifiedAdvisoryCard({item}) {
   );
 }
 
-function Results({data, reset, go, showNudge, onDismissNudge}) {
+function Results({data, reset, go, showNudge, onDismissNudge, psirtContext}) {
   const riskColor = {LOW:C.green, MEDIUM:C.yellow, HIGH:C.orange, CRITICAL:C.red};
   const fabricRisk = data.fabricAnalysis?.risk || "LOW";
   const verifiedItems = (data.netwrkrIntel?.items||[]).filter(i=>i.verified);
@@ -484,7 +542,6 @@ function Results({data, reset, go, showNudge, onDismissNudge}) {
               <div style={{background:C.hi,border:`1px solid ${C.border}`,borderRadius:6,overflow:"hidden"}}>
                 {data.devices.map((d,di)=>{
                   const dotColor=SEV[d.fabricRisk]?.color||C.green;
-                  // Parse count from name if present e.g. "Nexus 93180YC-EX (x20)"
                   const countMatch = d.name?.match(/\(x(\d+)\)$/);
                   const count = countMatch ? parseInt(countMatch[1], 10) : (d.count || 1);
                   const cleanName = countMatch ? d.name.replace(/\s*\(x\d+\)$/, "") : d.name;
@@ -507,7 +564,7 @@ function Results({data, reset, go, showNudge, onDismissNudge}) {
         </div>
 
         <div style={{alignSelf:"flex-start"}}>
-          <KellyPanel data={data} go={go}/>
+          <KellyPanel data={data} go={go} psirtContext={psirtContext}/>
         </div>
       </div>
     </div>
@@ -532,16 +589,17 @@ function SignupGate({onComplete, onDismiss}) {
 
 function Analyse({go}) {
   const { session } = useAuth();
-  const [screen,setScreen]           = useState("paste");
-  const [rawInput,setRawInput]       = useState("");
-  const [ctx,setCtx]                 = useState("");
-  const [parsing,setParsing]         = useState(false);
-  const [devices,setDevices]         = useState([]);
-  const [step,setStep]               = useState(0);
-  const [results,setResults]         = useState(null);
-  const [advisoryMap,setAdvisoryMap] = useState({});
-  const [showGate,setShowGate]       = useState(false);
-  const [showNudge,setShowNudge]     = useState(false);
+  const [screen,setScreen]             = useState("paste");
+  const [rawInput,setRawInput]         = useState("");
+  const [ctx,setCtx]                   = useState("");
+  const [parsing,setParsing]           = useState(false);
+  const [devices,setDevices]           = useState([]);
+  const [step,setStep]                 = useState(0);
+  const [results,setResults]           = useState(null);
+  const [advisoryMap,setAdvisoryMap]   = useState({});
+  const [psirtContext,setPsirtContext] = useState(null); // ← threaded to KellyPanel
+  const [showGate,setShowGate]         = useState(false);
+  const [showNudge,setShowNudge]       = useState(false);
   const [reviewFilter,setReviewFilter] = useState("all");
   const ref = useRef();
 
@@ -550,21 +608,16 @@ function Analyse({go}) {
     ...(session?.access_token ? { "Authorization": `Bearer ${session.access_token}` } : {}),
   });
 
-  // Group raw devices into unique platform+version+role combinations with counts
   const groupDevices = (rawDevices) => {
     const map = new Map();
     rawDevices.forEach(d => {
       const key = `${d.name}__${d.ver || ""}__${d.role || ""}`;
-      if (map.has(key)) {
-        map.get(key).count += 1;
-      } else {
-        map.set(key, { ...d, verMissing: !d.ver?.trim(), count: 1 });
-      }
+      if (map.has(key)) { map.get(key).count += 1; }
+      else { map.set(key, { ...d, verMissing: !d.ver?.trim(), count: 1 }); }
     });
     return Array.from(map.values());
   };
 
-  // Expand grouped devices back to flat list for analysis
   const expandGroups = (groupedDevices) => {
     return groupedDevices.flatMap(d => Array(d.count).fill(null).map(() => ({ ...d })));
   };
@@ -585,8 +638,7 @@ function Analyse({go}) {
 
   const updateDevice = (i, field, val) => setDevices(prev => prev.map((d, idx) => {
     if (idx !== i) return d;
-    const updated = { ...d, [field]: val, verMissing: field === "ver" ? !val.trim() : d.verMissing, modified: { ...d.modified, [field]: true } };
-    return updated;
+    return { ...d, [field]: val, verMissing: field === "ver" ? !val.trim() : d.verMissing, modified: { ...d.modified, [field]: true } };
   }));
   const removeDevice = (i) => setDevices(prev => prev.filter((_, idx) => idx !== i));
   const totalDeviceCount = devices.reduce((sum, d) => sum + (d.count || 1), 0);
@@ -596,7 +648,6 @@ function Analyse({go}) {
   const fetchAdvisoriesForDevices = async (devList) => {
     const aciFabric = isAciFabric(devList);
     const resultMap = {};
-    // Deduplicate — only fetch once per unique platform+version
     const seen = new Set();
     const uniqueDevices = devList.filter(d => {
       if (!d.ver || d.ver === "not provided") return false;
@@ -634,11 +685,16 @@ function Analyse({go}) {
     setStep(0);
     let s = 0;
     const timer = setInterval(()=>{ if(s<STEPS.length-1){s++;setStep(s);} },900);
-    // devices is already grouped — expand for advisory prefetch keys, send grouped to analysis
+
     const advMap = await fetchAdvisoriesForDevices(devices);
     setAdvisoryMap(advMap);
+
+    // Build psirtContext string from raw advisory results — threaded to KellyPanel
+    const devicesWithVersions = devices.filter(d => d.ver && d.ver.trim() && d.ver !== "not provided");
+    const builtPsirtContext = buildPsirtContext(advMap, devicesWithVersions);
+    setPsirtContext(builtPsirtContext);
+
     try {
-      // Send grouped devices to analysis with (xN) suffix so Claude understands scale
       const dedupedDevices = devices.map(d =>
         (d.count || 1) > 1 ? { ...d, name: `${d.name} (x${d.count})` } : d
       );
@@ -659,7 +715,11 @@ function Analyse({go}) {
     }
   };
 
-  const reset = () => { setScreen("paste");setRawInput("");setDevices([]);setCtx("");setResults(null);setStep(0);setShowNudge(false);setAdvisoryMap({});setReviewFilter("all"); };
+  const reset = () => {
+    setScreen("paste"); setRawInput(""); setDevices([]); setCtx(""); setResults(null);
+    setStep(0); setShowNudge(false); setAdvisoryMap({}); setReviewFilter("all");
+    setPsirtContext(null);
+  };
 
   const inp = {fontFamily:mono,fontSize:13,background:C.hi,border:`1px solid ${C.border}`,color:C.text,borderRadius:8,padding:"11px 13px",width:"100%",outline:"none",lineHeight:1.7};
 
@@ -840,7 +900,7 @@ function Analyse({go}) {
       )}
 
       {screen==="results"&&results&&(
-        <Results data={results} reset={reset} go={go} showNudge={showNudge} onDismissNudge={()=>setShowNudge(false)}/>
+        <Results data={results} reset={reset} go={go} showNudge={showNudge} onDismissNudge={()=>setShowNudge(false)} psirtContext={psirtContext}/>
       )}
     </div>
   );

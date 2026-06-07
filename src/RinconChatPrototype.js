@@ -1,5 +1,5 @@
-// RinconChatPrototype.js — v4.3
-// v4.3 — markdown rendering for Rincon responses (bold, line breaks)
+// RinconChatPrototype.js — v4.4
+// v4.4 — PSIRT re-run detection: Kelly can trigger a fresh PSIRT query mid-conversation
 
 import { useState, useEffect, useRef } from "react";
 import { useAuth } from './Auth';
@@ -59,6 +59,20 @@ function getJwtClaims() {
 const ACCEPTED_TYPES = ['.txt', '.log', '.csv', '.conf', '.cfg', '.json', '.xlsx', '.xls'];
 const MAX_FILE_SIZE  = 5 * 1024 * 1024;
 
+// ─────────────────────────────────────────────
+// PSIRT RE-RUN DETECTION
+// Matches: "re-run psirt", "check psirt again", "double check the psirt data",
+//          "can you verify the psirt", "run psirt again", etc.
+// ─────────────────────────────────────────────
+function isPsirtRerunRequest(msg) {
+  const lower = msg.toLowerCase();
+  const hasPsirt = /psirt/.test(lower);
+  const hasRerunIntent = /(re.?run|run again|check again|re.?check|double.?check|verify|confirm|refresh|again|repeat)/.test(lower);
+  // Also catch "can you check the psirt data" without explicit re-run words
+  const isDirectPsirtQuery = /\b(check|verify|query|look up|look at|see)\b.{0,20}psirt/.test(lower);
+  return (hasPsirt && hasRerunIntent) || isDirectPsirtQuery;
+}
+
 function preflightCheck(text) {
   const patterns = [
     { re: /\b(?:password|passwd|secret|credential|api.?key)\s*[=:]\s*\S+/gi, label: "credential" },
@@ -75,61 +89,31 @@ function tierColor(tier) { return {1:C.amber,2:C.orange,3:C.green,4:C.dim}[tier]
 
 // ─────────────────────────────────────────────
 // MARKDOWN RENDERER
-// Handles: **bold**, numbered lists (1. ...), bullet lists (- ...), blank lines
 // ─────────────────────────────────────────────
 function renderMarkdown(text) {
   if (!text) return null;
   const lines = text.split('\n');
   const elements = [];
   let i = 0;
-
   while (i < lines.length) {
     const line = lines[i];
-
-    // Blank line → small spacer
-    if (line.trim() === '') {
-      elements.push(<div key={i} style={{ height: '0.5em' }} />);
-      i++;
-      continue;
-    }
-
-    // Numbered list item: "1. ..." or "2. ..."
+    if (line.trim() === '') { elements.push(<div key={i} style={{ height: '0.5em' }} />); i++; continue; }
     const numMatch = line.match(/^(\d+)\.\s+(.+)/);
     if (numMatch) {
-      elements.push(
-        <div key={i} style={{ display: 'flex', gap: 8, marginBottom: 4 }}>
-          <span style={{ fontFamily: mono, fontSize: 12, color: C.amber, flexShrink: 0, minWidth: 18 }}>{numMatch[1]}.</span>
-          <span>{renderInline(numMatch[2])}</span>
-        </div>
-      );
-      i++;
-      continue;
+      elements.push(<div key={i} style={{ display: 'flex', gap: 8, marginBottom: 4 }}><span style={{ fontFamily: mono, fontSize: 12, color: C.amber, flexShrink: 0, minWidth: 18 }}>{numMatch[1]}.</span><span>{renderInline(numMatch[2])}</span></div>);
+      i++; continue;
     }
-
-    // Bullet list item: "- ..." or "* ..."
     const bulletMatch = line.match(/^[-*]\s+(.+)/);
     if (bulletMatch) {
-      elements.push(
-        <div key={i} style={{ display: 'flex', gap: 8, marginBottom: 4 }}>
-          <span style={{ color: C.amber, flexShrink: 0 }}>→</span>
-          <span>{renderInline(bulletMatch[1])}</span>
-        </div>
-      );
-      i++;
-      continue;
+      elements.push(<div key={i} style={{ display: 'flex', gap: 8, marginBottom: 4 }}><span style={{ color: C.amber, flexShrink: 0 }}>→</span><span>{renderInline(bulletMatch[1])}</span></div>);
+      i++; continue;
     }
-
-    // Normal line with possible inline bold
-    elements.push(
-      <div key={i} style={{ marginBottom: 2 }}>{renderInline(line)}</div>
-    );
+    elements.push(<div key={i} style={{ marginBottom: 2 }}>{renderInline(line)}</div>);
     i++;
   }
-
   return elements;
 }
 
-// Renders inline **bold** within a line
 function renderInline(text) {
   const parts = text.split(/(\*\*[^*]+\*\*)/g);
   return parts.map((part, j) => {
@@ -441,15 +425,21 @@ async function queryPSIRTForDevices(devices, session, onProgress) {
 
 // ─────────────────────────────────────────────
 // CHAT GREETING SCREEN
+// Props: onPsirtRerun — async () => string|null
+//        Returns fresh psirtContext, or null on failure.
+//        Called when the user asks to re-check/re-run PSIRT.
 // ─────────────────────────────────────────────
-function ChatGreeting({ member, greetingData, convId, saveMessage, onViewFull }) {
-  const [input, setInput]       = useState('');
-  const [chatMsgs, setChatMsgs] = useState([]);
-  const [loading, setLoading]   = useState(false);
+function ChatGreeting({ member, greetingData, convId, saveMessage, onViewFull, onPsirtRerun }) {
+  const [input, setInput]             = useState('');
+  const [chatMsgs, setChatMsgs]       = useState([]);
+  const [loading, setLoading]         = useState(false);
+  const [localPsirtCtx, setLocalPsirtCtx] = useState(greetingData?.psirtContext || null);
   const bottomRef = useRef(null);
 
   const firstName = member?.name ? member.name.trim().split(' ')[0] : 'there';
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior:'smooth' }); }, [chatMsgs, loading]);
+  // Keep local psirt context in sync if parent updates greetingData
+  useEffect(() => { setLocalPsirtCtx(greetingData?.psirtContext || null); }, [greetingData?.psirtContext]);
 
   const badges = [];
   if (greetingData?.psirtResult?.results) {
@@ -477,25 +467,53 @@ function ChatGreeting({ member, greetingData, convId, saveMessage, onViewFull })
     setInput('');
     setLoading(true);
     if (convId && saveMessage) await saveMessage(convId, 'user', text);
+
+    // ── PSIRT re-run detection ──────────────────────────────────
+    if (isPsirtRerunRequest(text) && onPsirtRerun) {
+      // Add a status message while the query runs
+      setChatMsgs(prev => [...prev, {
+        role: 'assistant',
+        content: `PSIRT check ran at analysis time — ${greetingData?.devices?.filter(d=>d.version)?.length||0} devices queried. Running a fresh check now to confirm.`
+      }]);
+      try {
+        const freshPsirtCtx = await onPsirtRerun();
+        if (freshPsirtCtx) {
+          setLocalPsirtCtx(freshPsirtCtx);
+          // Replace the holding message with a real Claude response using fresh context
+          setChatMsgs(prev => prev.slice(0, -1)); // remove holding message
+          const res = await fetch("/api/chat", {
+            method:"POST",
+            headers:{ "Content-Type":"application/json" },
+            body:JSON.stringify({
+              fabricContext: greetingData?.fabricContext || null,
+              psirtContext:  freshPsirtCtx,
+              messages: [...newMsgs, { role:'user', content: text }].map(m=>({ role:m.role==='assistant'?'assistant':'user', content:m.content })),
+              systemPromptOverride: buildSystemPromptOverride(greetingData, freshPsirtCtx),
+            }),
+          });
+          const data = await res.json();
+          const reply = data.text || 'Unable to retrieve response.';
+          setChatMsgs(prev=>[...prev, { role:'assistant', content:reply }]);
+          if (convId && saveMessage) await saveMessage(convId, 'assistant', reply);
+          setLoading(false);
+          return;
+        }
+      } catch(err) {
+        console.error("PSIRT re-run error in greeting:", err);
+        // Fall through to normal response
+      }
+    }
+    // ── end PSIRT re-run detection ──────────────────────────────
+
     try {
       const res = await fetch("/api/chat", {
         method:"POST",
         headers:{ "Content-Type":"application/json" },
         body:JSON.stringify({
           fabricContext: greetingData?.fabricContext || null,
-          psirtContext:  greetingData?.psirtContext  || null,
+          psirtContext:  localPsirtCtx,
           messages: newMsgs.map(m=>({ role:m.role, content:m.content })),
-          systemPromptOverride: `You are Rincon, an expert Cisco DC network engineer embedded in netwrkr.ai.
-The engineer has just had their fabric analysed. Answer their questions concisely and directly.
-Use cautious language for unverified findings. Never say "upgrade immediately" or "critical patch required".
-Use "priority review recommended" for unverified findings. Cite exact CSC IDs when available from PSIRT data.
-Keep responses to 4-6 sentences. PSIRT-verified findings can use stronger language.
-
-PSIRT DATA:
-${greetingData?.psirtContext||'No PSIRT data available.'}
-
-FABRIC INVENTORY:
-${greetingData?.fabricContext||'No fabric data.'}`,
+          systemPromptOverride: buildSystemPromptOverride(greetingData, localPsirtCtx),
         }),
       });
       const data = await res.json();
@@ -512,8 +530,6 @@ ${greetingData?.fabricContext||'No fabric data.'}`,
     <div style={{ flex:1, display:'flex', flexDirection:'column', overflow:'hidden', background:C.bg }}>
       <div style={{ flex:1, overflowY:'auto', padding:'40px 24px 16px' }}>
         <div style={{ maxWidth:680, margin:'0 auto' }}>
-
-          {/* Greeting */}
           <div style={{ marginBottom:32, animation:'fadeUp 0.3s ease' }}>
             <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:16 }}>
               <div style={{ width:26, height:26, background:C.amber, display:'flex', alignItems:'center', justifyContent:'center' }}>
@@ -529,7 +545,6 @@ ${greetingData?.fabricContext||'No fabric data.'}`,
             </p>
           </div>
 
-          {/* Licence warning */}
           {greetingData?.licenceWarning && (
             <div style={{ background:greetingData.licenceWarning.includes('all')?`${C.red}10`:`${C.amber}10`, border:`1px solid ${greetingData.licenceWarning.includes('all')?C.red:C.amber}40`, borderLeft:`3px solid ${greetingData.licenceWarning.includes('all')?C.red:C.amber}`, padding:'10px 14px', marginBottom:20, animation:'fadeUp 0.3s ease' }}>
               <div style={{ fontFamily:mono, fontSize:10, color:greetingData.licenceWarning.includes('all')?C.red:C.amber, marginBottom:4, letterSpacing:'0.08em' }}>
@@ -542,7 +557,6 @@ ${greetingData?.fabricContext||'No fabric data.'}`,
             </div>
           )}
 
-          {/* Badges */}
           {badges.length > 0 && chatMsgs.length === 0 && (
             <div style={{ display:'flex', gap:10, flexWrap:'wrap', marginBottom:28, animation:'fadeUp 0.4s ease' }}>
               {badges.map((b,i)=>(
@@ -559,7 +573,6 @@ ${greetingData?.fabricContext||'No fabric data.'}`,
             </div>
           )}
 
-          {/* Chat messages */}
           <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
             {chatMsgs.map((msg,i)=>(
               <div key={i} style={{ alignSelf:msg.role==='user'?'flex-end':'flex-start', maxWidth:'85%', background:msg.role==='user'?`${C.amber}12`:C.surface, border:`1px solid ${msg.role==='user'?`${C.amber}25`:C.border}`, borderRadius:msg.role==='user'?'12px 2px 12px 12px':'2px 12px 12px 12px', padding:'12px 16px', fontSize:14, color:C.text, lineHeight:1.75, fontFamily:sans, animation:'fadeUp 0.2s ease' }}>
@@ -578,7 +591,6 @@ ${greetingData?.fabricContext||'No fabric data.'}`,
         </div>
       </div>
 
-      {/* Input row */}
       <div style={{ background:C.hi, borderTop:`1px solid ${C.border}`, padding:'14px 24px', flexShrink:0 }}>
         <div style={{ maxWidth:680, margin:'0 auto' }}>
           <div style={{ background:C.surface, border:`1px solid ${C.border}`, display:'flex', alignItems:'center', gap:8, padding:'10px 14px' }}>
@@ -604,6 +616,27 @@ ${greetingData?.fabricContext||'No fabric data.'}`,
       </div>
     </div>
   );
+}
+
+// ─────────────────────────────────────────────
+// SYSTEM PROMPT BUILDER (shared by greeting + main chat)
+// ─────────────────────────────────────────────
+function buildSystemPromptOverride(greetingData, psirtCtx) {
+  return `You are Rincon, an expert Cisco DC network engineer embedded in netwrkr.ai.
+The engineer has just had their fabric analysed. Answer their questions concisely and directly.
+Use cautious language for unverified findings. Never say "upgrade immediately" or "critical patch required".
+Use "priority review recommended" for unverified findings. Cite exact CSC IDs when available from PSIRT data.
+Keep responses to 4-6 sentences. PSIRT-verified findings can use stronger language.
+
+IMPORTANT: A live Cisco PSIRT API check was already run as part of this analysis. The results are below.
+Never say you cannot access PSIRT data — you have the results. If the user asks to re-check,
+acknowledge the existing result and confirm the re-check ran.
+
+PSIRT DATA:
+${psirtCtx || 'No PSIRT data available for this fabric.'}
+
+FABRIC INVENTORY:
+${greetingData?.fabricContext || 'No fabric data.'}`;
 }
 
 // ─────────────────────────────────────────────
@@ -705,6 +738,52 @@ export default function RinconChatPrototype() {
     if (error) { console.error('Failed to save message:', error); return null; }
     await supabase.rpc('increment_message_count',{ p_conversation_id:convId });
     return data;
+  };
+
+  // ─────────────────────────────────────────────
+  // PSIRT RE-RUN — called by greeting or main chat
+  // Runs a fresh PSIRT query, updates state + DB, returns new context string
+  // ─────────────────────────────────────────────
+  const handlePsirtRerun = async () => {
+    if (!fabricDevices.length || !session) return null;
+    const psirtCardId = `psirt-rerun-${Date.now()}`;
+    setMessages(prev => [...prev, {
+      id: psirtCardId, role: "ai", type: "psirt-progress",
+      created_at: new Date().toISOString()
+    }]);
+    try {
+      const psirtResult = await queryPSIRTForDevices(fabricDevices, session, (progress) => {
+        setPsirtProgress(progress);
+        setMessages(prev => prev.map(m => m.id === psirtCardId ? { ...m, psirtProgress: progress } : m));
+      });
+      const newPsirtContext = psirtResult.psirtContext;
+      setPsirtContext(newPsirtContext);
+      // Update greeting data so ChatGreeting gets fresh context too
+      setGreetingData(prev => prev ? { ...prev, psirtContext: newPsirtContext, psirtResult } : prev);
+      if (activeConvId) {
+        await supabase.from('conversations').update({ fabric_psirt_context: newPsirtContext }).eq('id', activeConvId);
+      }
+      setMessages(prev => prev.map(m => m.id === psirtCardId ? {
+        ...m, type: "psirt-done",
+        psirtSummary: {
+          total: fabricDevices.filter(d => d.version).length,
+          advisories: psirtResult.totalAdvisories
+        },
+        psirtProgress: {
+          total: fabricDevices.filter(d => d.version).length,
+          done:  fabricDevices.filter(d => d.version).length,
+          results: psirtResult.results.map(r => ({
+            name: r.device.name, version: r.device.version,
+            status: r.error ? "error" : "done", count: r.advisoryCount
+          }))
+        },
+      } : m));
+      return newPsirtContext;
+    } catch(err) {
+      console.error("PSIRT re-run failed:", err);
+      setMessages(prev => prev.filter(m => m.id !== psirtCardId));
+      return null;
+    }
   };
 
   // ─────────────────────────────────────────────
@@ -829,20 +908,50 @@ export default function RinconChatPrototype() {
 
   // ─────────────────────────────────────────────
   // SEND MESSAGE
+  // Includes PSIRT re-run detection: if user asks to re-check PSIRT
+  // and fabric devices are loaded, triggers a fresh query first.
   // ─────────────────────────────────────────────
   const send = async (text) => {
     const msg = (text||input).trim();
     if (!msg || aiTyping) return;
     setInput("");
+
     let convId = activeConvId;
     if (!convId) {
       convId = await createConversation(msg,{ hasFabric:!!fabricContext });
       if (!convId) return;
       setActiveConvId(convId);
     }
+
     const userMsg  = await saveMessage(convId,"user",msg);
     const localMsg = userMsg || { id:Date.now().toString(), role:"user", content:msg, created_at:new Date().toISOString() };
     setMessages(prev=>[...prev,localMsg]);
+
+    // ── PSIRT re-run detection ──────────────────────────────────
+    if (isPsirtRerunRequest(msg) && fabricDevices.length > 0) {
+      setAiTyping(true);
+      try {
+        const freshPsirtCtx = await handlePsirtRerun();
+        const history = [...messages, localMsg];
+        const aiResponse = await callClaude(history, undefined, freshPsirtCtx || psirtContext);
+        const savedAiMsg = await saveMessage(convId, "assistant", aiResponse);
+        setAiTyping(false);
+        setMessages(prev=>[...prev,{
+          ...(savedAiMsg||{}),
+          id: savedAiMsg?.id||Date.now().toString(),
+          role:"ai", content:aiResponse,
+          created_at: savedAiMsg?.created_at||new Date().toISOString()
+        }]);
+        loadConversations();
+      } catch(err) {
+        console.error("PSIRT re-run + chat error:", err);
+        setAiTyping(false);
+        setMessages(prev=>[...prev,{ id:Date.now().toString(), role:"ai", content:"PSIRT re-query failed. Please try again.", created_at:new Date().toISOString() }]);
+      }
+      return;
+    }
+    // ── end PSIRT re-run detection ──────────────────────────────
+
     setAiTyping(true);
     try {
       const history    = [...messages, localMsg];
@@ -975,6 +1084,7 @@ export default function RinconChatPrototype() {
               convId={activeConvId}
               saveMessage={saveMessage}
               onViewFull={() => setShowChatGreeting(false)}
+              onPsirtRerun={handlePsirtRerun}
             />
           ) : (
             <>
