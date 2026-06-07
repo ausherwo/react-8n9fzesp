@@ -1,5 +1,5 @@
 // App.js
-// App v3.11 — dark terminal theme
+// App v3.12 — dark terminal theme, IBM Plex Sans + Mono
 
 import { useState, useEffect, useRef } from "react";
 import AnalysisApp from "./AnalysisApp";
@@ -10,6 +10,7 @@ import { SettingsPage } from './SettingsPage';
 import { StrategyPage } from './StrategyPage';
 import { ModelPage } from './ModelPage';
 
+// ── Colour tokens
 const C = {
   bg:      "#0A0B0C",
   surface: "#111316",
@@ -27,6 +28,9 @@ const C = {
   shadow:  "rgba(0,0,0,0.5)",
 };
 
+// ── Typography
+// IBM Plex Sans  → headlines, paragraph text, navigation, general UI
+// IBM Plex Mono  → commands, buttons, terminal output, section labels, stats
 const mono = "'IBM Plex Mono', monospace";
 const sans = "'IBM Plex Sans', system-ui, sans-serif";
 
@@ -39,25 +43,29 @@ function HomeNav({ authed }) {
   }, []);
   return (
     <nav style={{borderBottom:`1px solid ${C.border}`,padding:isMobile?"0 20px":"0 36px",background:`${C.bg}F0`,backdropFilter:"blur(20px)",position:"sticky",top:0,zIndex:100}}>
-      <div className="nav-inner" style={{maxWidth:960,margin:"0 auto",display:"flex",alignItems:"center",justifyContent:"space-between",height:56}}>
+      <div style={{maxWidth:960,margin:"0 auto",display:"flex",alignItems:"center",justifyContent:"space-between",height:56}}>
+
+        {/* Logo — Mono, brand mark */}
         <div style={{display:"flex",alignItems:"center",gap:9,cursor:"pointer"}} onClick={()=>window.location.href="/"}>
           <div style={{width:27,height:27,background:C.amberG,border:`1px solid ${C.amber}44`,borderRadius:6,display:"flex",alignItems:"center",justifyContent:"center"}}>
             <svg width="13" height="13" viewBox="0 0 14 14" fill="none"><polyline points="1,10 4,6 7,8.5 10,3.5 13,5.5" stroke={C.amber} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
           </div>
-          <span style={{fontFamily:mono,fontWeight:700,fontSize:15,color:C.text}}>netwrkr<span style={{color:C.amber}}>.ai</span></span>
+          <span style={{fontFamily:mono,fontWeight:500,fontSize:15,color:C.text,letterSpacing:"-0.01em"}}>netwrkr<span style={{color:C.amber}}>.ai</span></span>
         </div>
+
+        {/* Nav actions — Mono, command style */}
         <div style={{display:"flex",alignItems:"center",gap:8}}>
           {authed ? (
-            <button onClick={()=>window.location.href="/app"} style={{background:C.amber,color:"#000",border:"none",borderRadius:6,fontFamily:mono,fontWeight:700,fontSize:12,padding:"7px 14px",cursor:"pointer"}}>
-              dashboard →
+            <button onClick={()=>window.location.href="/app"} style={{background:C.amber,color:"#000",border:"none",borderRadius:4,fontFamily:mono,fontWeight:500,fontSize:13,padding:"7px 16px",cursor:"pointer",letterSpacing:"-0.01em"}}>
+              &gt; dashboard()
             </button>
           ) : (
             <div style={{display:"flex",gap:8}}>
-              <button onClick={()=>window.location.href="/login"} style={{background:"none",border:`1px solid ${C.border}`,color:C.dim,borderRadius:6,fontFamily:mono,fontSize:12,padding:"7px 16px",cursor:"pointer"}}>
+              <button onClick={()=>window.location.href="/login"} style={{background:"none",border:`1px solid ${C.border}`,color:C.dim,borderRadius:4,fontFamily:mono,fontWeight:400,fontSize:13,padding:"7px 16px",cursor:"pointer",letterSpacing:"-0.01em"}}>
                 sign_in()
               </button>
-              <button onClick={()=>window.location.href="/analyse"} style={{background:C.amber,color:"#000",border:"none",borderRadius:6,fontFamily:mono,fontWeight:700,fontSize:12,padding:"7px 14px",cursor:"pointer"}}>
-                try_free →
+              <button onClick={()=>window.location.href="/analyse"} style={{background:C.amber,color:"#000",border:"none",borderRadius:4,fontFamily:mono,fontWeight:500,fontSize:13,padding:"7px 16px",cursor:"pointer",letterSpacing:"-0.01em"}}>
+                &gt; try_free()
               </button>
             </div>
           )}
@@ -77,31 +85,61 @@ function Home({ authed }) {
   return (
     <div style={{background:C.bg,color:C.text,fontFamily:sans,minHeight:"100vh"}}>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600&family=IBM+Plex+Mono:wght@400;500&display=swap');
         *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
-        ::selection{background:#4ADE8030;color:#4ADE80;}
+        ::selection{background:${C.amber}30;color:${C.amber};}
         ::-webkit-scrollbar{width:4px;}
         ::-webkit-scrollbar-track{background:${C.bg};}
         ::-webkit-scrollbar-thumb{background:${C.border};border-radius:2px;}
-        @keyframes fadeUp{from{opacity:0;transform:translateY(11px);}to{opacity:1;transform:translateY(0);}}
-        @keyframes pulse{0%,100%{opacity:1;}50%{opacity:.3;}}
-        @keyframes blink{0%,100%{opacity:1;}50%{opacity:0;}}
 
-        /* ── DESKTOP (default) */
-        .nav-inner{padding:0 36px;}
-        .hero{max-width:960px;margin:0 auto;padding:80px 36px 64px;}
-        .hero-p{font-size:18px;color:${C.dim};line-height:1.8;margin-bottom:16px;max-width:620px;}
-        .hero-ul{font-size:18px;color:${C.dim};line-height:1.8;margin-bottom:36px;max-width:620px;list-style:none;padding-left:0;}
-        .hero-ul li{margin-bottom:10px;padding-left:20px;position:relative;}
-        .hero-ul li::before{content:"›";position:absolute;left:0;color:${C.amber};font-family:${mono};font-weight:500;}
+        /* Hero layout */
+        .hero{max-width:960px;margin:0 auto;padding:88px 36px 72px;}
 
-        /* ── MOBILE */
+        /* IBM Plex Sans — body copy */
+        .hero-p{
+          font-family:${sans};
+          font-size:18px;
+          font-weight:400;
+          color:${C.dim};
+          line-height:1.8;
+          margin-bottom:20px;
+          max-width:600px;
+        }
+
+        /* IBM Plex Sans — bullets */
+        .hero-ul{
+          font-family:${sans};
+          font-size:18px;
+          font-weight:400;
+          color:${C.dim};
+          line-height:1.8;
+          margin-bottom:40px;
+          max-width:600px;
+          list-style:none;
+          padding-left:0;
+        }
+        .hero-ul li{
+          margin-bottom:12px;
+          padding-left:22px;
+          position:relative;
+        }
+        .hero-ul li::before{
+          content:"›";
+          position:absolute;
+          left:0;
+          color:${C.amber};
+          font-family:${mono};
+          font-weight:500;
+          font-size:16px;
+          top:2px;
+        }
+
+        /* Mobile overrides */
         @media(max-width:680px){
-          .nav-inner{padding:0 20px!important;}
-          .hero{padding:40px 20px 36px!important;}
-          .hero-p{font-size:18px!important;line-height:1.75!important;margin-bottom:12px!important;}
-          .hero-ul{font-size:17px!important;line-height:1.75!important;margin-bottom:28px!important;}
-          footer{padding:20px!important;}
+          .hero{padding:44px 20px 40px!important;}
+          .hero-p{font-size:17px!important;}
+          .hero-ul{font-size:17px!important;margin-bottom:28px!important;}
+          footer{padding:20px 20px!important;}
         }
       `}</style>
 
@@ -109,14 +147,27 @@ function Home({ authed }) {
 
       {/* Hero */}
       <div className="hero">
-        <h1 style={{fontSize:isMobile?26:36,fontFamily:sans,fontWeight:600,letterSpacing:"-0.02em",lineHeight:isMobile?1.2:1.25,marginBottom:isMobile?16:24,color:C.text,maxWidth:700}}>
+
+        {/* IBM Plex Sans 600 — main headline */}
+        <h1 style={{
+          fontFamily:sans,
+          fontSize:isMobile?26:38,
+          fontWeight:600,
+          letterSpacing:"-0.02em",
+          lineHeight:1.2,
+          marginBottom:28,
+          color:C.text,
+          maxWidth:720
+        }}>
           netwrkr.ai analyses your data centre network topology and tells you what security and software risks are present, ranked by priority based on your specific fabric.
         </h1>
 
+        {/* IBM Plex Sans 400 — body */}
         <p className="hero-p">
           netwrkr.ai accepts device inventory in any format and extracts a structured device list for your review before any analysis runs.
         </p>
 
+        {/* IBM Plex Sans 400 — bullets with amber › */}
         <ul className="hero-ul">
           <li>Live Cisco PSIRT API integration — verified advisories matched to your platform versions</li>
           <li>Risk scoring weighted by infrastructure role — spines, border leafs, and controllers assessed differently</li>
@@ -124,26 +175,62 @@ function Home({ authed }) {
           <li>Results returned as three prioritised items: act now, schedule, monitor</li>
         </ul>
 
-        <div style={{display:"flex",flexDirection:isMobile?"column":"row",gap:12,marginBottom:48}}>
-          <button onClick={()=>window.location.href="/analyse"} style={{background:C.amber,color:"#000",border:"none",borderRadius:6,fontFamily:mono,fontWeight:700,fontSize:isMobile?15:13,padding:isMobile?"14px":"13px 28px",cursor:"pointer",boxShadow:`0 2px 12px ${C.amber}40`,width:isMobile?"100%":"auto"}}>
-            analyse_my_fabric() // free
+        {/* IBM Plex Mono — command-style buttons */}
+        <div style={{display:"flex",flexDirection:isMobile?"column":"row",gap:12,marginBottom:56}}>
+          <button
+            onClick={()=>window.location.href="/analyse"}
+            style={{
+              background:C.amber,color:"#000",border:"none",
+              borderRadius:4,fontFamily:mono,fontWeight:500,
+              fontSize:isMobile?15:14,
+              padding:isMobile?"14px 20px":"13px 28px",
+              cursor:"pointer",
+              letterSpacing:"-0.01em",
+              boxShadow:`0 2px 16px ${C.amber}35`,
+              width:isMobile?"100%":"auto"
+            }}>
+            &gt; analyse_my_fabric() <span style={{opacity:0.6}}>// free</span>
           </button>
-          <button onClick={()=>window.location.href="/signup"} style={{background:"none",border:`1px solid ${C.border}`,color:C.dim,borderRadius:6,fontFamily:mono,fontSize:isMobile?15:13,padding:isMobile?"14px":"13px 22px",cursor:"pointer",width:isMobile?"100%":"auto"}}>
-            get_started →
+          <button
+            onClick={()=>window.location.href="/signup"}
+            style={{
+              background:"none",
+              border:`1px solid ${C.border}`,
+              color:C.dim,
+              borderRadius:4,fontFamily:mono,fontWeight:400,
+              fontSize:isMobile?15:14,
+              padding:isMobile?"14px 20px":"13px 24px",
+              cursor:"pointer",
+              letterSpacing:"-0.01em",
+              width:isMobile?"100%":"auto"
+            }}>
+            &gt; get_started()
           </button>
         </div>
       </div>
 
-      {/* Footer */}
+      {/* Footer — Mono throughout */}
       <footer style={{borderTop:`1px solid ${C.border}`,padding:"22px 36px",background:C.surface}}>
-        <div style={{maxWidth:960,margin:"0 auto",display:"flex",flexDirection:isMobile?"column":"row",justifyContent:"space-between",alignItems:"center",gap:isMobile?12:0,textAlign:isMobile?"center":"left"}}>
-          <span style={{fontFamily:mono,fontSize:13,fontWeight:700,color:C.text}}>netwrkr<span style={{color:C.amber}}>.ai</span></span>
-          <div style={{display:"flex",gap:16,flexWrap:"wrap",justifyContent:"center"}}>
+        <div style={{
+          maxWidth:960,margin:"0 auto",
+          display:"flex",
+          flexDirection:isMobile?"column":"row",
+          justifyContent:"space-between",
+          alignItems:"center",
+          gap:isMobile?14:0,
+          textAlign:isMobile?"center":"left"
+        }}>
+          <span style={{fontFamily:mono,fontWeight:500,fontSize:13,color:C.text,letterSpacing:"-0.01em"}}>
+            netwrkr<span style={{color:C.amber}}>.ai</span>
+          </span>
+          <div style={{display:"flex",gap:20,flexWrap:"wrap",justifyContent:"center"}}>
             {["privacy","terms","security","contact"].map(l=>(
-              <button key={l} onClick={()=>window.location.href=`/${l}`} style={{background:"none",border:"none",color:C.muted,fontFamily:mono,fontSize:11,cursor:"pointer"}}>{l}</button>
+              <button key={l} onClick={()=>window.location.href=`/${l}`} style={{background:"none",border:"none",color:C.muted,fontFamily:mono,fontWeight:400,fontSize:12,cursor:"pointer",letterSpacing:"-0.01em"}}>
+                {l}
+              </button>
             ))}
           </div>
-          {!isMobile&&<span style={{fontFamily:mono,fontSize:11,color:C.muted}}>// cloudbreak</span>}
+          {!isMobile && <span style={{fontFamily:mono,fontWeight:400,fontSize:12,color:C.muted}}>// cloudbreak</span>}
         </div>
       </footer>
     </div>
@@ -152,13 +239,19 @@ function Home({ authed }) {
 
 function HistoryStub() {
   return (
-    <div style={{background:C.bg,minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",color:C.text,fontFamily:mono}}>
+    <div style={{background:C.bg,minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",color:C.text,fontFamily:sans}}>
       <div style={{textAlign:"center"}}>
-        <div style={{fontSize:11,color:C.amber,letterSpacing:"0.14em",textTransform:"uppercase",marginBottom:16}}>// coming soon</div>
-        <div style={{fontSize:24,fontWeight:300,marginBottom:12}}>Analysis history</div>
-        <div style={{fontSize:13,color:C.dim,marginBottom:24}}>Full history with member attribution — Phase 2.</div>
-        <button onClick={()=>window.location.href="/app"} style={{background:C.amber,color:"#000",border:"none",borderRadius:6,fontFamily:mono,fontWeight:700,fontSize:12,padding:"9px 18px",cursor:"pointer"}}>
-          ← back_to_dashboard()
+        <div style={{fontFamily:mono,fontSize:12,color:C.amber,letterSpacing:"0.06em",marginBottom:16}}>
+          $ coming_soon
+        </div>
+        <div style={{fontFamily:sans,fontSize:26,fontWeight:600,marginBottom:12}}>
+          Analysis history
+        </div>
+        <div style={{fontFamily:sans,fontSize:16,fontWeight:400,color:C.dim,marginBottom:28}}>
+          Full history with member attribution — Phase 2.
+        </div>
+        <button onClick={()=>window.location.href="/app"} style={{background:C.amber,color:"#000",border:"none",borderRadius:4,fontFamily:mono,fontWeight:500,fontSize:13,padding:"10px 20px",cursor:"pointer",letterSpacing:"-0.01em"}}>
+          &gt; back_to_dashboard()
         </button>
       </div>
     </div>
