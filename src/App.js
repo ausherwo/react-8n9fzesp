@@ -1,5 +1,5 @@
 // App.js
-// App v3.10 — JS-based mobile detection, no CSS specificity issues
+// App v3.11 — dark terminal theme
 
 import { useState, useEffect, useRef } from "react";
 import AnalysisApp from "./AnalysisApp";
@@ -9,21 +9,22 @@ import { ForgotPasswordPage, SetNewPasswordPage } from './PasswordReset';
 import { SettingsPage } from './SettingsPage';
 import { StrategyPage } from './StrategyPage';
 import { ModelPage } from './ModelPage';
+
 const C = {
-  bg:      "#F7F5F0",
-  surface: "#FFFFFF",
-  hi:      "#F0EDE6",
-  border:  "#DDD9CF",
-  amber:   "#B8860B",
-  amberB:  "#D4A000",
-  amberG:  "#D4A00012",
-  green:   "#1A7A3C",
-  red:     "#C0392B",
-  orange:  "#C0620B",
-  text:    "#1A1810",
-  dim:     "#4A4438",
-  muted:   "#7A7060",
-  shadow:  "rgba(0,0,0,0.06)",
+  bg:      "#0A0B0C",
+  surface: "#111316",
+  hi:      "#171A1E",
+  border:  "#252A30",
+  amber:   "#D4A000",
+  amberB:  "#F0B429",
+  amberG:  "#D4A00018",
+  green:   "#4ADE80",
+  red:     "#F87171",
+  orange:  "#FB923C",
+  text:    "#E8EAED",
+  dim:     "#9AA0A8",
+  muted:   "#4E5460",
+  shadow:  "rgba(0,0,0,0.5)",
 };
 
 const mono = "JetBrains Mono, Fira Code, monospace";
@@ -47,7 +48,7 @@ function HomeNav({ authed }) {
         </div>
         <div style={{display:"flex",alignItems:"center",gap:8}}>
           {authed ? (
-            <button onClick={()=>window.location.href="/app"} style={{background:C.amber,color:"#FFF",border:"none",borderRadius:6,fontFamily:mono,fontWeight:700,fontSize:12,padding:"7px 14px",cursor:"pointer"}}>
+            <button onClick={()=>window.location.href="/app"} style={{background:C.amber,color:"#000",border:"none",borderRadius:6,fontFamily:mono,fontWeight:700,fontSize:12,padding:"7px 14px",cursor:"pointer"}}>
               dashboard →
             </button>
           ) : (
@@ -55,7 +56,7 @@ function HomeNav({ authed }) {
               <button onClick={()=>window.location.href="/login"} style={{background:"none",border:`1px solid ${C.border}`,color:C.dim,borderRadius:6,fontFamily:mono,fontSize:12,padding:"7px 16px",cursor:"pointer"}}>
                 sign_in()
               </button>
-              <button onClick={()=>window.location.href="/analyse"} style={{background:C.amber,color:"#FFF",border:"none",borderRadius:6,fontFamily:mono,fontWeight:700,fontSize:12,padding:"7px 14px",cursor:"pointer"}}>
+              <button onClick={()=>window.location.href="/analyse"} style={{background:C.amber,color:"#000",border:"none",borderRadius:6,fontFamily:mono,fontWeight:700,fontSize:12,padding:"7px 14px",cursor:"pointer"}}>
                 try_free →
               </button>
             </div>
@@ -74,38 +75,32 @@ function Home({ authed }) {
     return () => window.removeEventListener('resize', handle);
   }, []);
   return (
-    <div style={{background:C.bg,color:C.text,fontFamily:sans}}>
+    <div style={{background:C.bg,color:C.text,fontFamily:sans,minHeight:"100vh"}}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&display=swap');
         *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
-        ::selection{background:#D4A00040;color:#8B6400;}
-        ::-webkit-scrollbar{width:4px;}::-webkit-scrollbar-track{background:${C.bg};}::-webkit-scrollbar-thumb{background:${C.border};border-radius:2px;}
+        ::selection{background:#4ADE8030;color:#4ADE80;}
+        ::-webkit-scrollbar{width:4px;}
+        ::-webkit-scrollbar-track{background:${C.bg};}
+        ::-webkit-scrollbar-thumb{background:${C.border};border-radius:2px;}
         @keyframes fadeUp{from{opacity:0;transform:translateY(11px);}to{opacity:1;transform:translateY(0);}}
         @keyframes pulse{0%,100%{opacity:1;}50%{opacity:.3;}}
+        @keyframes blink{0%,100%{opacity:1;}50%{opacity:0;}}
 
         /* ── DESKTOP (default) */
         .nav-inner{padding:0 36px;}
         .hero{max-width:960px;margin:0 auto;padding:80px 36px 64px;}
-        .hero-h1{font-size:34px;font-weight:300;letter-spacing:-0.03em;line-height:1.25;margin-bottom:24px;color:${C.text};max-width:700px;}
         .hero-p{font-size:16px;color:${C.dim};line-height:1.85;margin-bottom:16px;max-width:620px;}
-        .hero-ul{font-size:15px;color:${C.dim};line-height:1.85;margin-bottom:36px;max-width:620px;padding-left:20px;}
-        .hero-ul li{margin-bottom:10px;}
-        .hero-btns{display:flex;gap:12px;margin-bottom:48px;}
-        .hero-btns button{flex-shrink:0;}
-        .footer-inner{max-width:960px;margin:0 auto;display:flex;justify-content:space-between;align-items:center;}
-        .footer-tagline{font-family:${mono};font-size:11px;color:${C.muted};}
+        .hero-ul{font-size:15px;color:${C.dim};line-height:1.85;margin-bottom:36px;max-width:620px;list-style:none;padding-left:0;}
+        .hero-ul li{margin-bottom:10px;padding-left:20px;position:relative;}
+        .hero-ul li::before{content:"›";position:absolute;left:0;color:${C.green};font-family:${mono};font-weight:700;}
 
         /* ── MOBILE */
         @media(max-width:680px){
           .nav-inner{padding:0 20px!important;}
           .hero{padding:40px 20px 36px!important;}
-          .hero-h1{font-size:26px!important;line-height:1.2!important;margin-bottom:16px!important;}
           .hero-p{font-size:16px!important;line-height:1.75!important;margin-bottom:12px!important;}
           .hero-ul{font-size:15px!important;line-height:1.75!important;margin-bottom:28px!important;}
-          .hero-btns{flex-direction:column!important;gap:10px!important;margin-bottom:32px!important;}
-          .hero-btns button{width:100%!important;font-size:15px!important;padding:14px 20px!important;}
-          .footer-inner{flex-direction:column!important;gap:14px!important;text-align:center!important;}
-          .footer-tagline{display:none!important;}
           footer{padding:20px!important;}
         }
       `}</style>
@@ -130,7 +125,7 @@ function Home({ authed }) {
         </ul>
 
         <div style={{display:"flex",flexDirection:isMobile?"column":"row",gap:12,marginBottom:48}}>
-          <button onClick={()=>window.location.href="/analyse"} style={{background:C.amber,color:"#FFF",border:"none",borderRadius:6,fontFamily:mono,fontWeight:700,fontSize:isMobile?15:13,padding:isMobile?"14px":"13px 28px",cursor:"pointer",boxShadow:`0 2px 8px ${C.amber}40`,width:isMobile?"100%":"auto"}}>
+          <button onClick={()=>window.location.href="/analyse"} style={{background:C.amber,color:"#000",border:"none",borderRadius:6,fontFamily:mono,fontWeight:700,fontSize:isMobile?15:13,padding:isMobile?"14px":"13px 28px",cursor:"pointer",boxShadow:`0 2px 12px ${C.amber}40`,width:isMobile?"100%":"auto"}}>
             analyse_my_fabric() // free
           </button>
           <button onClick={()=>window.location.href="/signup"} style={{background:"none",border:`1px solid ${C.border}`,color:C.dim,borderRadius:6,fontFamily:mono,fontSize:isMobile?15:13,padding:isMobile?"14px":"13px 22px",cursor:"pointer",width:isMobile?"100%":"auto"}}>
@@ -159,10 +154,10 @@ function HistoryStub() {
   return (
     <div style={{background:C.bg,minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",color:C.text,fontFamily:mono}}>
       <div style={{textAlign:"center"}}>
-        <div style={{fontSize:11,color:C.amber,letterSpacing:"0.14em",textTransform:"uppercase",marginBottom:16}}>// coming soon</div>
+        <div style={{fontSize:11,color:C.green,letterSpacing:"0.14em",textTransform:"uppercase",marginBottom:16}}>// coming soon</div>
         <div style={{fontSize:24,fontWeight:300,marginBottom:12}}>Analysis history</div>
         <div style={{fontSize:13,color:C.dim,marginBottom:24}}>Full history with member attribution — Phase 2.</div>
-        <button onClick={()=>window.location.href="/app"} style={{background:C.amber,color:"#FFF",border:"none",borderRadius:6,fontFamily:mono,fontWeight:700,fontSize:12,padding:"9px 18px",cursor:"pointer"}}>
+        <button onClick={()=>window.location.href="/app"} style={{background:C.amber,color:"#000",border:"none",borderRadius:6,fontFamily:mono,fontWeight:700,fontSize:12,padding:"9px 18px",cursor:"pointer"}}>
           ← back_to_dashboard()
         </button>
       </div>
