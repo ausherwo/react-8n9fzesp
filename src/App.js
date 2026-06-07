@@ -27,8 +27,8 @@ const C = {
   shadow:  "rgba(0,0,0,0.06)",
 };
 
-const mono = "JetBrains Mono, Fira Code, monospace";
-const sans = "'DM Sans', system-ui, sans-serif";
+const mono = "'IBM Plex Mono', monospace";
+const sans = "'IBM Plex Sans', system-ui, sans-serif";
 
 function HomeNav({ authed }) {
   const [isMobile, setIsMobile] = useState(typeof window !== 'undefined' && window.innerWidth <= 680);
@@ -77,7 +77,7 @@ function Home({ authed }) {
   return (
     <div style={{background:C.bg,color:C.text,fontFamily:sans}}>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600&family=IBM+Plex+Mono:wght@400;500&display=swap');
         *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
         ::selection{background:#D4A00040;color:#8B6400;}
         ::-webkit-scrollbar{width:4px;}::-webkit-scrollbar-track{background:${C.bg};}::-webkit-scrollbar-thumb{background:${C.border};border-radius:2px;}
@@ -89,8 +89,9 @@ function Home({ authed }) {
         .hero{max-width:960px;margin:0 auto;padding:80px 36px 64px;}
         .hero-h1{font-size:34px;font-weight:300;letter-spacing:-0.03em;line-height:1.25;margin-bottom:24px;color:${C.text};max-width:700px;}
         .hero-p{font-size:16px;color:${C.dim};line-height:1.85;margin-bottom:16px;max-width:620px;}
-        .hero-ul{font-size:15px;color:${C.dim};line-height:1.85;margin-bottom:36px;max-width:620px;padding-left:20px;}
-        .hero-ul li{margin-bottom:10px;}
+        .hero-ul{font-size:15px;color:${C.dim};line-height:1.85;margin-bottom:36px;max-width:620px;list-style:none;padding-left:0;}
+        .hero-ul li{margin-bottom:10px;padding-left:28px;position:relative;}
+        .hero-ul li::before{content:"//";position:absolute;left:0;color:${C.amber};font-family:${mono};font-size:12px;font-weight:500;top:3px;letter-spacing:-0.05em;}
         .hero-btns{display:flex;gap:12px;margin-bottom:48px;}
         .hero-btns button{flex-shrink:0;}
         .footer-inner{max-width:960px;margin:0 auto;display:flex;justify-content:space-between;align-items:center;}
