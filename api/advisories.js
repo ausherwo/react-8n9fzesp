@@ -5,7 +5,7 @@
 const { createClient } = require('@supabase/supabase-js');
 
 const CISCO_TOKEN_URL  = "https://id.cisco.com/oauth2/default/v1/token";
-const CISCO_PSIRT_BASE = "https://apix.cisco.com/security/advisories";
+const CISCO_PSIRT_BASE = "https://apix.cisco.com/security/advisories/v2/OSType";
 const CISCO_EOX_BASE   = "https://apix.cisco.com/supporttools/eox/rest/5";
 
 const supabase = createClient(
