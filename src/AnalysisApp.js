@@ -126,8 +126,8 @@ const STEPS = [
 const SAMPLE = `APIC-01    Cisco APIC       6.0(3e)    APIC Controller
 APIC-02    Cisco APIC       6.0(3e)    APIC Controller
 APIC-03    Cisco APIC       6.0(3e)    APIC Controller
-SP-01      Nexus 9336C-FX2  15.2(8e)   Spine
-SP-02      Nexus 9336C-FX2  15.2(8e)   Spine
+SP-01      Nexus 9332C      15.2(8e)   Spine
+SP-02      Nexus 9332C      15.2(8e)   Spine
 BL-01      Nexus 93180YC-EX  15.2(8e)   Border Leaf
 BL-02      Nexus 93180YC-EX  15.2(7f)   Border Leaf
 LEAF-01    Nexus 93180YC-EX  15.2(8e)   Leaf
