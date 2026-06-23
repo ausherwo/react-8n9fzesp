@@ -99,6 +99,7 @@ HOSTNAME HINTS (apply in both ACI and standalone fabrics):
 - Hostname contains SP, SPINE → role "Spine", tier 2
 - Hostname contains BL, BORDER → role "Border Leaf", tier 2
 - Hostname contains LEAF, LF → role "Leaf", tier 3
+- Hostname contains SWITCH, SW → role "Switch", tier 3
 - Hostname contains APIC, CTRL → role "Controller", tier 1
 - Hostname contains FW, FIRE, ASA → role "Firewall", tier 4
 - Hostname hints override platform defaults when present

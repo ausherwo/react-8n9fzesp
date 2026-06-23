@@ -134,6 +134,8 @@ LEAF-01    Nexus 93180YC-EX  15.2(8e)   Leaf
 LEAF-02    Nexus 93180YC-EX  15.2(8e)   Leaf
 LEAF-03    Nexus 93180YC-EX  15.2(8e)   Leaf
 LEAF-04    Nexus 93180YC-EX  15.2(8e)   Leaf
+SW-01      Nexus 93180YC-FX3  10.5(4)   Switch
+SW-02      Nexus 93180YC-FX3  10.5(4)   Switch
 FTD-01     Firepower 2140    7.4(1)     Firewall
 FTD-02     Firepower 2140    7.4(1)     Firewall`;
 

@@ -1,6 +1,6 @@
 // api/advisories.js
 // Vercel serverless function — Cisco PSIRT openVuln API + fabric analysis
-// v3.2 — fix ACI version false positive; rule 16 added (fabricRisk, intelRisk, fabricAnalysis.risk calculated in code, not by AI)
+// v3.3 — fix ACI switch PSIRT routing: use aci endpoint directly, no version remapping
 
 const { createClient } = require('@supabase/supabase-js');
 
@@ -178,19 +178,20 @@ function normaliseToPID(platformName) {
 }
 
 // ─────────────────────────────────────────────
-// ACI / NX-OS VERSION MAPPING
-// ─────────────────────────────────────────────
-function mapApicVersionToNxos(apicVersion) {
-  if (!apicVersion) return null;
-  const match = apicVersion.match(/^(\d+)([\.\(].+)$/);
-  if (!match) return null;
-  const major = parseInt(match[1], 10);
-  const rest  = match[2];
-  return `${major + 10}${rest}`;
-}
-
-// ─────────────────────────────────────────────
 // PLATFORM CONFIG
+// Maps platform name to PSIRT OSType endpoint and family label.
+//
+// Endpoint routing:
+//   aci   — APIC controllers AND Nexus switches in ACI-managed fabrics
+//   nxos  — Standalone Nexus switches (no APIC in fabric)
+//   ftd   — Firepower Threat Defense
+//   iosxe — Catalyst 9k, ASR, ISR
+//   ios   — Catalyst 6k and older IOS platforms
+//
+// ACI switch override: isAciSwitch flag from client forces endpoint
+// to "aci" regardless of platform name match — see MODE 2 handler.
+// Version is always passed as-is (NX-OS format e.g. 15.2(8e)).
+// No version remapping is performed anywhere in this file.
 // ─────────────────────────────────────────────
 function getPlatformConfig(platformName) {
   if (!platformName) return null;
@@ -439,7 +440,7 @@ module.exports = async function handler(req, res) {
       if (!data.advisories?.length) return null;
       const high = data.advisories.filter(a => a.impact === "High");
       const med  = data.advisories.filter(a => a.impact === "Medium");
-      return `${platform} v${version} [${data.family || ""}]: ${data.advisories.length} advisories (${high.length} High, ${med.length} Medium). Top issues: ${data.advisories.slice(0, 3).map(a => `${a.id} — ${a.title}`).join("; ")}${data.queryVersion !== version ? ` [ACI NX-OS version queried: ${data.queryVersion}]` : ""}`;
+      return `${platform} v${version} [${data.family || ""}]: ${data.advisories.length} advisories (${high.length} High, ${med.length} Medium). Top issues: ${data.advisories.slice(0, 3).map(a => `${a.id} — ${a.title}`).join("; ")}`;
     }).filter(Boolean).join("\n") || "No Cisco advisory data retrieved.";
 
     try {
@@ -465,6 +466,18 @@ module.exports = async function handler(req, res) {
   }
 
   // ── MODE 2: PSIRT advisory lookup
+  //
+  // Endpoint routing per platform type:
+  //   APIC                      → aci   (via getPlatformConfig)
+  //   Nexus in ACI fabric       → aci   (isAciSwitch flag overrides nxos)
+  //   Nexus standalone          → nxos  (via getPlatformConfig)
+  //   Firepower / FTD           → ftd   (via getPlatformConfig)
+  //   Catalyst 9k / ASR / ISR   → iosxe (via getPlatformConfig)
+  //   Catalyst 6k               → ios   (via getPlatformConfig)
+  //
+  // Version is always passed as-is — no remapping performed.
+  // Client sends NX-OS version for all Nexus switches (e.g. 15.2(8e)).
+
   const { platform, version, isAciSwitch } = req.body;
 
   if (!platform || !version) {
@@ -479,10 +492,10 @@ module.exports = async function handler(req, res) {
     });
   }
 
-  let queryVersion = version;
-  if (isAciSwitch && platformConfig.family === "NX-OS") {
-    const remapped = mapApicVersionToNxos(version);
-    if (remapped) queryVersion = remapped;
+  // Override endpoint to aci for Nexus switches inside an ACI fabric.
+  // Version is already in NX-OS format (e.g. 15.2(8e)) — no remapping needed.
+  if (isAciSwitch) {
+    platformConfig.endpoint = "aci";
   }
 
   const pid = normaliseToPID(platform);
@@ -491,17 +504,19 @@ module.exports = async function handler(req, res) {
     const token2 = await getAccessToken();
 
     const [rawAdvisories, eolData] = await Promise.allSettled([
-      fetchAdvisories(token2, platformConfig, queryVersion),
+      fetchAdvisories(token2, platformConfig, version),
       pid ? fetchEoX(token2, pid) : Promise.resolve(null),
     ]);
 
+    // Map advisory fields — firstFixed extracted from platforms[].firstFixes[] 
+    // which is populated on the aci OSType endpoint (unlike the product endpoint).
     const advisories = (rawAdvisories.status === "fulfilled" ? rawAdvisories.value : []).map(a => ({
       id:         a.advisoryId || a.identifier || "",
       title:      a.advisoryTitle || a.title || "",
       impact:     a.sir || a.impact || "Unknown",
       published:  a.firstPublished || "",
       url:        a.publicationUrl || a.url || "",
-      firstFixed: Array.isArray(a.firstFixed) ? a.firstFixed[0] : (a.firstFixed || ""),
+      firstFixed: a.platforms?.[0]?.firstFixes?.[0]?.name || "",
       cvssScore:  a.cvssBaseScore || "",
       cveId:      Array.isArray(a.cves) ? a.cves[0] : (a.cves || ""),
     }));
@@ -518,7 +533,6 @@ module.exports = async function handler(req, res) {
       pid:          pid || null,
       platform,
       version,
-      queryVersion,
       family:       platformConfig.family,
       verified:     true,
       warnings:     warnings.length > 0 ? warnings : undefined,
