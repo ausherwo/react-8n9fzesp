@@ -1,6 +1,7 @@
 // api/advisories.js
 // Vercel serverless function — Cisco PSIRT openVuln API + fabric analysis
-// v3.3 — fix ACI switch PSIRT routing: use aci endpoint directly, no version remapping
+// v3.4 — fix: corrected invalid model string ("claude-sonnet-4-6" was not a real model,
+// caused fabric analysis to fail). Now uses claude-sonnet-5 (matches chat.js, extract.js).
 
 const { createClient } = require('@supabase/supabase-js');
 
@@ -346,7 +347,7 @@ ${advisorySummary}
       "anthropic-version": "2023-06-01",
     },
     body: JSON.stringify({
-      model:      "claude-sonnet-4-6",
+      model:      "claude-sonnet-5",
       max_tokens: 4000,
       system:     buildAnalysisSystemPrompt(aciFabric),
       messages:   [{ role: "user", content: userContent }],
@@ -508,7 +509,7 @@ module.exports = async function handler(req, res) {
       pid ? fetchEoX(token2, pid) : Promise.resolve(null),
     ]);
 
-    // Map advisory fields — firstFixed extracted from platforms[].firstFixes[] 
+    // Map advisory fields — firstFixed extracted from platforms[].firstFixes[]
     // which is populated on the aci OSType endpoint (unlike the product endpoint).
     const advisories = (rawAdvisories.status === "fulfilled" ? rawAdvisories.value : []).map(a => ({
       id:         a.advisoryId || a.identifier || "",
