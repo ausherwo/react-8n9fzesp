@@ -1,6 +1,7 @@
 // api/extract.js
 // Vercel serverless function — device extraction from raw inventory text
-// v1.4 — extended timeout for large inventories; max_tokens increased
+// v1.5 — fix: corrected invalid model string ("claude-sonnet-4-6" was not a real model,
+// caused every extraction call to fail silently). Now matches chat.js.
 
 module.exports = async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -29,7 +30,7 @@ module.exports = async function handler(req, res) {
         "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify({
-        model: "claude-sonnet-4-6",
+        model: "claude-sonnet-4-20250514",
         max_tokens: 8000,
         system: `You are a data extraction engine for a Cisco network analysis tool.
 Your only job is to extract network devices from text and return structured JSON.

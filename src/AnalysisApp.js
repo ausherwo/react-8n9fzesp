@@ -126,16 +126,14 @@ const STEPS = [
 const SAMPLE = `APIC-01    Cisco APIC       6.0(3e)    APIC Controller
 APIC-02    Cisco APIC       6.0(3e)    APIC Controller
 APIC-03    Cisco APIC       6.0(3e)    APIC Controller
-SP-01      Nexus 9332C      15.2(8e)   Spine
-SP-02      Nexus 9332C      15.2(8e)   Spine
+SP-01      Nexus 9336C-FX2  15.2(8e)   Spine
+SP-02      Nexus 9336C-FX2  15.2(8e)   Spine
 BL-01      Nexus 93180YC-EX  15.2(8e)   Border Leaf
 BL-02      Nexus 93180YC-EX  15.2(7f)   Border Leaf
 LEAF-01    Nexus 93180YC-EX  15.2(8e)   Leaf
 LEAF-02    Nexus 93180YC-EX  15.2(8e)   Leaf
 LEAF-03    Nexus 93180YC-EX  15.2(8e)   Leaf
 LEAF-04    Nexus 93180YC-EX  15.2(8e)   Leaf
-SW-01      Nexus 93180YC-FX3  10.5(4)   Switch
-SW-02      Nexus 93180YC-FX3  10.5(4)   Switch
 FTD-01     Firepower 2140    7.4(1)     Firewall
 FTD-02     Firepower 2140    7.4(1)     Firewall`;
 
@@ -608,6 +606,7 @@ function Analyse({go}) {
   const [showGate,setShowGate]         = useState(false);
   const [showNudge,setShowNudge]       = useState(false);
   const [reviewFilter,setReviewFilter] = useState("all");
+  const [extractError,setExtractError] = useState(null);
   const ref = useRef();
 
   const authHeaders = () => ({
@@ -632,6 +631,7 @@ function Analyse({go}) {
   const parseInput = async () => {
     if (!rawInput.trim()) return;
     setParsing(true);
+    setExtractError(null);
     try {
       const res = await fetch("/api/extract", { method:"POST", headers:authHeaders(), body:JSON.stringify({text:rawInput}) });
       const data = await res.json();
@@ -639,7 +639,11 @@ function Analyse({go}) {
       setDevices(groupDevices(data.devices));
       posthog.capture('paste_submitted');
       setScreen("review");
-    } catch(e) { console.error("Extract error:",e); }
+    } catch(e) {
+      console.error("Extract error:",e);
+      setExtractError(e.message || "Extraction failed — try again, or contact support if this keeps happening.");
+      posthog.capture('extract_failed', { error: e.message });
+    }
     setParsing(false);
   };
 
@@ -725,7 +729,7 @@ function Analyse({go}) {
   const reset = () => {
     setScreen("paste"); setRawInput(""); setDevices([]); setCtx(""); setResults(null);
     setStep(0); setShowNudge(false); setAdvisoryMap({}); setReviewFilter("all");
-    setPsirtContext(null);
+    setPsirtContext(null); setExtractError(null);
   };
 
   const inp = {fontFamily:mono,fontSize:13,background:C.hi,border:`1px solid ${C.border}`,color:C.text,borderRadius:8,padding:"11px 13px",width:"100%",outline:"none",lineHeight:1.7};
@@ -763,6 +767,11 @@ function Analyse({go}) {
               style={{background:rawInput.trim()&&!parsing?C.amber:C.hi,color:rawInput.trim()&&!parsing?"#FFF":C.muted,border:`1px solid ${rawInput.trim()&&!parsing?C.amber:C.border}`,borderRadius:8,fontFamily:mono,fontWeight:700,fontSize:14,padding:"13px",cursor:rawInput.trim()&&!parsing?"pointer":"not-allowed",width:"100%",display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
               {parsing?<><span style={{width:14,height:14,border:`2px solid ${C.amber}33`,borderTopColor:C.amber,borderRadius:"50%",animation:"spin .7s linear infinite"}}/> extracting_devices()</>:"extract_devices() →"}
             </button>
+            {extractError&&(
+              <div style={{background:SEV.CRITICAL.bg,border:`1px solid ${SEV.CRITICAL.bd}`,borderRadius:6,padding:"9px 12px",marginTop:9,fontSize:12,color:C.red,fontFamily:mono}}>
+                ⚠ {extractError}
+              </div>
+            )}
             <div style={{fontFamily:mono,fontSize:11,color:C.muted,textAlign:"center",marginTop:7}}>// we will show you what we found before running</div>
           </div>
           <div style={{display:"flex",flexDirection:"column",gap:11}}>
