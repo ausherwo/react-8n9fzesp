@@ -357,7 +357,11 @@ ${advisorySummary}
   const data = await response.json();
   if (data.error) throw new Error(data.error.message);
 
-  const raw    = data.content[0].text.replace(/```json|```/g, "").trim();
+  const textBlock = (data.content || []).find(b => b.type === "text");
+  if (!textBlock || typeof textBlock.text !== "string") {
+    throw new Error("Model returned no text content: " + JSON.stringify(data.content));
+  }
+  const raw    = textBlock.text.replace(/```json|```/g, "").trim();
   const parsed = JSON.parse(raw);
 
   const realIds = new Set(
