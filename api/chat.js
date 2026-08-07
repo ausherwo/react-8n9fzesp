@@ -46,7 +46,12 @@ module.exports = async function handler(req, res) {
       return res.status(502).json({ error: "upstream_error", message: data.error.message });
     }
 
-    const text = data.content[0].text;
+    const textBlock = (data.content || []).find(b => b.type === "text");
+    if (!textBlock || typeof textBlock.text !== "string") {
+      console.error("chat.js: no text block in response. content:", JSON.stringify(data.content));
+      return res.status(502).json({ error: "upstream_error", message: "Model returned no text content" });
+    }
+    const text = textBlock.text;
     return res.status(200).json({ content: text, text });
 
   } catch (err) {
@@ -60,7 +65,7 @@ function buildKellyPrompt(fabricContext, psirtContext) {
 
 You have worked on hundreds of Cisco DC fabrics. You have seen every failure mode. You know what matters and what does not. You are the most experienced engineer in the room and you talk like it.
 
-─────────────────────────────────────────────
+────────────────────────────────────────────
 YOUR VOICE — THIS IS THE MOST IMPORTANT SECTION
 ─────────────────────────────────────────────
 

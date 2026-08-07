@@ -188,7 +188,12 @@ ${text.slice(0, 20000)}`,
       return res.status(502).json({ error: "upstream_error", message: data.error.message });
     }
 
-    const raw = data.content[0].text.replace(/```json\n?|\n?```/g, "").trim();
+    const textBlock = (data.content || []).find(b => b.type === "text");
+    if (!textBlock || typeof textBlock.text !== "string") {
+      console.error("extract.js: no text block in response. content:", JSON.stringify(data.content));
+      return res.status(502).json({ error: "upstream_error", message: "Model returned no text content" });
+    }
+    const raw = textBlock.text.replace(/```json\n?|\n?```/g, "").trim();
 
     let devices;
     try {
