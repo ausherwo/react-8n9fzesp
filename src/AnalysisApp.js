@@ -513,7 +513,7 @@ function Results({data, reset, go, showNudge, onDismissNudge, psirtContext}) {
                 <div style={{fontFamily:mono,fontSize:10,color:C.amber,letterSpacing:"0.12em",textTransform:"uppercase",marginBottom:10,paddingBottom:7,borderBottom:`1px solid ${C.border}`}}>// fabric risk</div>
               <div style={{background:SEV.HIGH.bg,border:`1px solid ${SEV.HIGH.bd}`,borderRadius:6,padding:"10px 13px"}}>
                 <div style={{fontFamily:mono,fontSize:10,color:C.orange,marginBottom:5}}>// version mismatch</div>
-{data.fabricAnalysis.mismatches.map((m,i)=><div key={i} style=={{fontSize:12,color:C.dim}}>{m}</div>)}
+{data.fabricAnalysis.mismatches.map((m,i)=><div key={i} style={{fontSize:12,color:C.dim}}>{m}</div>)}
                                     </div>
                                     </div>
                                               )}
