@@ -360,12 +360,30 @@ async function runFabricAnalysis(devices, advisorySummary, aciFabric, ctx, advMa
   const data = await response.json();
     if (data.error) throw new Error(data.error.message);
 
-  const textBlock = (data.content || []).find(b => b.type === "text");
-    if (!textBlock || typeof textBlock.text !== "string") {
+  // v3.6 — fix: concatenate ALL text blocks, not just the first. The model can
+  // split one JSON object across multiple text content blocks; reading only the
+  // first (via .find) discarded the rest and left JSON.parse a string that ended
+  // mid-value, throwing "Unterminated string in JSON". The earlier v3.5 change
+  // assumed token truncation, but the failure position (~3498 chars, well under
+  // the max_tokens budget) shows the response was complete — just not fully read.
+  const textBlocks = (data.content || []).filter(
+        b => b.type === "text" && typeof b.text === "string"
+  );
+    if (textBlocks.length === 0) {
           throw new Error("Model returned no text content: " + JSON.stringify(data.content));
     }
-    const raw    = textBlock.text.replace(/```json|```/g, "").trim();
-    const parsed = JSON.parse(raw);
+    // Guard: if the model genuinely ran out of room, say so plainly rather than
+    // surfacing it downstream as an "Unterminated string" parse error.
+    if (data.stop_reason === "max_tokens") {
+          throw new Error("Analysis response hit the token limit and was cut off before the JSON closed. Reduce the device count or raise max_tokens.");
+    }
+    const raw = textBlocks.map(b => b.text).join("").replace(/```json|```/g, "").trim();
+    let parsed;
+    try {
+          parsed = JSON.parse(raw);
+    } catch (e) {
+          throw new Error(`Could not parse analysis JSON (${e.message}). Response length ${raw.length} chars. Starts: ${raw.slice(0, 120)}`);
+    }
 
   const realIds = new Set(
         Object.values(advMap)
