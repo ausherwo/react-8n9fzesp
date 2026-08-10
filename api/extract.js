@@ -1,5 +1,10 @@
 // api/extract.js
 // Vercel serverless function — device extraction from raw inventory text
+// v1.6 — fixes: (1) skip unregistered APIC nodes (ID 0 / Role unknown / Fabric
+// State NO) so they no longer surface as a phantom APIC controller; (2) strip the
+// "n9000-" image prefix from ACI switch versions so PSIRT queries get bare
+// versions; (3) fabric-type detection must not invent devices; (4) read all text
+// blocks + guard max_tokens truncation.
 // v1.5 — fix: corrected invalid model string ("claude-sonnet-4-6" was not a real model,
 // caused every extraction call to fail silently). Now matches chat.js.
 
@@ -46,6 +51,22 @@ First, check whether an APIC controller is present in the inventory.
 IF APIC IS PRESENT → this is an ACI fabric. Use ACI role rules below.
 IF NO APIC IS PRESENT → this is a standalone NX-OS fabric (VXLAN/EVPN or traditional).
   Use standalone NX-OS role rules instead. Do NOT apply ACI role rules.
+
+Determining the fabric type NEVER creates a device. Concluding "this is an ACI
+fabric" does NOT mean you should add an APIC device. Only extract devices that are
+literally present in the text. Never invent a controller, spine, or leaf that the
+text does not contain.
+
+─────────────────────────────────────────────
+SKIP THESE — do NOT extract them as devices
+─────────────────────────────────────────────
+
+- Unregistered / discovered nodes in APIC "show switch detail" output: any node
+  with Role "unknown", an empty Name, no Version field, or Fabric State "NO".
+  These are not yet part of the fabric — omit them entirely (e.g. the "ID : 0"
+  block with Role unknown / Fabric State NO must NOT appear in your output).
+- Non-Cisco or host entries (e.g. CDP capability flag "H" for Host, NetApp/FAS
+  filers, servers). Extract network infrastructure only.
 
 ─────────────────────────────────────────────
 STANDALONE NX-OS ROLE RULES (no APIC present)
@@ -148,7 +169,15 @@ SOFTWARE VERSION FORMATS:
 - IOS-XE: 17.3(4a), 16.9(6)
 - IOS-XR: 7.5.2, 6.7.4
 - FTD: 7.2(5), 7.0(6)
-- ASA: 9.18(3), 9.16(1)`,
+- ASA: 9.18(3), 9.16(1)
+
+VERSION NORMALISATION (strip image-name prefixes):
+APIC "show switch detail" reports versions as an image name, e.g. "n9000-15.2(2f)"
+or "n9000-16.0(1j)". Extract ONLY the bare version — strip the leading "n9000-"
+(or any "<image>-" prefix). So "n9000-16.0(1j)" → "16.0(1j)". This is required:
+downstream PSIRT queries need the bare version and will not match an image string.
+This is normalisation of an explicitly-present version, NOT guessing — the rule
+against inferring versions still applies.`,
 
         messages: [{
           role: "user",
@@ -188,12 +217,21 @@ ${text.slice(0, 20000)}`,
       return res.status(502).json({ error: "upstream_error", message: data.error.message });
     }
 
-    const textBlock = (data.content || []).find(b => b.type === "text");
-    if (!textBlock || typeof textBlock.text !== "string") {
+    // Concatenate ALL text blocks, not just the first — a large device list can
+    // be split across multiple text content blocks, and reading only the first
+    // (via .find) would truncate the JSON array and fail to parse.
+    const textBlocks = (data.content || []).filter(
+      b => b.type === "text" && typeof b.text === "string"
+    );
+    if (textBlocks.length === 0) {
       console.error("extract.js: no text block in response. content:", JSON.stringify(data.content));
       return res.status(502).json({ error: "upstream_error", message: "Model returned no text content" });
     }
-    const raw = textBlock.text.replace(/```json\n?|\n?```/g, "").trim();
+    if (data.stop_reason === "max_tokens") {
+      console.error("extract.js: response truncated at max_tokens");
+      return res.status(502).json({ error: "upstream_error", message: "Device list too large — extraction was cut off. Try a smaller inventory." });
+    }
+    const raw = textBlocks.map(b => b.text).join("").replace(/```json\n?|\n?```/g, "").trim();
 
     let devices;
     try {
