@@ -348,10 +348,10 @@ async function runFabricAnalysis(devices, advisorySummary, aciFabric, ctx, advMa
         },
         body: JSON.stringify({
                 model:      "claude-sonnet-5",
-                // v3.5 — fix: 4000 was a fixed cap that truncated the JSON response for larger
-                // fabrics (each device gets a written "rec" string), causing JSON.parse to throw
-                // "Unterminated string in JSON" and crash the frontend. Scale with device count.
-                max_tokens: Math.min(16000, 3000 + devices.length * 150),
+                // v3.7 — fix: v3.5's 3000+150/device budget still truncated real fabrics
+                // (confirmed via the v3.6 stop_reason guard). Each device emits a written
+                // "rec" plus priority/intel prose, so scale more generously.
+                max_tokens: Math.min(16000, 6000 + devices.length * 400),
                 system:     buildAnalysisSystemPrompt(aciFabric),
                 messages:   [{ role: "user", content: userContent }],
         }),
