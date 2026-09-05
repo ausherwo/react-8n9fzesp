@@ -1,5 +1,5 @@
 // AnalysisApp.js
-// v3.7 — analysing overlay is now a dark terminal window: line-by-line output, streamed per-platform PSIRT ticks, elapsed timer
+// v3.8 — analysing phase gets a live spinner + rotating activity line (keeps the honest elapsed timer) so the long analysis call doesn't feel flat
 
 import { useState, useRef, useEffect } from "react";
 import { useAuth } from './Auth';
@@ -231,13 +231,28 @@ function Overlay({progress}) {
     const analysing = phase === "analysing";
 
     const [elapsed, setElapsed] = useState(0);
+    const [frame, setFrame] = useState(0);
     useEffect(() => {
-        if (!analysing) { setElapsed(0); return; }
+        if (!analysing) { setElapsed(0); setFrame(0); return; }
         const t0 = Date.now();
-        const id = setInterval(() => setElapsed(Math.floor((Date.now() - t0) / 1000)), 1000);
+        const id = setInterval(() => {
+            const ms = Date.now() - t0;
+            setElapsed(Math.floor(ms / 1000));
+            setFrame(Math.floor(ms / 110));
+        }, 110);
         return () => clearInterval(id);
     }, [analysing]);
     const mmss = `${Math.floor(elapsed/60)}:${String(elapsed%60).padStart(2,"0")}`;
+    const SPIN = ["⠋","⠙","⠹","⠸","⠼","⠴","⠦","⠧","⠇","⠏"];
+    const SUBS = [
+        "correlating advisories with fabric topology",
+        "weighting exposure by device tier",
+        "checking ACI upgrade-path constraints",
+        "ranking priorities P1–P3",
+        "composing remediation guidance",
+    ];
+    const spin = SPIN[frame % SPIN.length];
+    const subIdx = Math.floor(frame / 32) % SUBS.length;
 
     const T = {
         bg:"#0C0E12", bar:"#171A20", border:"#23262E",
@@ -279,11 +294,14 @@ function Overlay({progress}) {
         </div>
     ));
     rows.push(
-        <div key="run" style={{...animNow, display:"flex", alignItems:"center", gap:8, marginTop:8, opacity:analysing?1:.4}}>
-            <span style={{color:T.prefix,flexShrink:0}}>›</span>
-            <span style={{color:analysing?T.label:T.dim}}>running fabric analysis</span>
-            {analysing&&<span style={{color:T.dim}}>{mmss}</span>}
-            {analysing&&blinkCursor(15)}
+        <div key="run" style={{...animNow, marginTop:8, opacity:analysing?1:.4}}>
+            <div style={{display:"flex", alignItems:"center", gap:8}}>
+                <span style={{color:T.prefix,flexShrink:0}}>›</span>
+                <span style={{color:analysing?T.label:T.dim}}>running fabric analysis</span>
+                {analysing&&<span style={{color:T.prefix, width:10, display:"inline-block"}}>{spin}</span>}
+                {analysing&&<span style={{color:T.dim, marginLeft:"auto"}}>{mmss}</span>}
+            </div>
+            {analysing&&<div key={subIdx} style={{...animNow, paddingLeft:22, marginTop:5, fontSize:12, color:T.dim}}>{SUBS[subIdx]}…</div>}
         </div>
     );
 
