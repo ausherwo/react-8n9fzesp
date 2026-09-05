@@ -1,5 +1,5 @@
 // AnalysisApp.js
-// v3.5 — fix: export_report() now generates a downloadable report; gate create_account() now navigates to signup
+// v3.6 — analysing overlay replaced with live terminal log driven by real phases (PSIRT query → fabric analysis); fixes 83% stall
 
 import { useState, useRef } from "react";
 import { useAuth } from './Auth';
@@ -208,14 +208,7 @@ function getCount() { try { return parseInt(localStorage.getItem("nw_count")||"0
 function incCount() { try { localStorage.setItem("nw_count",String(getCount()+1)); } catch {} }
 function isRegistered() { try { return !!localStorage.getItem("nw_registered"); } catch { return false; } }
 
-const STEPS = [
-  {l:"Parsing inventory",           d:600},
-  {l:"Identifying platforms",        d:700},
-  {l:"Checking bug patterns",        d:900},
-  {l:"Cross-referencing advisories", d:800},
-  {l:"Running AI analysis",          d:1200},
-  {l:"Generating remediation plan",  d:700},
-  ];
+const ANALYSE_PHASES = ["psirt", "analysing"]; // real async phases, not a timed sequence
 
 const SAMPLE = `APIC-01    Cisco APIC       6.0(3e)    APIC Controller
 APIC-02    Cisco APIC       6.0(3e)    APIC Controller
@@ -231,28 +224,42 @@ LEAF-04    Nexus 93180YC-EX  15.2(8e)   Leaf
 FTD-01     Firepower 2140    7.4(1)     Firewall
 FTD-02     Firepower 2140    7.4(1)     Firewall`;
 
-function Overlay({step}) {
+function Overlay({progress}) {
+    const p = progress || {};
+    const phase = p.phase || "psirt";
+    const psirtState  = phase === "psirt" ? "active" : "done";
+    const analyseState = phase === "analysing" ? "active" : (phase === "psirt" ? "pending" : "done");
+
+    const cursor = (
+        <span style={{display:"inline-block",width:7,height:14,background:C.amber,marginLeft:7,verticalAlign:"middle",animation:"blink 1.05s step-end infinite"}}/>
+    );
+
+    const Line = ({label, value, state}) => (
+        <div style={{display:"flex",alignItems:"center",gap:8,fontFamily:mono,fontSize:13,lineHeight:1.5,color:state==="pending"?C.muted:C.text,marginBottom:9,opacity:state==="pending"?.4:1,transition:"opacity .3s"}}>
+            <span style={{color:C.amber,flexShrink:0}}>›</span>
+            <span>{label}{value?<span style={{color:C.muted}}> · {value}</span>:null}</span>
+            {state==="done"&&<span style={{color:C.green,marginLeft:"auto",flexShrink:0}}>✓</span>}
+            {state==="active"&&cursor}
+        </div>
+    );
+
+    const psirtValue = psirtState === "active"
+        ? (p.platforms != null ? `${p.platforms} platforms` : null)
+        : (p.advisories != null ? `${p.advisories} advisories` : (p.platforms != null ? `${p.platforms} platforms` : null));
+
     return (
           <div style={{position:"fixed",inset:0,background:"rgba(247,245,240,0.92)",backdropFilter:"blur(8px)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center"}}>
-      <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:12,padding:"36px 44px",width:460,boxShadow:`0 8px 40px ${C.shadow}`}}>
-        <div style={{fontFamily:mono,fontSize:11,color:C.amber,letterSpacing:"0.12em",textTransform:"uppercase",marginBottom:18}}>// analysing fabric</div>
-{STEPS.map((s,i)=>{
-            const done=i<step,active=i===step;
-            return (
-                          <div key={i} style={{display:"flex",alignItems:"center",gap:11,marginBottom:11,opacity:i>step?.3:1,transition:"opacity .3s"}}>
-                         <div style={{width:19,height:19,borderRadius:"50%",background:done?C.green:active?C.amber:C.border,display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,color:done||active?"#FFF":C.muted,flexShrink:0,transition:"all .3s"}}>
-           {done?"✓":active?"●":""}
-</div>
-              <span style={{fontFamily:mono,fontSize:13,color:done?C.muted:active?C.text:C.muted}}>{s.l}{active?"...":""}</span>
-{done&&<span style={{fontFamily:mono,fontSize:11,color:C.green,marginLeft:"auto"}}>done</span>}
-  </div>
-          );
-})}
-        <div style={{background:C.faint,borderRadius:4,height:3,marginTop:14,overflow:"hidden"}}>
-          <div style={{height:"100%",background:C.amber,width:`${(step/STEPS.length)*100}%`,transition:"width .5s",borderRadius:4}}/>
+      <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:12,padding:"30px 34px",width:480,boxShadow:`0 8px 40px ${C.shadow}`}}>
+        <div style={{fontFamily:mono,fontSize:11,color:C.amber,letterSpacing:"0.12em",textTransform:"uppercase",marginBottom:16}}>// analysing fabric</div>
+        <div style={{background:C.hi,border:`1px solid ${C.border}`,borderRadius:8,padding:"16px 18px"}}>
+          <div style={{fontFamily:mono,fontSize:12,color:C.muted,marginBottom:13}}>
+            <span style={{color:C.green}}>netwrkr@fabric</span>:<span style={{color:C.blue}}>~</span> $ analyse
           </div>
-        <div style={{fontFamily:mono,fontSize:11,color:C.muted,marginTop:7,textAlign:"right"}}>{Math.round((step/STEPS.length)*100)}% complete</div>
-          </div>
+          <Line label="parsed inventory" value={p.devices != null ? `${p.devices} devices · ${p.groups} platform groups` : null} state="done"/>
+          <Line label="querying Cisco PSIRT" value={psirtValue} state={psirtState}/>
+          <Line label="running fabric analysis" value={null} state={analyseState}/>
+        </div>
+      </div>
           </div>
   );
 }
@@ -693,7 +700,7 @@ function Analyse({go}) {
     const [ctx,setCtx]                   = useState("");
     const [parsing,setParsing]           = useState(false);
     const [devices,setDevices]           = useState([]);
-    const [step,setStep]                 = useState(0);
+    const [progress,setProgress]         = useState(null);
     const [results,setResults]           = useState(null);
     const [advisoryMap,setAdvisoryMap]   = useState({});
     const [psirtContext,setPsirtContext] = useState(null); // ← threaded to KellyPanel
@@ -789,17 +796,24 @@ function Analyse({go}) {
         setAnalysisError(null);
         posthog.capture('analysis_run', { device_count: devices.length, preflight_status: missingVersions > 0 ? 'has_missing' : 'clean' });
         setScreen("analysing");
-        setStep(0);
-        let s = 0;
-        const timer = setInterval(()=>{ if(s<STEPS.length-1){s++;setStep(s);} },900);
+
+        const groups = devices.length;
+        const totalDevices = devices.reduce((sum, d) => sum + (d.count || 1), 0);
+        const platforms = new Set(
+                devices.filter(d => d.ver && d.ver.trim() && d.ver !== "not provided").map(d => `${d.name}__${d.ver}`)
+        ).size;
+        setProgress({ phase: "psirt", devices: totalDevices, groups, platforms, advisories: null });
 
         const advMap = await fetchAdvisoriesForDevices(devices);
         setAdvisoryMap(advMap);
+        const advisoryCount = Object.values(advMap).reduce((n, r) => n + ((r && Array.isArray(r.advisories)) ? r.advisories.length : 0), 0);
 
         // Build psirtContext string from raw advisory results — threaded to KellyPanel
         const devicesWithVersions = devices.filter(d => d.ver && d.ver.trim() && d.ver !== "not provided");
         const builtPsirtContext = buildPsirtContext(advMap, devicesWithVersions);
         setPsirtContext(builtPsirtContext);
+
+        setProgress(prev => ({ ...(prev || {}), phase: "analysing", advisories: advisoryCount }));
 
         try {
                 const dedupedDevices = devices.map(d =>
@@ -809,14 +823,13 @@ function Analyse({go}) {
                 const parsed = await res.json();
                 if (parsed.error) throw new Error(parsed.message||parsed.error);
                 incCount();
-                clearInterval(timer);
-                setStep(STEPS.length);
                 setResults(parsed);
                 setScreen("results");
+                setProgress(null);
                 if (getCount()===3&&!isRegistered()) setShowNudge(true);
         } catch(e) {
-                clearInterval(timer);
                 setResults(null);
+                setProgress(null);
                 setAnalysisError(e.message || "Analysis failed — try again, or contact support if this keeps happening.");
                 setScreen("review");
                 console.error("Analysis error:",e);
@@ -826,7 +839,7 @@ function Analyse({go}) {
 
   const reset = () => {
         setScreen("paste"); setRawInput(""); setDevices([]); setCtx(""); setResults(null);
-        setStep(0); setShowNudge(false); setAdvisoryMap({}); setReviewFilter("all");
+        setProgress(null); setShowNudge(false); setAdvisoryMap({}); setReviewFilter("all");
         setPsirtContext(null); setExtractError(null); setAnalysisError(null);
   };
 
@@ -834,7 +847,7 @@ function Analyse({go}) {
 
   return (
         <div style={{maxWidth:1100,margin:"0 auto",padding:"34px 36px"}}>
-{screen==="analysing"&&<Overlay step={step}/>}
+{screen==="analysing"&&<Overlay progress={progress}/>}
 {showGate&&<SignupGate onComplete={()=>go("signup")} onDismiss={()=>{ setShowGate(false); runAnalysis(); }}/>}
 
 {screen==="paste"&&(
@@ -1047,6 +1060,7 @@ export default function AnalysisApp() {
                                               @keyframes fadeUp{from{opacity:0;transform:translateY(11px);}to{opacity:1;transform:translateY(0);}}
                                                       @keyframes spin{to{transform:rotate(360deg);}}
                                                               @keyframes pulse{0%,100%{opacity:1;}50%{opacity:.3;}}
+                                                              @keyframes blink{0%,49%{opacity:1;}50%,100%{opacity:0;}}
                                                                     `}</style>
       <div style={{position:"relative",zIndex:1,display:"flex",flexDirection:"column",minHeight:"100vh"}}>
         <Nav go={go} authed={!!session}/>
