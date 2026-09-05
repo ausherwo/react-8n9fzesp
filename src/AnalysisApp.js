@@ -1,5 +1,5 @@
 // AnalysisApp.js
-// v3.4 — fix: psirtContext threaded to KellyPanel; system prompt overrides removed so buildKellyPrompt runs correctly
+// v3.5 — fix: export_report() now generates a downloadable report; gate create_account() now navigates to signup
 
 import { useState, useRef } from "react";
 import { useAuth } from './Auth';
@@ -108,6 +108,100 @@ function buildPsirtContext(advMap, devices) {
     const queried = devices.filter(d => advMap[`${d.name}__${d.ver}`]?.verified).length;
     lines.push(`SUMMARY: ${totalAdvisories} total advisories across ${queried} devices queried`);
     return lines.join("\n");
+}
+
+function buildReportText(data) {
+    const d = data || {};
+    const L = [];
+    const rule = () => L.push("=".repeat(60));
+    const fa = d.fabricAnalysis || {};
+    const pa = d.priorityAssessment || {};
+    const intel = d.netwrkrIntel || {};
+    const devices = d.devices || [];
+
+    L.push("netwrkr.ai — Fabric Analysis Report");
+    L.push("Generated: " + new Date().toISOString().replace("T"," ").slice(0,19) + " UTC");
+    rule();
+    L.push("");
+    L.push("FABRIC RISK: " + (fa.risk || "—"));
+    L.push("Devices analysed: " + devices.length);
+    const verified = (intel.items || []).filter(i => i.verified);
+    if (verified.length) L.push("Cisco-verified advisories: " + verified.length);
+    L.push("");
+
+    if ((pa.items || []).length) {
+        L.push("PRIORITY ASSESSMENT");
+        rule();
+        pa.items.forEach(p => {
+            L.push(`[${p.priority || "P?"}] ${p.title || ""}`);
+            if (p.reason) L.push("      " + p.reason);
+            if ((p.devices || []).length) L.push("      Devices: " + p.devices.join(", "));
+            L.push("");
+        });
+    }
+
+    if (verified.length) {
+        L.push("CISCO-VERIFIED ADVISORIES (live PSIRT)");
+        rule();
+        verified.forEach(it => {
+            L.push(`${it.id || ""} [${it.sev || "—"}] ${it.title || ""}`);
+            if (it.platform || it.version) L.push("      " + [it.platform, it.version].filter(Boolean).join(" · "));
+            if (it.detail) L.push("      " + it.detail);
+            L.push("");
+        });
+    }
+
+    L.push("FABRIC ANALYSIS");
+    rule();
+    L.push("Consistent: " + (fa.consistent === false ? "NO" : fa.consistent === true ? "yes" : "—"));
+    (fa.mismatches || []).forEach(m => L.push("  • MISMATCH: " + m));
+    (fa.missingVersions || []).forEach(m => L.push("  • MISSING VERSION: " + m));
+    (fa.findings || []).forEach(f => L.push("  • " + f));
+    L.push("");
+
+    const unverified = (intel.items || []).filter(i => !i.verified);
+    if (unverified.length) {
+        L.push("NETWRKR INTEL (unverified — verify before acting)");
+        rule();
+        unverified.forEach(it => {
+            L.push(`[${it.sev || "—"}] ${it.title || ""}`);
+            if (it.platform || it.version) L.push("      " + [it.platform, it.version].filter(Boolean).join(" · "));
+            if (it.detail) L.push("      " + it.detail);
+            L.push("");
+        });
+    }
+
+    if (devices.length) {
+        L.push("DEVICE BREAKDOWN");
+        rule();
+        devices.forEach(dev => {
+            L.push(`${dev.name || ""}  ${dev.ver || ""}  [${dev.role || ""}]  fabric:${dev.fabricRisk || "—"} intel:${dev.intelRisk || "—"}`);
+            if (dev.rec) L.push("      → " + dev.rec);
+        });
+        L.push("");
+    }
+
+    rule();
+    L.push("netwrkr.ai · Unverified intel is AI-generated and must be verified against Cisco PSIRT before action.");
+    return L.join("\n");
+}
+
+function exportReport(data) {
+    try {
+        const text = buildReportText(data);
+        const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `netwrkr-analysis-${new Date().toISOString().slice(0,10)}.txt`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (e) {
+        console.error("Export failed:", e);
+        alert("Export failed — please try again.");
+    }
 }
 
 function getCount() { try { return parseInt(localStorage.getItem("nw_count")||"0",10); } catch { return 0; } }
@@ -461,7 +555,7 @@ function Results({data, reset, go, showNudge, onDismissNudge, psirtContext}) {
   </div>
         <div style={{display:"flex",gap:8}}>
           <button onClick={reset} style={{background:"none",border:`1px solid ${C.border}`,color:C.dim,fontFamily:mono,fontSize:12,padding:"7px 13px",borderRadius:6,cursor:"pointer"}}>← new_analysis()</button>
-          <button style={{background:C.amber,border:"none",color:"#FFF",fontFamily:mono,fontSize:12,fontWeight:700,padding:"7px 13px",borderRadius:6,cursor:"pointer"}} onClick={()=>posthog.capture('export_clicked')}>export_report()</button>
+          <button style={{background:C.amber,border:"none",color:"#FFF",fontFamily:mono,fontSize:12,fontWeight:700,padding:"7px 13px",borderRadius:6,cursor:"pointer"}} onClick={()=>{ try{posthog.capture('export_clicked');}catch{} exportReport(data); }}>export_report()</button>
   </div>
   </div>
 
@@ -741,7 +835,7 @@ function Analyse({go}) {
   return (
         <div style={{maxWidth:1100,margin:"0 auto",padding:"34px 36px"}}>
 {screen==="analysing"&&<Overlay step={step}/>}
-{showGate&&<SignupGate onComplete={()=>runAnalysis()} onDismiss={()=>{ setShowGate(false); runAnalysis(); }}/>}
+{showGate&&<SignupGate onComplete={()=>go("signup")} onDismiss={()=>{ setShowGate(false); runAnalysis(); }}/>}
 
 {screen==="paste"&&(
           <div style={{display:"grid",gridTemplateColumns:"1fr 290px",gap:20,alignItems:"start"}}>
