@@ -35,7 +35,7 @@ module.exports = async function handler(req, res) {
         "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify({
-        model: "claude-haiku-4-5-20251001",
+        model: "claude-sonnet-5",
         max_tokens: 8000,
         system: [{ type: "text", cache_control: { type: "ephemeral" }, text: `You are a data extraction engine for a Cisco network analysis tool.
 Your only job is to extract network devices from text and return structured JSON.
