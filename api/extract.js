@@ -35,9 +35,9 @@ module.exports = async function handler(req, res) {
         "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify({
-        model: "claude-sonnet-5",
+        model: "claude-haiku-4-5-20251001",
         max_tokens: 8000,
-        system: `You are a data extraction engine for a Cisco network analysis tool.
+        system: [{ type: "text", cache_control: { type: "ephemeral" }, text: `You are a data extraction engine for a Cisco network analysis tool.
 Your only job is to extract network devices from text and return structured JSON.
 You never guess or infer software versions — only extract what is explicitly written.
 You return ONLY a valid JSON array with no markdown, no explanation, no preamble.
@@ -177,7 +177,7 @@ or "n9000-16.0(1j)". Extract ONLY the bare version — strip the leading "n9000-
 (or any "<image>-" prefix). So "n9000-16.0(1j)" → "16.0(1j)". This is required:
 downstream PSIRT queries need the bare version and will not match an image string.
 This is normalisation of an explicitly-present version, NOT guessing — the rule
-against inferring versions still applies.`,
+against inferring versions still applies.` }],
 
         messages: [{
           role: "user",
