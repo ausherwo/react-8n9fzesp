@@ -207,9 +207,14 @@ function getPlatformConfig(platformName) {
 }
 
 // ----
-// OAUTH TOKEN
+// OAUTH TOKEN (cached at module scope — reused across warm invocations)
 // ----
+let cachedToken = null;
+let cachedTokenExpiry = 0;
+
 async function getAccessToken() {
+    if (cachedToken && Date.now() < cachedTokenExpiry) return cachedToken;
+
     const clientId     = process.env.CISCO_CLIENT_ID;
     const clientSecret = process.env.CISCO_CLIENT_SECRET;
     if (!clientId || !clientSecret) throw new Error("CISCO_CLIENT_ID and CISCO_CLIENT_SECRET are required");
@@ -231,7 +236,10 @@ async function getAccessToken() {
   }
 
   const data = await response.json();
-    return data.access_token;
+    // Cache until 60s before the reported expiry (Cisco access tokens last ~3600s).
+    cachedToken = data.access_token;
+    cachedTokenExpiry = Date.now() + Math.max(((data.expires_in || 3600) - 60) * 1000, 0);
+    return cachedToken;
 }
 
 // ----
@@ -352,7 +360,7 @@ async function runFabricAnalysis(devices, advisorySummary, aciFabric, ctx, advMa
                 // (confirmed via the v3.6 stop_reason guard). Each device emits a written
                 // "rec" plus priority/intel prose, so scale more generously.
                 max_tokens: Math.min(16000, 6000 + devices.length * 400),
-                system:     buildAnalysisSystemPrompt(aciFabric),
+                system:     [{ type: "text", text: buildAnalysisSystemPrompt(aciFabric), cache_control: { type: "ephemeral" } }],
                 messages:   [{ role: "user", content: userContent }],
         }),
   });
