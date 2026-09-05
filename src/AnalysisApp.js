@@ -1,7 +1,7 @@
 // AnalysisApp.js
-// v3.6 — analysing overlay replaced with live terminal log driven by real phases (PSIRT query → fabric analysis); fixes 83% stall
+// v3.7 — analysing overlay is now a dark terminal window: line-by-line output, streamed per-platform PSIRT ticks, elapsed timer
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useAuth } from './Auth';
 import posthog from 'posthog-js';
 
@@ -227,37 +227,75 @@ FTD-02     Firepower 2140    7.4(1)     Firewall`;
 function Overlay({progress}) {
     const p = progress || {};
     const phase = p.phase || "psirt";
-    const psirtState  = phase === "psirt" ? "active" : "done";
-    const analyseState = phase === "analysing" ? "active" : (phase === "psirt" ? "pending" : "done");
+    const ticks = p.ticks || [];
+    const analysing = phase === "analysing";
 
-    const cursor = (
-        <span style={{display:"inline-block",width:7,height:14,background:C.amber,marginLeft:7,verticalAlign:"middle",animation:"blink 1.05s step-end infinite"}}/>
+    const [elapsed, setElapsed] = useState(0);
+    useEffect(() => {
+        if (!analysing) { setElapsed(0); return; }
+        const t0 = Date.now();
+        const id = setInterval(() => setElapsed(Math.floor((Date.now() - t0) / 1000)), 1000);
+        return () => clearInterval(id);
+    }, [analysing]);
+    const mmss = `${Math.floor(elapsed/60)}:${String(elapsed%60).padStart(2,"0")}`;
+
+    const T = {
+        bg:"#0C0E12", bar:"#171A20", border:"#23262E",
+        host:"#3DD68C", path:"#56B6C2", cmd:"#E6E8EC", prefix:"#E0A82E",
+        label:"#C6CAD2", dim:"#6B7280", ok:"#3DD68C", tick:"#56B6C2",
+        cursor:"#E0A82E", err:"#E06C55", title:"#7A8290",
+    };
+    const dot = (c) => <span style={{width:11,height:11,borderRadius:"50%",background:c,display:"inline-block"}}/>;
+    const anim = (i) => ({ animation:"termline .22s ease both", animationDelay:`${Math.min(i,8)*0.05}s` });
+    const animNow = { animation:"termline .2s ease both" };
+    const blinkCursor = (h) => <span style={{display:"inline-block",width:8,height:h,background:T.cursor,animation:"blink 1.05s step-end infinite"}}/>;
+
+    const rows = [];
+    rows.push(
+        <div key="cmd" style={{...anim(0), marginBottom:10}}>
+            <span style={{color:T.host}}>netwrkr@fabric</span><span style={{color:T.dim}}>:</span><span style={{color:T.path}}>~</span><span style={{color:T.dim}}> $ </span><span style={{color:T.cmd}}>analyse</span>
+        </div>
     );
-
-    const Line = ({label, value, state}) => (
-        <div style={{display:"flex",alignItems:"center",gap:8,fontFamily:mono,fontSize:13,lineHeight:1.5,color:state==="pending"?C.muted:C.text,marginBottom:9,opacity:state==="pending"?.4:1,transition:"opacity .3s"}}>
-            <span style={{color:C.amber,flexShrink:0}}>›</span>
-            <span>{label}{value?<span style={{color:C.muted}}> · {value}</span>:null}</span>
-            {state==="done"&&<span style={{color:C.green,marginLeft:"auto",flexShrink:0}}>✓</span>}
-            {state==="active"&&cursor}
+    rows.push(
+        <div key="parsed" style={{...anim(1), display:"flex", alignItems:"center", gap:8, marginBottom:6}}>
+            <span style={{color:T.prefix,flexShrink:0}}>›</span>
+            <span style={{color:T.label}}>parsed inventory{p.devices!=null?<span style={{color:T.dim}}> · {p.devices} devices · {p.groups} platform groups</span>:null}</span>
+            <span style={{color:T.ok,marginLeft:"auto",flexShrink:0}}>✓</span>
+        </div>
+    );
+    rows.push(
+        <div key="psirt" style={{...anim(2), display:"flex", alignItems:"center", gap:8, marginBottom:6}}>
+            <span style={{color:T.prefix,flexShrink:0}}>›</span>
+            <span style={{color:T.label}}>querying Cisco PSIRT{p.platforms!=null?<span style={{color:T.dim}}> · {p.platforms} platforms</span>:null}</span>
+            {analysing
+                ? <span style={{color:T.ok,marginLeft:"auto",flexShrink:0}}>✓</span>
+                : <span style={{marginLeft:"auto",flexShrink:0}}>{blinkCursor(14)}</span>}
+        </div>
+    );
+    ticks.forEach((t,i)=> rows.push(
+        <div key={`tick-${t.name}-${t.ver}-${i}`} style={{...animNow, display:"flex", gap:8, paddingLeft:22, marginBottom:4, fontSize:12}}>
+            <span style={{color:t.error?T.err:T.ok,flexShrink:0}}>{t.error?"✕":"✓"}</span>
+            <span style={{color:T.tick}}>{t.name} <span style={{color:T.dim}}>{t.ver}</span>{t.error?<span style={{color:T.err}}> · lookup failed</span>:t.count>0?<span style={{color:T.dim}}> · {t.count} adv</span>:<span style={{color:T.dim}}> · clean</span>}</span>
+        </div>
+    ));
+    rows.push(
+        <div key="run" style={{...animNow, display:"flex", alignItems:"center", gap:8, marginTop:8, opacity:analysing?1:.4}}>
+            <span style={{color:T.prefix,flexShrink:0}}>›</span>
+            <span style={{color:analysing?T.label:T.dim}}>running fabric analysis</span>
+            {analysing&&<span style={{color:T.dim}}>{mmss}</span>}
+            {analysing&&blinkCursor(15)}
         </div>
     );
 
-    const psirtValue = psirtState === "active"
-        ? (p.platforms != null ? `${p.platforms} platforms` : null)
-        : (p.advisories != null ? `${p.advisories} advisories` : (p.platforms != null ? `${p.platforms} platforms` : null));
-
     return (
-          <div style={{position:"fixed",inset:0,background:"rgba(247,245,240,0.92)",backdropFilter:"blur(8px)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center"}}>
-      <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:12,padding:"30px 34px",width:480,boxShadow:`0 8px 40px ${C.shadow}`}}>
-        <div style={{fontFamily:mono,fontSize:11,color:C.amber,letterSpacing:"0.12em",textTransform:"uppercase",marginBottom:16}}>// analysing fabric</div>
-        <div style={{background:C.hi,border:`1px solid ${C.border}`,borderRadius:8,padding:"16px 18px"}}>
-          <div style={{fontFamily:mono,fontSize:12,color:C.muted,marginBottom:13}}>
-            <span style={{color:C.green}}>netwrkr@fabric</span>:<span style={{color:C.blue}}>~</span> $ analyse
-          </div>
-          <Line label="parsed inventory" value={p.devices != null ? `${p.devices} devices · ${p.groups} platform groups` : null} state="done"/>
-          <Line label="querying Cisco PSIRT" value={psirtValue} state={psirtState}/>
-          <Line label="running fabric analysis" value={null} state={analyseState}/>
+          <div style={{position:"fixed",inset:0,background:"rgba(8,9,12,0.55)",backdropFilter:"blur(4px)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center"}}>
+      <div style={{width:520,maxWidth:"92vw",background:T.bg,border:`1px solid ${T.border}`,borderRadius:11,boxShadow:"0 24px 70px rgba(0,0,0,0.5)",overflow:"hidden",fontFamily:mono}}>
+        <div style={{display:"flex",alignItems:"center",gap:7,padding:"11px 14px",background:T.bar,borderBottom:`1px solid ${T.border}`}}>
+          {dot("#FF5F56")}{dot("#FFBD2E")}{dot("#27C93F")}
+          <span style={{marginLeft:8,fontSize:11,color:T.title,letterSpacing:"0.04em"}}>netwrkr — analysing fabric</span>
+        </div>
+        <div style={{padding:"18px 20px",fontSize:13,lineHeight:1.65,color:T.label}}>
+          {rows}
         </div>
       </div>
           </div>
@@ -758,7 +796,7 @@ function Analyse({go}) {
     const missingVersions = devices.filter(d=>d.verMissing).length;
     const canAnalyse = devices.length > 0;
 
-  const fetchAdvisoriesForDevices = async (devList) => {
+  const fetchAdvisoriesForDevices = async (devList, onResult) => {
         const aciFabric = isAciFabric(devList);
         const resultMap = {};
         const seen = new Set();
@@ -775,7 +813,8 @@ function Analyse({go}) {
                           const res = await fetch("/api/advisories", { method:"POST", headers:authHeaders(), body:JSON.stringify({platform:d.name,version:d.ver,isAciSwitch:aciSwitch}) });
                           const data = await res.json();
                           resultMap[`${d.name}__${d.ver}`] = data;
-                } catch(e) { console.error("Advisory fetch failed for",d.name,e); }
+                          if (onResult) onResult({ name: d.name, ver: d.ver, count: Array.isArray(data.advisories) ? data.advisories.length : 0 });
+                } catch(e) { console.error("Advisory fetch failed for",d.name,e); if (onResult) onResult({ name: d.name, ver: d.ver, count: 0, error: true }); }
         }));
         return resultMap;
   };
@@ -802,9 +841,9 @@ function Analyse({go}) {
         const platforms = new Set(
                 devices.filter(d => d.ver && d.ver.trim() && d.ver !== "not provided").map(d => `${d.name}__${d.ver}`)
         ).size;
-        setProgress({ phase: "psirt", devices: totalDevices, groups, platforms, advisories: null });
+        setProgress({ phase: "psirt", devices: totalDevices, groups, platforms, advisories: null, ticks: [] });
 
-        const advMap = await fetchAdvisoriesForDevices(devices);
+        const advMap = await fetchAdvisoriesForDevices(devices, (t) => setProgress(prev => prev ? ({ ...prev, ticks: [...(prev.ticks || []), t] }) : prev));
         setAdvisoryMap(advMap);
         const advisoryCount = Object.values(advMap).reduce((n, r) => n + ((r && Array.isArray(r.advisories)) ? r.advisories.length : 0), 0);
 
@@ -1061,6 +1100,7 @@ export default function AnalysisApp() {
                                                       @keyframes spin{to{transform:rotate(360deg);}}
                                                               @keyframes pulse{0%,100%{opacity:1;}50%{opacity:.3;}}
                                                               @keyframes blink{0%,49%{opacity:1;}50%,100%{opacity:0;}}
+                                                              @keyframes termline{from{opacity:0;transform:translateY(3px);}to{opacity:1;transform:translateY(0);}}
                                                                     `}</style>
       <div style={{position:"relative",zIndex:1,display:"flex",flexDirection:"column",minHeight:"100vh"}}>
         <Nav go={go} authed={!!session}/>
