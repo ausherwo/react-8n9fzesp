@@ -1,5 +1,5 @@
 // AnalysisApp.js
-// v3.8 — analysing phase gets a live spinner + rotating activity line (keeps the honest elapsed timer) so the long analysis call doesn't feel flat
+// v3.9 — Kelly streams: briefing and chat replies now render token-by-token as they arrive from /api/chat, with a live cursor
 
 import { useState, useRef, useEffect } from "react";
 import { useAuth } from './Auth';
@@ -380,6 +380,7 @@ function KellyPanel({data, go, psirtContext}) {
     const [loading, setLoading] = useState(false);
     const [briefing, setBriefing] = useState(null);
     const [briefingLoading, setBriefingLoading] = useState(true);
+    const [streaming, setStreaming] = useState(false);
 
   const fabricRisk = data.fabricAnalysis?.risk || "LOW";
     const p1 = data.priorityAssessment?.items?.[0];
@@ -395,7 +396,7 @@ function KellyPanel({data, go, psirtContext}) {
         netwrkrIntel:       data.netwrkrIntel,
   });
 
-  useState(() => {
+  useEffect(() => {
         const generateBriefing = async () => {
                 try {
                           const cscIds = verifiedItems.map(i=>i.id).filter(Boolean).join(", ");
@@ -407,21 +408,13 @@ function KellyPanel({data, go, psirtContext}) {
                             ? `A verified HIGH severity Cisco advisory is present — use strong, direct language about the risk.`
                               : `The risk here is version drift, a best-practice violation not a verified outage cause. Use measured language only: "bad practice", "should be resolved before the next change window". Do not say: critical, severe, split-brain, blackholing, cascades, showstopper, or immediately (unless a verified CVE requires it).`;
 
-                  const res = await fetch("/api/chat", {
-                              method: "POST",
-                              headers: {"Content-Type":"application/json"},
-                              body: JSON.stringify({
-                                            // No 'system' override — let buildKellyPrompt() run with psirtContext injected
-                                                               fabricContext: fabricContextStr,
-                                            psirtContext:  psirtContext || null,
-                                            messages: [{
-                                                            role: "user",
-                                                            content: `Give me a direct engineer's briefing on this fabric: ${summary}. Lead with the most urgent issue. Max 3 sentences, then a single concrete next action on a new line prefixed with →. ${languageInstruction}`,
-                                            }],
-                              }),
-                  });
-                          const d = await res.json();
-                          setBriefing(d.text || d.content || "Analysis complete. Ask me anything about your fabric.");
+                  await streamChat(
+                            { fabricContext: fabricContextStr, psirtContext: psirtContext || null, messages: [{
+                                            role: "user",
+                                            content: `Give me a direct engineer's briefing on this fabric: ${summary}. Lead with the most urgent issue. Max 3 sentences, then a single concrete next action on a new line prefixed with →. ${languageInstruction}`,
+                            }] },
+                            (acc) => { setBriefingLoading(false); setBriefing(acc); }
+                  );
                 } catch {
                           setBriefing("Analysis complete. Ask me anything about your fabric.");
                 } finally {
@@ -431,6 +424,36 @@ function KellyPanel({data, go, psirtContext}) {
         generateBriefing();
   }, []);
 
+  // Reads /api/chat as a plain-text token stream. Errors come back as JSON before the
+  // stream starts (response not ok), so we surface those; otherwise we append tokens live.
+  const streamChat = async (body, onText) => {
+        const res = await fetch("/api/chat", {
+                method: "POST",
+                headers: {"Content-Type":"application/json"},
+                body: JSON.stringify(body),
+        });
+        if (!res.ok) {
+                let msg = "Something went wrong. Please try again.";
+                try { const e = await res.json(); if (e.message) msg = e.message; } catch {}
+                throw new Error(msg);
+        }
+        if (!res.body || !res.body.getReader) {           // fallback if streaming unsupported
+                const t = await res.text();
+                onText(t);
+                return t;
+        }
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let acc = "";
+        while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                const chunk = decoder.decode(value, { stream: true });
+                if (chunk) { acc += chunk; onText(acc); }
+        }
+        return acc;
+  };
+
   const sendMessage = async (text) => {
         if (!text.trim()) return;
         const userMsg = {role:"user", content:text};
@@ -439,22 +462,15 @@ function KellyPanel({data, go, psirtContext}) {
         setInput("");
         setLoading(true);
         try {
-                const res = await fetch("/api/chat", {
-                          method: "POST",
-                          headers: {"Content-Type":"application/json"},
-                          body: JSON.stringify({
-                                      // No 'system' override — buildKellyPrompt() in chat.js injects both contexts correctly
-                                                         fabricContext: fabricContextStr,
-                                      psirtContext:  psirtContext || null,
-                                      messages: newMessages,
-                          }),
-                });
-                const d = await res.json();
-                setMessages([...newMessages, {role:"assistant", content: d.text || d.content || "I couldn't process that request."}]);
-        } catch {
-                setMessages([...newMessages, {role:"assistant", content:"Something went wrong. Please try again."}]);
+                await streamChat(
+                        { fabricContext: fabricContextStr, psirtContext: psirtContext || null, messages: newMessages },
+                        (acc) => { setLoading(false); setStreaming(true); setMessages([...newMessages, {role:"assistant", content: acc}]); }
+                );
+        } catch (e) {
+                setMessages([...newMessages, {role:"assistant", content: e.message || "Something went wrong. Please try again."}]);
         } finally {
                 setLoading(false);
+                setStreaming(false);
         }
   };
 
@@ -519,7 +535,7 @@ function KellyPanel({data, go, psirtContext}) {
                                 padding:"10px 13px",fontSize:13,lineHeight:1.7,
                                 color:C.text,maxWidth:"85%"
               }}>
-{m.role==="user" ? m.content : renderMarkdown(m.content)}
+{m.role==="user" ? m.content : <>{renderMarkdown(m.content)}{streaming && i===messages.length-1 && <span style={{display:"inline-block",width:7,height:13,background:C.amber,marginLeft:3,verticalAlign:"middle",animation:"blink 1.05s step-end infinite"}}/>}</>}
 </div>
   </div>
           ))}
