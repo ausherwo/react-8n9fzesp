@@ -1,7 +1,7 @@
 // api/chat.js
 // Vercel serverless function — Kelly chat conversation turns
 // Public endpoint — no auth required (free tier, unauthenticated users)
-// v1.6 — PSIRT timestamp awareness: Kelly cites check time and device count when asked
+// v1.7 — streams token deltas to the client (Kelly replies + briefing appear as they generate); errors still returned as JSON before the stream starts
 
 module.exports = async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -37,25 +37,55 @@ module.exports = async function handler(req, res) {
         max_tokens: maxTokens || 1500,
         system: [{ type: "text", text: systemPrompt, cache_control: { type: "ephemeral" } }],
         messages: messages,
+        stream: true,
       }),
     });
 
-    const data = await response.json();
-    if (data.error) {
-      console.error("Anthropic error:", data.error);
-      return res.status(502).json({ error: "upstream_error", message: data.error.message });
+    // Errors arrive before the stream starts — return them as JSON so the client can read them.
+    if (!response.ok) {
+      let message = `Anthropic API error (${response.status})`;
+      try { const errJson = await response.json(); message = errJson.error?.message || message; } catch {}
+      console.error("chat.js upstream error:", message);
+      return res.status(502).json({ error: "upstream_error", message });
     }
 
-    const textBlock = (data.content || []).find(b => b.type === "text");
-    if (!textBlock || typeof textBlock.text !== "string") {
-      console.error("chat.js: no text block in response. content:", JSON.stringify(data.content));
-      return res.status(502).json({ error: "upstream_error", message: "Model returned no text content" });
+    // Stream the model's text deltas straight to the client as plain text.
+    res.setHeader("Content-Type", "text/plain; charset=utf-8");
+    res.setHeader("Cache-Control", "no-cache, no-transform");
+    res.setHeader("X-Accel-Buffering", "no");
+    if (typeof res.flushHeaders === "function") res.flushHeaders();
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() || "";
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed.startsWith("data:")) continue;
+        const payload = trimmed.slice(5).trim();
+        if (!payload || payload === "[DONE]") continue;
+        try {
+          const evt = JSON.parse(payload);
+          if (evt.type === "content_block_delta" && evt.delta?.type === "text_delta" && evt.delta.text) {
+            res.write(evt.delta.text);
+            if (typeof res.flush === "function") res.flush();
+          } else if (evt.type === "error") {
+            console.error("chat.js stream error event:", evt.error?.message);
+          }
+        } catch { /* ignore keepalive / non-JSON lines */ }
+      }
     }
-    const text = textBlock.text;
-    return res.status(200).json({ content: text, text });
+    return res.end();
 
   } catch (err) {
     console.error("chat.js error:", err.message);
+    if (res.headersSent) { try { return res.end(); } catch { return; } }
     return res.status(502).json({ error: "upstream_error", message: err.message });
   }
 };
