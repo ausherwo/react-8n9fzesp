@@ -1,5 +1,5 @@
 // App.js
-// App v3.11 — added /security page route
+// App v3.12 — /security in top nav + serious title on security page
 
 import { useState, useEffect, useRef } from "react";
 import AnalysisApp from "./AnalysisApp";
@@ -47,7 +47,10 @@ function HomeNav({ authed }) {
           </div>
           <span style={{fontFamily:mono,fontWeight:700,fontSize:15,color:C.text}}>netwrkr<span style={{color:C.amber}}>.ai</span></span>
         </div>
-        <div style={{display:"flex",alignItems:"center",gap:8}}>
+        <div style={{display:"flex",alignItems:"center",gap:isMobile?10:14}}>
+          <button onClick={()=>window.location.href="/security"} style={{background:"none",border:"none",color:C.dim,fontFamily:mono,fontSize:12,cursor:"pointer",padding:"7px 2px"}}>
+            Security
+          </button>
           {authed ? (
             <button onClick={()=>window.location.href="/app"} style={{background:C.amber,color:"#FFF",border:"none",borderRadius:6,fontFamily:mono,fontWeight:700,fontSize:12,padding:"7px 14px",cursor:"pointer"}}>
               dashboard →
