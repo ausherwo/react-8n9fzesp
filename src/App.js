@@ -1,5 +1,5 @@
 // App.js
-// App v3.10 — light theme, updated copy
+// App v3.11 — added /security page route
 
 import { useState, useEffect, useRef } from "react";
 import AnalysisApp from "./AnalysisApp";
@@ -9,6 +9,7 @@ import { ForgotPasswordPage, SetNewPasswordPage } from './PasswordReset';
 import { SettingsPage } from './SettingsPage';
 import { StrategyPage } from './StrategyPage';
 import { ModelPage } from './ModelPage';
+import { SecurityPage } from './SecurityPage';
 
 const C = {
   bg:      "#F7F5F0",
@@ -200,6 +201,7 @@ function Router() {
   if (path === '/analyse')                return <AnalysisApp />;
   if (path === '/app')                    return <AuthGuard><RinconChatPrototype /></AuthGuard>;
   if (path === '/settings')               return <AuthGuard><SettingsPage /></AuthGuard>;
+  if (path === '/security')               return <SecurityPage />;
   if (path === '/strategy')               return <StrategyPage />;
   if (path === '/model')                  return <ModelPage />;
   if (path === '/history')                return <AuthGuard><HistoryStub /></AuthGuard>;
