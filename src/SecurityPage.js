@@ -1,5 +1,5 @@
 // SecurityPage.js
-// v1.0 — Cloudbreak security & data-handling page. Route: /security
+// v1.1 — serious operational title; top-nav link added in App.js. Cloudbreak security & data-handling page. Route: /security
 // NOTE: the "// how your data is processed" section contains ONE placeholder that
 // must be replaced with the real AI-provider retention statement before launch.
 // It is styled as a dashed "CONFIRM BEFORE LAUNCH" block so it cannot ship silently.
@@ -185,11 +185,14 @@ export function SecurityPage() {
       <div style={{maxWidth:820,margin:"0 auto",padding:isMobile?"36px 20px 24px":"64px 24px 40px",animation:"fadeUp .4s ease"}}>
 
         {/* Hero */}
-        <div style={{fontFamily:mono,fontSize:11,color:C.amber,letterSpacing:"0.12em",textTransform:"uppercase",marginBottom:14}}>// security &amp; your data</div>
-        <h1 style={{fontSize:isMobile?26:32,fontWeight:300,letterSpacing:"-0.03em",lineHeight:1.25,color:C.text,marginBottom:18,maxWidth:640}}>
-          Built to run on production fabric data — without the data leaving your control.
+        <div style={{fontFamily:mono,fontSize:11,color:C.amber,letterSpacing:"0.12em",textTransform:"uppercase",marginBottom:14}}>// how netwrkr handles your data</div>
+        <h1 style={{fontSize:isMobile?30:40,fontWeight:600,letterSpacing:"-0.03em",lineHeight:1.15,color:C.text,marginBottom:16,fontFamily:mono}}>
+          Security &amp; Data Handling
         </h1>
-        <P style={{fontSize:16.5,color:C.dim,maxWidth:640,marginBottom:40}}>
+        <p style={{fontFamily:sans,fontSize:isMobile?17:19,fontWeight:600,color:C.text,lineHeight:1.4,marginBottom:16,maxWidth:640,letterSpacing:"-0.01em"}}>
+          Built to run on production fabric data — without the data leaving your control.
+        </p>
+        <P style={{fontSize:16,color:C.dim,maxWidth:640,marginBottom:40}}>
           Pasting real fabric details into an unknown tool is a fair thing to be cautious about. So here is exactly
           what Cloudbreak needs, what it doesn&rsquo;t, and what happens to what you paste.
         </P>
