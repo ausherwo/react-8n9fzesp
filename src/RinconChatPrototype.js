@@ -5,46 +5,12 @@ import { useState, useEffect, useRef } from "react";
 import { useAuth } from './Auth';
 import { supabase } from './supabaseClient';
 import UserBadge from './UserBadge';
-
-const C = {
-  bg:      "#080806",
-  surface: "#0E0D0A",
-  hi:      "#141310",
-  hi2:     "#1A1915",
-  border:  "#272318",
-  amber:   "#D4A000",
-  amberB:  "#FFCA28",
-  amberG:  "#D4A00015",
-  green:   "#22C55E",
-  greenG:  "#22C55E15",
-  red:     "#EF4444",
-  orange:  "#F97316",
-  yellow:  "#EAB308",
-  text:    "#EDE8DC",
-  dim:     "#9C9278",
-  muted:   "#524B3A",
-  faint:   "#1A1810",
-};
-
-const mono = "JetBrains Mono, Fira Code, monospace";
-const sans = "'DM Sans', system-ui, sans-serif";
-
-function timeAgo(isoString) {
-  if (!isoString) return "";
-  const diff  = Date.now() - new Date(isoString).getTime();
-  const mins  = Math.floor(diff / 60000);
-  const hours = Math.floor(diff / 3600000);
-  const days  = Math.floor(diff / 86400000);
-  if (mins  < 1)  return "just now";
-  if (mins  < 60) return `${mins}m ago`;
-  if (hours < 24) return `${hours}h ago`;
-  return `${days}d ago`;
-}
-
-function getInitials(name, email) {
-  if (name) return name.trim().split(/\s+/).map(w => w[0].toUpperCase()).slice(0, 2).join('');
-  return email?.[0]?.toUpperCase() || '?';
-}
+import {
+  C, mono, sans, ACCEPTED_TYPES, MAX_FILE_SIZE,
+  preflightCheck, tierLabel, tierColor, renderMarkdown, renderInline,
+  TypingDots, BotAvatar as RinconAvatar, UserAvatar, FileUploadCard,
+  MessageBubble, ConversationItem, SuggestionChips, DragOverlay, PSIRTProgress,
+} from './chat/ChatPrimitives';
 
 function getJwtClaims() {
   try {
@@ -55,9 +21,6 @@ function getJwtClaims() {
     return JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
   } catch { return {}; }
 }
-
-const ACCEPTED_TYPES = ['.txt', '.log', '.csv', '.conf', '.cfg', '.json', '.xlsx', '.xls'];
-const MAX_FILE_SIZE  = 5 * 1024 * 1024;
 
 // ─────────────────────────────────────────────
 // PSIRT RE-RUN DETECTION
@@ -71,82 +34,6 @@ function isPsirtRerunRequest(msg) {
   // Also catch "can you check the psirt data" without explicit re-run words
   const isDirectPsirtQuery = /\b(check|verify|query|look up|look at|see)\b.{0,20}psirt/.test(lower);
   return (hasPsirt && hasRerunIntent) || isDirectPsirtQuery;
-}
-
-function preflightCheck(text) {
-  const patterns = [
-    { re: /\b(?:password|passwd|secret|credential|api.?key)\s*[=:]\s*\S+/gi, label: "credential" },
-    { re: /\b(?:snmp.community|community.string)\s+\S+/gi, label: "SNMP community" },
-    { re: /\b(?:username|user)\s+\w+\s+(?:password|secret)\s+\S+/gi, label: "username/password" },
-  ];
-  const warnings = [];
-  for (const { re, label } of patterns) { if (re.test(text)) warnings.push(label); }
-  return warnings;
-}
-
-function tierLabel(tier) { return {1:"Controller",2:"Spine / Border Leaf",3:"Leaf",4:"Distribution / Firewall"}[tier] || "Unknown"; }
-function tierColor(tier) { return {1:C.amber,2:C.orange,3:C.green,4:C.dim}[tier] || C.muted; }
-
-// ─────────────────────────────────────────────
-// MARKDOWN RENDERER
-// ─────────────────────────────────────────────
-function renderMarkdown(text) {
-  if (!text) return null;
-  const lines = text.split('\n');
-  const elements = [];
-  let i = 0;
-  while (i < lines.length) {
-    const line = lines[i];
-    if (line.trim() === '') { elements.push(<div key={i} style={{ height: '0.5em' }} />); i++; continue; }
-    const numMatch = line.match(/^(\d+)\.\s+(.+)/);
-    if (numMatch) {
-      elements.push(<div key={i} style={{ display: 'flex', gap: 8, marginBottom: 4 }}><span style={{ fontFamily: mono, fontSize: 12, color: C.amber, flexShrink: 0, minWidth: 18 }}>{numMatch[1]}.</span><span>{renderInline(numMatch[2])}</span></div>);
-      i++; continue;
-    }
-    const bulletMatch = line.match(/^[-*]\s+(.+)/);
-    if (bulletMatch) {
-      elements.push(<div key={i} style={{ display: 'flex', gap: 8, marginBottom: 4 }}><span style={{ color: C.amber, flexShrink: 0 }}>→</span><span>{renderInline(bulletMatch[1])}</span></div>);
-      i++; continue;
-    }
-    elements.push(<div key={i} style={{ marginBottom: 2 }}>{renderInline(line)}</div>);
-    i++;
-  }
-  return elements;
-}
-
-function renderInline(text) {
-  const parts = text.split(/(\*\*[^*]+\*\*)/g);
-  return parts.map((part, j) => {
-    if (part.startsWith('**') && part.endsWith('**')) {
-      return <strong key={j} style={{ color: C.amberB, fontWeight: 600 }}>{part.slice(2, -2)}</strong>;
-    }
-    return <span key={j}>{part}</span>;
-  });
-}
-
-function TypingDots() {
-  return (
-    <div style={{ display:"flex", gap:5, alignItems:"center", padding:"4px 0" }}>
-      {[0,1,2].map(i => <div key={i} style={{ width:7, height:7, borderRadius:"50%", background:C.amber, opacity:0.5, animation:`dotPulse 1.2s ease-in-out ${i*0.18}s infinite` }} />)}
-    </div>
-  );
-}
-
-function RinconAvatar() {
-  return (
-    <div style={{ flexShrink:0, width:34, height:34, borderRadius:"50%", background:C.amberG, border:`1px solid ${C.amber}35`, display:"flex", alignItems:"center", justifyContent:"center" }}>
-      <span style={{ color:C.amber, fontSize:15 }}>◈</span>
-    </div>
-  );
-}
-
-function UserAvatar({ member }) {
-  const initials = member ? getInitials(member.name, member.email) : '?';
-  return (
-    <div style={{ flexShrink:0, width:34, height:34, borderRadius:"50%", background:"rgba(212,160,0,0.12)", border:`1px solid rgba(212,160,0,0.25)`, display:"flex", alignItems:"center", justifyContent:"center", fontFamily:mono, fontSize:11, fontWeight:700, color:C.amber }}>
-      {initials}
-    </div>
-  );
 }
 
 // ─────────────────────────────────────────────
@@ -196,100 +83,8 @@ function FabricContextBanner({ fabricFile, devices, onClear }) {
 }
 
 // ─────────────────────────────────────────────
-// FILE UPLOAD CARD
-// ─────────────────────────────────────────────
-function FileUploadCard({ fileName, fileSize, status, warnings }) {
-  const statusConfig = {
-    uploading:  { color:C.amber,  icon:"⟳", label:"Uploading…" },
-    extracting: { color:C.amber,  icon:"◈", label:"Extracting fabric data…" },
-    done:       { color:C.green,  icon:"✓", label:"Fabric context loaded" },
-    error:      { color:C.red,    icon:"✕", label:"Upload failed" },
-    preflight:  { color:C.orange, icon:"⚠", label:"Sensitive data detected" },
-  }[status] || { color:C.muted, icon:"…", label:status };
-  const kb = fileSize ? `${(fileSize/1024).toFixed(1)} KB` : "";
-  return (
-    <div style={{ background:C.surface, border:`1px solid ${statusConfig.color}30`, borderLeft:`3px solid ${statusConfig.color}`, padding:"12px 16px", maxWidth:400 }}>
-      <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:6 }}>
-        <span style={{ color:statusConfig.color, fontFamily:mono, fontSize:14 }}>{statusConfig.icon}</span>
-        <div>
-          <div style={{ fontFamily:mono, fontSize:11, color:statusConfig.color }}>{statusConfig.label}</div>
-          <div style={{ fontFamily:mono, fontSize:10, color:C.muted, marginTop:2 }}>{fileName} {kb&&`· ${kb}`}</div>
-        </div>
-      </div>
-      {warnings?.length>0 && (
-        <div style={{ marginTop:8, padding:"8px 10px", background:`${C.orange}10`, border:`1px solid ${C.orange}30` }}>
-          <div style={{ fontFamily:mono, fontSize:10, color:C.orange, marginBottom:4 }}>⚠ Possible sensitive data detected — review before proceeding:</div>
-          {warnings.map((w,i)=><div key={i} style={{ fontFamily:mono, fontSize:10, color:C.dim }}>→ {w}</div>)}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────
-// MESSAGE BUBBLE
-// ─────────────────────────────────────────────
-function MessageBubble({ msg, member }) {
-  const isUser = msg.role === "user";
-  const isFile = msg.type === "file";
-  return (
-    <div style={{ display:"flex", gap:14, marginTop:20, flexDirection:isUser?"row-reverse":"row", animation:"fadeUp 0.2s ease" }}>
-      {isUser ? <UserAvatar member={member}/> : <RinconAvatar/>}
-      <div style={{ maxWidth:isFile?"none":"78%" }}>
-        {!isUser && !isFile && (
-          <div style={{ marginBottom:8, display:"flex", alignItems:"center", gap:8 }}>
-            <span style={{ fontFamily:mono, fontSize:11, fontWeight:600, color:C.amber }}>Rincon</span>
-            <span style={{ fontFamily:mono, fontSize:10, color:C.muted }}>DC Expert</span>
-          </div>
-        )}
-        {msg.type==="psirt-progress"||msg.type==="psirt-done" ? (
-          <div>
-            <PSIRTProgress progress={msg.psirtProgress}/>
-            {msg.type==="psirt-done" && msg.psirtSummary && (
-              <div style={{ background:msg.psirtSummary.advisories>0?"rgba(239,68,68,0.06)":"rgba(34,197,94,0.06)", border:`1px solid ${msg.psirtSummary.advisories>0?"rgba(239,68,68,0.25)":"rgba(34,197,94,0.25)"}`, padding:"10px 14px", marginTop:4, display:"flex", alignItems:"center", gap:10 }}>
-                <span style={{ fontFamily:mono, fontSize:12, color:msg.psirtSummary.advisories>0?C.red:C.green }}>{msg.psirtSummary.advisories>0?"⚠":"✓"}</span>
-                <span style={{ fontFamily:mono, fontSize:11, color:C.dim }}>
-                  PSIRT complete — {msg.psirtSummary.advisories>0?`${msg.psirtSummary.advisories} advisories found across ${msg.psirtSummary.total} devices`:`All ${msg.psirtSummary.total} devices checked — no advisories found`}
-                </span>
-              </div>
-            )}
-          </div>
-        ) : isFile ? (
-          <FileUploadCard {...msg.fileData}/>
-        ) : (
-          <div style={{ background:isUser?`${C.amber}12`:C.surface, border:`1px solid ${isUser?`${C.amber}25`:C.border}`, borderRadius:isUser?"12px 2px 12px 12px":"2px 12px 12px 12px", padding:"12px 16px" }}>
-            <div style={{ fontSize:14, lineHeight:1.75, color:C.text, fontFamily:sans }}>
-              {isUser ? msg.content : renderMarkdown(msg.content)}
-            </div>
-            <div style={{ fontFamily:mono, fontSize:10, color:C.muted, marginTop:6, textAlign:isUser?"left":"right" }}>{timeAgo(msg.created_at)}</div>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────
-// CONVERSATION SIDEBAR ITEM
-// ─────────────────────────────────────────────
-function ConversationItem({ conv, active, onClick }) {
-  const [hov, setHov] = useState(false);
-  return (
-    <div onClick={onClick} onMouseEnter={()=>setHov(true)} onMouseLeave={()=>setHov(false)}
-      style={{ padding:"11px 16px", background:active?C.amberG:hov?C.hi:"transparent", borderLeft:`2px solid ${active?C.amber:"transparent"}`, cursor:"pointer", transition:"all 0.15s" }}>
-      <div style={{ fontSize:12, color:active?C.text:C.dim, fontWeight:active?500:400, marginBottom:3, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
-        {conv.title||"New conversation"}
-      </div>
-      <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-        <span style={{ fontFamily:mono, fontSize:10, color:C.muted }}>{timeAgo(conv.created_at)}</span>
-        {conv.has_fabric && <span style={{ fontFamily:mono, fontSize:9, color:C.green, background:C.greenG, border:`1px solid ${C.green}30`, padding:"1px 5px" }}>fabric</span>}
-      </div>
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────
-// SUGGESTION CHIPS
+// SUGGESTION CHIPS — local list of Rincon-specific suggestions,
+// rendered via the shared SuggestionChips component.
 // ─────────────────────────────────────────────
 const SUGGESTIONS = [
   "What's the safest upgrade path for a 9.3(x) ACI fabric?",
@@ -298,72 +93,6 @@ const SUGGESTIONS = [
   "Border leaf BGP best practices for ACI",
   "Upload a config file to analyse your fabric →",
 ];
-
-function SuggestionChips({ onSelect, onUpload }) {
-  return (
-    <div style={{ padding:"0 24px 16px" }}>
-      <div style={{ maxWidth:740, margin:"0 auto" }}>
-        <div style={{ fontFamily:mono, fontSize:10, color:C.muted, marginBottom:10, letterSpacing:"0.08em" }}>// suggested</div>
-        <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
-          {SUGGESTIONS.map(s=>(
-            <button key={s} onClick={()=>s.includes("Upload")?onUpload():onSelect(s)}
-              style={{ background:s.includes("Upload")?C.amberG:"transparent", border:`1px solid ${s.includes("Upload")?`${C.amber}44`:C.border}`, color:s.includes("Upload")?C.amber:C.dim, fontFamily:mono, fontSize:11, padding:"6px 13px", cursor:"pointer", transition:"all 0.15s" }}
-              onMouseEnter={e=>{ e.currentTarget.style.borderColor=`${C.amber}55`; e.currentTarget.style.color=C.text; }}
-              onMouseLeave={e=>{ e.currentTarget.style.borderColor=s.includes("Upload")?`${C.amber}44`:C.border; e.currentTarget.style.color=s.includes("Upload")?C.amber:C.dim; }}>
-              {s}
-            </button>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function DragOverlay({ visible }) {
-  if (!visible) return null;
-  return (
-    <div style={{ position:"absolute", inset:0, zIndex:50, background:`${C.bg}E8`, backdropFilter:"blur(4px)", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", border:`2px dashed ${C.amber}`, animation:"fadeUp 0.15s ease", pointerEvents:"none" }}>
-      <div style={{ fontSize:32, marginBottom:16, color:C.amber }}>↓</div>
-      <div style={{ fontFamily:mono, fontSize:14, color:C.amber, letterSpacing:"0.08em" }}>Drop file to load fabric context</div>
-      <div style={{ fontFamily:mono, fontSize:11, color:C.muted, marginTop:8 }}>.txt .log .csv .conf .cfg .json supported</div>
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────
-// PSIRT PROGRESS
-// ─────────────────────────────────────────────
-function PSIRTProgress({ progress }) {
-  if (!progress) return null;
-  const { total, done, results } = progress;
-  const pct = total > 0 ? Math.round((done/total)*100) : 0;
-  return (
-    <div style={{ background:"#0A0E1A", border:`1px solid ${C.amber}30`, borderLeft:`3px solid ${C.amber}`, padding:"14px 16px", marginBottom:8, animation:"fadeUp 0.2s ease" }}>
-      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:10 }}>
-        <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-          <span style={{ color:C.amber, fontFamily:mono, fontSize:12, animation:done<total?"spin 1s linear infinite":"none", display:"inline-block" }}>{done<total?"⟳":"✓"}</span>
-          <span style={{ fontFamily:mono, fontSize:11, color:C.amber }}>{done<total?`Querying Cisco PSIRT API… ${done}/${total} devices`:`PSIRT query complete — ${total} devices checked`}</span>
-        </div>
-        <span style={{ fontFamily:mono, fontSize:11, color:C.muted }}>{pct}%</span>
-      </div>
-      <div style={{ height:3, background:"rgba(212,160,0,0.1)", marginBottom:10, overflow:"hidden" }}>
-        <div style={{ height:"100%", background:C.amber, width:`${pct}%`, transition:"width 0.4s ease" }}/>
-      </div>
-      <div style={{ display:"flex", flexDirection:"column", gap:4 }}>
-        {results.map((r,i)=>(
-          <div key={i} style={{ display:"flex", alignItems:"center", gap:8, fontFamily:mono, fontSize:10 }}>
-            <span style={{ color:r.status==="done"?C.green:r.status==="error"?C.red:r.status==="querying"?C.amber:C.muted, width:12, flexShrink:0 }}>
-              {r.status==="done"?"✓":r.status==="error"?"✕":r.status==="querying"?"→":"○"}
-            </span>
-            <span style={{ color:r.status==="pending"?C.muted:C.dim, flex:1, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{r.name} {r.version?`v${r.version}`:"(no version)"}</span>
-            {r.status==="done"&&r.count!==undefined && <span style={{ color:r.count>0?C.orange:C.green, flexShrink:0 }}>{r.count>0?`${r.count} advisory${r.count!==1?"s":""}`:""}</span>}
-            {r.status==="skipped" && <span style={{ color:C.muted, flexShrink:0 }}>skipped — no version</span>}
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
 
 // ─────────────────────────────────────────────
 // PSIRT QUERY
@@ -1141,7 +870,7 @@ export default function RinconChatPrototype() {
                 </div>
               </div>
 
-              {isEmpty && <SuggestionChips onSelect={s=>{ setInput(s); inputRef.current?.focus(); }} onUpload={()=>fileRef.current?.click()}/>}
+              {isEmpty && <SuggestionChips suggestions={SUGGESTIONS} onSelect={s=>{ setInput(s); inputRef.current?.focus(); }} onUpload={()=>fileRef.current?.click()}/>}
 
               {/* INPUT BAR */}
               <div style={{ background:C.hi, borderTop:`1px solid ${C.border}`, padding:"14px 24px", flexShrink:0 }}>

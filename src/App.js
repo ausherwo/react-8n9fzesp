@@ -1,9 +1,11 @@
 // App.js
 // App v3.12 — /security in top nav + serious title on security page
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import AnalysisApp from "./AnalysisApp";
 import RinconChatPrototype from "./RinconChatPrototype";
+import JCHome from "./JCHome";
+import { JCExplainerPage } from "./JCExplainerPage";
 import { AuthProvider, AuthGuard, LoginPage, SignupPage, AcceptInvitePage, useAuth } from './Auth';
 import { ForgotPasswordPage, SetNewPasswordPage } from './PasswordReset';
 import { SettingsPage } from './SettingsPage';
@@ -176,13 +178,9 @@ function HistoryStub() {
   );
 }
 
-function RootPage() {
-  const { session, loading } = useAuth();
-  useEffect(() => { if (!loading && session) window.location.replace("/app"); }, [session, loading]);
-  if (loading) return null;
-  if (session) return null;
-  return <Home authed={false}/>;
-}
+// Home (the light-themed marketing page below) is no longer routed — the JC chat homepage
+// is now the canonical "/" experience for every visitor, signed in or not. Kept as dead code
+// rather than deleted; see the redesign plan's "explicit out-of-scope follow-ups".
 
 function Router() {
     const { member, org } = useAuth();
@@ -208,7 +206,8 @@ function Router() {
   if (path === '/strategy')               return <StrategyPage />;
   if (path === '/model')                  return <ModelPage />;
   if (path === '/history')                return <AuthGuard><HistoryStub /></AuthGuard>;
-  if (path === '/' || path === '')        return <RootPage />;
+  if (path === '/jc')                     return <JCExplainerPage />;
+  if (path === '/' || path === '')        return <JCHome />;
   window.location.replace('/');
   return null;
 }
