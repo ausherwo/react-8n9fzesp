@@ -3,7 +3,7 @@
 // Content is explicitly an open question in website-redesign-brief.md — this is a placeholder
 // draft so the route and footer link work end-to-end; real content comes later.
 
-import { C, mono, sans } from "./chat/ChatPrimitives";
+import { LIGHT as C, mono, sans } from "./chat/ChatPrimitives";
 
 export function JCExplainerPage() {
   return (
@@ -28,7 +28,7 @@ export function JCExplainerPage() {
         <p style={{ fontSize:15, color:C.dim, lineHeight:1.8, marginBottom:16 }}>
           More detail on how JC works, what it can see, and what's coming next (including Desert Point monitoring and additional tooling) will go here.
         </p>
-        <button onClick={()=>window.location.href="/"} style={{ background:C.amber, border:"none", color:"#000", borderRadius:6, fontFamily:mono, fontWeight:700, fontSize:13, padding:"11px 22px", cursor:"pointer", marginTop:12 }}>
+        <button onClick={()=>window.location.href="/"} style={{ background:C.amber, border:"none", color:C.onAmber, borderRadius:6, fontFamily:mono, fontWeight:700, fontSize:13, padding:"11px 22px", cursor:"pointer", marginTop:12 }}>
           ← back to JC
         </button>
       </div>

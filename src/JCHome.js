@@ -11,7 +11,7 @@ import { useAuth } from "./Auth";
 import { supabase } from "./supabaseClient";
 import UserBadge from "./UserBadge";
 import {
-  C, mono, sans, ACCEPTED_TYPES, MAX_FILE_SIZE,
+  LIGHT as C, mono, sans, ACCEPTED_TYPES, MAX_FILE_SIZE,
   preflightCheck, MessageBubble, SuggestionChips, DragOverlay, TypingDots,
   queryPSIRTForDevices,
 } from "./chat/ChatPrimitives";
@@ -68,7 +68,7 @@ function SignupGateCard() {
       </div>
       <div style={{ display:"flex", gap:8 }}>
         <button onClick={()=>{ try{posthog.capture('home_signup_gate_signup_clicked');}catch{} window.location.href="/signup"; }}
-          style={{ background:C.amber, border:"none", color:"#000", fontFamily:mono, fontWeight:700, fontSize:12, padding:"9px 16px", cursor:"pointer" }}>
+          style={{ background:C.amber, border:"none", color:C.onAmber, fontFamily:mono, fontWeight:700, fontSize:12, padding:"9px 16px", cursor:"pointer" }}>
           create_account() →
         </button>
         <button onClick={()=>window.location.href="/login"}
@@ -352,13 +352,14 @@ export default function JCHome() {
           devices={msg.devices}
           confirmed={msg.confirmed}
           securityNote
+          theme={C}
           onChange={(devices)=>updateReviewDevices(msg.id, devices)}
           onConfirm={()=>confirmAndAnalyse(msg.id, msg.devices)}
           onCancel={()=>cancelReview(msg.id)}
         />
       );
     }
-    if (msg.type === "analysis-result") return <ResultCard data={msg.data}/>;
+    if (msg.type === "analysis-result") return <ResultCard data={msg.data} theme={C}/>;
     return null;
   };
 
@@ -376,7 +377,7 @@ export default function JCHome() {
         ::selection{background:${C.amber}40;color:${C.amberB};}
       `}</style>
 
-      <DragOverlay visible={dragOver}/>
+      <DragOverlay visible={dragOver} theme={C}/>
 
       <nav style={{ borderBottom:`1px solid ${C.border}`, padding:"0 24px", flexShrink:0 }}>
         <div style={{ maxWidth:740, margin:"0 auto", display:"flex", alignItems:"center", justifyContent:"space-between", height:56 }}>
@@ -407,7 +408,7 @@ export default function JCHome() {
           )}
 
           {messages.map(msg => (
-            <MessageBubble key={msg.id} msg={msg} member={member} personaName="JC" personaTitle="Data Centre Copilot" extraCard={extraCard}/>
+            <MessageBubble key={msg.id} msg={msg} member={member} personaName="JC" personaTitle="Data Centre Copilot" extraCard={extraCard} theme={C}/>
           ))}
 
           {aiTyping && messages[messages.length-1]?.content === "" && (
@@ -416,7 +417,7 @@ export default function JCHome() {
                 <span style={{ color:C.amber, fontSize:15 }}>◈</span>
               </div>
               <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:"2px 12px 12px 12px", padding:"14px 18px" }}>
-                <TypingDots/>
+                <TypingDots theme={C}/>
               </div>
             </div>
           )}
@@ -424,7 +425,7 @@ export default function JCHome() {
         </div>
       </div>
 
-      {isEmpty && <SuggestionChips suggestions={exampleQuestions} onSelect={s=>{ setInput(s); inputRef.current?.focus(); }} onUpload={()=>fileRef.current?.click()}/>}
+      {isEmpty && <SuggestionChips suggestions={exampleQuestions} onSelect={s=>{ setInput(s); inputRef.current?.focus(); }} onUpload={()=>fileRef.current?.click()} theme={C}/>}
 
       <div style={{ background:C.hi, borderTop:`1px solid ${C.border}`, padding:"14px 24px", flexShrink:0 }}>
         <div style={{ maxWidth:740, margin:"0 auto" }}>
@@ -439,7 +440,7 @@ export default function JCHome() {
             </button>
             <button onClick={()=>sendMessage(input)} disabled={!input.trim()||aiTyping}
               style={{ width:36, height:36, border:"none", flexShrink:0, background:input.trim()&&!aiTyping?C.amber:C.muted, cursor:input.trim()&&!aiTyping?"pointer":"default", display:"flex", alignItems:"center", justifyContent:"center" }}>
-              <span style={{ color:"#000", fontSize:15, fontWeight:700 }}>↑</span>
+              <span style={{ color:C.onAmber, fontSize:15, fontWeight:700 }}>↑</span>
             </button>
           </div>
           <input ref={fileRef} type="file" accept={ACCEPTED_TYPES.join(',')} style={{ display:"none" }}

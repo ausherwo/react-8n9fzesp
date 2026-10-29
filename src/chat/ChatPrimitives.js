@@ -5,6 +5,8 @@
 
 import { useState } from "react";
 
+// DARK — the existing /app (RinconChatPrototype) theme. Unchanged values; every shared
+// component below defaults to this theme so /app's appearance never changes.
 export const C = {
   bg:      "#080806",
   surface: "#0E0D0A",
@@ -23,6 +25,49 @@ export const C = {
   dim:     "#9C9278",
   muted:   "#524B3A",
   faint:   "#1A1810",
+  onAmber: "#000",
+  sev: {
+    CRITICAL: { color:"#F87171", bg:"rgba(239,68,68,0.08)",  bd:"rgba(239,68,68,0.35)" },
+    HIGH:     { color:"#FB923C", bg:"rgba(249,115,22,0.08)", bd:"rgba(249,115,22,0.35)" },
+    MEDIUM:   { color:"#EAB308", bg:"rgba(234,179,8,0.08)",  bd:"rgba(234,179,8,0.35)" },
+    LOW:      { color:"#4ADE80", bg:"rgba(34,197,94,0.08)",  bd:"rgba(34,197,94,0.35)" },
+  },
+  blue:   "#60A5FA",
+  blueG:  "rgba(96,165,250,0.1)",
+  blueBd: "rgba(96,165,250,0.35)",
+};
+
+// LIGHT — the existing netwrkr.ai marketing-site palette (src/App.js's Home component,
+// src/AnalysisApp.js), used by the new JC homepage per feedback that near-black read as
+// off-brand next to the rest of the (deliberately light, polished) site.
+export const LIGHT = {
+  bg:      "#F7F5F0",
+  surface: "#FFFFFF",
+  hi:      "#F0EDE6",
+  hi2:     "#E8E4DB",
+  border:  "#DDD9CF",
+  amber:   "#B8860B",
+  amberB:  "#D4A000",
+  amberG:  "#D4A00012",
+  green:   "#1A7A3C",
+  greenG:  "#1A7A3C12",
+  red:     "#C0392B",
+  orange:  "#C0620B",
+  yellow:  "#8B7000",
+  text:    "#1A1810",
+  dim:     "#4A4438",
+  muted:   "#7A7060",
+  faint:   "#E8E4DB",
+  onAmber: "#FFF",
+  sev: {
+    CRITICAL: { color:"#C0392B", bg:"#FDF0EE", bd:"#E8A09A" },
+    HIGH:     { color:"#C0620B", bg:"#FDF4EE", bd:"#E8B48A" },
+    MEDIUM:   { color:"#8B7000", bg:"#FDF9EE", bd:"#D4C060" },
+    LOW:      { color:"#1A7A3C", bg:"#EEF7F2", bd:"#8AC4A4" },
+  },
+  blue:   "#1A5C9C",
+  blueG:  "#1A5C9C12",
+  blueBd: "#2A6CAC",
 };
 
 export const mono = "JetBrains Mono, Fira Code, monospace";
@@ -65,7 +110,7 @@ export function tierColor(tier) { return {1:C.amber,2:C.orange,3:C.green,4:C.dim
 // ─────────────────────────────────────────────
 // MARKDOWN RENDERER
 // ─────────────────────────────────────────────
-export function renderMarkdown(text) {
+export function renderMarkdown(text, theme = C) {
   if (!text) return null;
   const lines = text.split('\n');
   const elements = [];
@@ -75,50 +120,50 @@ export function renderMarkdown(text) {
     if (line.trim() === '') { elements.push(<div key={i} style={{ height: '0.5em' }} />); i++; continue; }
     const numMatch = line.match(/^(\d+)\.\s+(.+)/);
     if (numMatch) {
-      elements.push(<div key={i} style={{ display: 'flex', gap: 8, marginBottom: 4 }}><span style={{ fontFamily: mono, fontSize: 12, color: C.amber, flexShrink: 0, minWidth: 18 }}>{numMatch[1]}.</span><span>{renderInline(numMatch[2])}</span></div>);
+      elements.push(<div key={i} style={{ display: 'flex', gap: 8, marginBottom: 4 }}><span style={{ fontFamily: mono, fontSize: 12, color: theme.amber, flexShrink: 0, minWidth: 18 }}>{numMatch[1]}.</span><span>{renderInline(numMatch[2], theme)}</span></div>);
       i++; continue;
     }
     const bulletMatch = line.match(/^[-*]\s+(.+)/);
     if (bulletMatch) {
-      elements.push(<div key={i} style={{ display: 'flex', gap: 8, marginBottom: 4 }}><span style={{ color: C.amber, flexShrink: 0 }}>→</span><span>{renderInline(bulletMatch[1])}</span></div>);
+      elements.push(<div key={i} style={{ display: 'flex', gap: 8, marginBottom: 4 }}><span style={{ color: theme.amber, flexShrink: 0 }}>→</span><span>{renderInline(bulletMatch[1], theme)}</span></div>);
       i++; continue;
     }
-    elements.push(<div key={i} style={{ marginBottom: 2 }}>{renderInline(line)}</div>);
+    elements.push(<div key={i} style={{ marginBottom: 2 }}>{renderInline(line, theme)}</div>);
     i++;
   }
   return elements;
 }
 
-export function renderInline(text) {
+export function renderInline(text, theme = C) {
   const parts = text.split(/(\*\*[^*]+\*\*)/g);
   return parts.map((part, j) => {
     if (part.startsWith('**') && part.endsWith('**')) {
-      return <strong key={j} style={{ color: C.amberB, fontWeight: 600 }}>{part.slice(2, -2)}</strong>;
+      return <strong key={j} style={{ color: theme.amberB, fontWeight: 600 }}>{part.slice(2, -2)}</strong>;
     }
     return <span key={j}>{part}</span>;
   });
 }
 
-export function TypingDots() {
+export function TypingDots({ theme = C }) {
   return (
     <div style={{ display:"flex", gap:5, alignItems:"center", padding:"4px 0" }}>
-      {[0,1,2].map(i => <div key={i} style={{ width:7, height:7, borderRadius:"50%", background:C.amber, opacity:0.5, animation:`dotPulse 1.2s ease-in-out ${i*0.18}s infinite` }} />)}
+      {[0,1,2].map(i => <div key={i} style={{ width:7, height:7, borderRadius:"50%", background:theme.amber, opacity:0.5, animation:`dotPulse 1.2s ease-in-out ${i*0.18}s infinite` }} />)}
     </div>
   );
 }
 
-export function BotAvatar() {
+export function BotAvatar({ theme = C }) {
   return (
-    <div style={{ flexShrink:0, width:34, height:34, borderRadius:"50%", background:C.amberG, border:`1px solid ${C.amber}35`, display:"flex", alignItems:"center", justifyContent:"center" }}>
-      <span style={{ color:C.amber, fontSize:15 }}>◈</span>
+    <div style={{ flexShrink:0, width:34, height:34, borderRadius:"50%", background:theme.amberG, border:`1px solid ${theme.amber}35`, display:"flex", alignItems:"center", justifyContent:"center" }}>
+      <span style={{ color:theme.amber, fontSize:15 }}>◈</span>
     </div>
   );
 }
 
-export function UserAvatar({ member }) {
+export function UserAvatar({ member, theme = C }) {
   const initials = member ? getInitials(member.name, member.email) : '?';
   return (
-    <div style={{ flexShrink:0, width:34, height:34, borderRadius:"50%", background:"rgba(212,160,0,0.12)", border:`1px solid rgba(212,160,0,0.25)`, display:"flex", alignItems:"center", justifyContent:"center", fontFamily:mono, fontSize:11, fontWeight:700, color:C.amber }}>
+    <div style={{ flexShrink:0, width:34, height:34, borderRadius:"50%", background:`${theme.amber}1F`, border:`1px solid ${theme.amber}40`, display:"flex", alignItems:"center", justifyContent:"center", fontFamily:mono, fontSize:11, fontWeight:700, color:theme.amber }}>
       {initials}
     </div>
   );
@@ -173,28 +218,28 @@ export function FabricContextBanner({ fabricFile, devices, onClear }) {
 // ─────────────────────────────────────────────
 // FILE UPLOAD CARD
 // ─────────────────────────────────────────────
-export function FileUploadCard({ fileName, fileSize, status, warnings }) {
+export function FileUploadCard({ fileName, fileSize, status, warnings, theme = C }) {
   const statusConfig = {
-    uploading:  { color:C.amber,  icon:"⟳", label:"Uploading…" },
-    extracting: { color:C.amber,  icon:"◈", label:"Extracting fabric data…" },
-    done:       { color:C.green,  icon:"✓", label:"Fabric context loaded" },
-    error:      { color:C.red,    icon:"✕", label:"Upload failed" },
-    preflight:  { color:C.orange, icon:"⚠", label:"Sensitive data detected" },
-  }[status] || { color:C.muted, icon:"…", label:status };
+    uploading:  { color:theme.amber,  icon:"⟳", label:"Uploading…" },
+    extracting: { color:theme.amber,  icon:"◈", label:"Extracting fabric data…" },
+    done:       { color:theme.green,  icon:"✓", label:"Fabric context loaded" },
+    error:      { color:theme.red,    icon:"✕", label:"Upload failed" },
+    preflight:  { color:theme.orange, icon:"⚠", label:"Sensitive data detected" },
+  }[status] || { color:theme.muted, icon:"…", label:status };
   const kb = fileSize ? `${(fileSize/1024).toFixed(1)} KB` : "";
   return (
-    <div style={{ background:C.surface, border:`1px solid ${statusConfig.color}30`, borderLeft:`3px solid ${statusConfig.color}`, padding:"12px 16px", maxWidth:400 }}>
+    <div style={{ background:theme.surface, border:`1px solid ${statusConfig.color}30`, borderLeft:`3px solid ${statusConfig.color}`, padding:"12px 16px", maxWidth:400 }}>
       <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:6 }}>
         <span style={{ color:statusConfig.color, fontFamily:mono, fontSize:14 }}>{statusConfig.icon}</span>
         <div>
           <div style={{ fontFamily:mono, fontSize:11, color:statusConfig.color }}>{statusConfig.label}</div>
-          <div style={{ fontFamily:mono, fontSize:10, color:C.muted, marginTop:2 }}>{fileName} {kb&&`· ${kb}`}</div>
+          <div style={{ fontFamily:mono, fontSize:10, color:theme.muted, marginTop:2 }}>{fileName} {kb&&`· ${kb}`}</div>
         </div>
       </div>
       {warnings?.length>0 && (
-        <div style={{ marginTop:8, padding:"8px 10px", background:`${C.orange}10`, border:`1px solid ${C.orange}30` }}>
-          <div style={{ fontFamily:mono, fontSize:10, color:C.orange, marginBottom:4 }}>⚠ Possible sensitive data detected — review before proceeding:</div>
-          {warnings.map((w,i)=><div key={i} style={{ fontFamily:mono, fontSize:10, color:C.dim }}>→ {w}</div>)}
+        <div style={{ marginTop:8, padding:"8px 10px", background:`${theme.orange}10`, border:`1px solid ${theme.orange}30` }}>
+          <div style={{ fontFamily:mono, fontSize:10, color:theme.orange, marginBottom:4 }}>⚠ Possible sensitive data detected — review before proceeding:</div>
+          {warnings.map((w,i)=><div key={i} style={{ fontFamily:mono, fontSize:10, color:theme.dim }}>→ {w}</div>)}
         </div>
       )}
     </div>
@@ -208,40 +253,40 @@ export function FileUploadCard({ fileName, fileSize, status, warnings }) {
 // extraCard lets a caller render a custom card for message types this module doesn't know about
 // (e.g. JCHome's device-review / analysis-result / signup-gate cards).
 // ─────────────────────────────────────────────
-export function MessageBubble({ msg, member, personaName = "Rincon", personaTitle = "DC Expert", extraCard }) {
+export function MessageBubble({ msg, member, personaName = "Rincon", personaTitle = "DC Expert", extraCard, theme = C }) {
   const isUser = msg.role === "user";
   const isFile = msg.type === "file";
   const custom = extraCard ? extraCard(msg) : null;
   return (
     <div style={{ display:"flex", gap:14, marginTop:20, flexDirection:isUser?"row-reverse":"row", animation:"fadeUp 0.2s ease" }}>
-      {isUser ? <UserAvatar member={member}/> : <BotAvatar/>}
+      {isUser ? <UserAvatar member={member} theme={theme}/> : <BotAvatar theme={theme}/>}
       <div style={{ maxWidth:(isFile||custom)?"none":"78%" }}>
         {!isUser && !isFile && !custom && (
           <div style={{ marginBottom:8, display:"flex", alignItems:"center", gap:8 }}>
-            <span style={{ fontFamily:mono, fontSize:11, fontWeight:600, color:C.amber }}>{personaName}</span>
-            <span style={{ fontFamily:mono, fontSize:10, color:C.muted }}>{personaTitle}</span>
+            <span style={{ fontFamily:mono, fontSize:11, fontWeight:600, color:theme.amber }}>{personaName}</span>
+            <span style={{ fontFamily:mono, fontSize:10, color:theme.muted }}>{personaTitle}</span>
           </div>
         )}
         {custom ? custom : msg.type==="psirt-progress"||msg.type==="psirt-done" ? (
           <div>
-            <PSIRTProgress progress={msg.psirtProgress}/>
+            <PSIRTProgress progress={msg.psirtProgress} theme={theme}/>
             {msg.type==="psirt-done" && msg.psirtSummary && (
-              <div style={{ background:msg.psirtSummary.advisories>0?"rgba(239,68,68,0.06)":"rgba(34,197,94,0.06)", border:`1px solid ${msg.psirtSummary.advisories>0?"rgba(239,68,68,0.25)":"rgba(34,197,94,0.25)"}`, padding:"10px 14px", marginTop:4, display:"flex", alignItems:"center", gap:10 }}>
-                <span style={{ fontFamily:mono, fontSize:12, color:msg.psirtSummary.advisories>0?C.red:C.green }}>{msg.psirtSummary.advisories>0?"⚠":"✓"}</span>
-                <span style={{ fontFamily:mono, fontSize:11, color:C.dim }}>
+              <div style={{ background:msg.psirtSummary.advisories>0?`${theme.red}10`:`${theme.green}10`, border:`1px solid ${msg.psirtSummary.advisories>0?`${theme.red}40`:`${theme.green}40`}`, padding:"10px 14px", marginTop:4, display:"flex", alignItems:"center", gap:10 }}>
+                <span style={{ fontFamily:mono, fontSize:12, color:msg.psirtSummary.advisories>0?theme.red:theme.green }}>{msg.psirtSummary.advisories>0?"⚠":"✓"}</span>
+                <span style={{ fontFamily:mono, fontSize:11, color:theme.dim }}>
                   PSIRT complete — {msg.psirtSummary.advisories>0?`${msg.psirtSummary.advisories} advisories found across ${msg.psirtSummary.total} devices`:`All ${msg.psirtSummary.total} devices checked — no advisories found`}
                 </span>
               </div>
             )}
           </div>
         ) : isFile ? (
-          <FileUploadCard {...msg.fileData}/>
+          <FileUploadCard {...msg.fileData} theme={theme}/>
         ) : (
-          <div style={{ background:isUser?`${C.amber}12`:C.surface, border:`1px solid ${isUser?`${C.amber}25`:C.border}`, borderRadius:isUser?"12px 2px 12px 12px":"2px 12px 12px 12px", padding:"12px 16px" }}>
-            <div style={{ fontSize:14, lineHeight:1.75, color:C.text, fontFamily:sans }}>
-              {isUser ? msg.content : renderMarkdown(msg.content)}
+          <div style={{ background:isUser?`${theme.amber}12`:theme.surface, border:`1px solid ${isUser?`${theme.amber}25`:theme.border}`, borderRadius:isUser?"12px 2px 12px 12px":"2px 12px 12px 12px", padding:"12px 16px" }}>
+            <div style={{ fontSize:14, lineHeight:1.75, color:theme.text, fontFamily:sans }}>
+              {isUser ? msg.content : renderMarkdown(msg.content, theme)}
             </div>
-            <div style={{ fontFamily:mono, fontSize:10, color:C.muted, marginTop:6, textAlign:isUser?"left":"right" }}>{timeAgo(msg.created_at)}</div>
+            <div style={{ fontFamily:mono, fontSize:10, color:theme.muted, marginTop:6, textAlign:isUser?"left":"right" }}>{timeAgo(msg.created_at)}</div>
           </div>
         )}
       </div>
@@ -273,17 +318,17 @@ export function ConversationItem({ conv, active, onClick }) {
 // A suggestion whose text includes "Upload" fires onUpload instead of onSelect,
 // matching RinconChatPrototype's original convention.
 // ─────────────────────────────────────────────
-export function SuggestionChips({ suggestions, onSelect, onUpload }) {
+export function SuggestionChips({ suggestions, onSelect, onUpload, theme = C }) {
   return (
     <div style={{ padding:"0 24px 16px" }}>
       <div style={{ maxWidth:740, margin:"0 auto" }}>
-        <div style={{ fontFamily:mono, fontSize:10, color:C.muted, marginBottom:10, letterSpacing:"0.08em" }}>// suggested</div>
+        <div style={{ fontFamily:mono, fontSize:10, color:theme.muted, marginBottom:10, letterSpacing:"0.08em" }}>// suggested</div>
         <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
           {suggestions.map(s=>(
             <button key={s} onClick={()=>s.includes("Upload")?onUpload?.():onSelect(s)}
-              style={{ background:s.includes("Upload")?C.amberG:"transparent", border:`1px solid ${s.includes("Upload")?`${C.amber}44`:C.border}`, color:s.includes("Upload")?C.amber:C.dim, fontFamily:mono, fontSize:11, padding:"6px 13px", cursor:"pointer", transition:"all 0.15s" }}
-              onMouseEnter={e=>{ e.currentTarget.style.borderColor=`${C.amber}55`; e.currentTarget.style.color=C.text; }}
-              onMouseLeave={e=>{ e.currentTarget.style.borderColor=s.includes("Upload")?`${C.amber}44`:C.border; e.currentTarget.style.color=s.includes("Upload")?C.amber:C.dim; }}>
+              style={{ background:s.includes("Upload")?theme.amberG:"transparent", border:`1px solid ${s.includes("Upload")?`${theme.amber}44`:theme.border}`, color:s.includes("Upload")?theme.amber:theme.dim, fontFamily:mono, fontSize:11, padding:"6px 13px", cursor:"pointer", transition:"all 0.15s" }}
+              onMouseEnter={e=>{ e.currentTarget.style.borderColor=`${theme.amber}55`; e.currentTarget.style.color=theme.text; }}
+              onMouseLeave={e=>{ e.currentTarget.style.borderColor=s.includes("Upload")?`${theme.amber}44`:theme.border; e.currentTarget.style.color=s.includes("Upload")?theme.amber:theme.dim; }}>
               {s}
             </button>
           ))}
@@ -293,13 +338,13 @@ export function SuggestionChips({ suggestions, onSelect, onUpload }) {
   );
 }
 
-export function DragOverlay({ visible }) {
+export function DragOverlay({ visible, theme = C }) {
   if (!visible) return null;
   return (
-    <div style={{ position:"absolute", inset:0, zIndex:50, background:`${C.bg}E8`, backdropFilter:"blur(4px)", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", border:`2px dashed ${C.amber}`, animation:"fadeUp 0.15s ease", pointerEvents:"none" }}>
-      <div style={{ fontSize:32, marginBottom:16, color:C.amber }}>↓</div>
-      <div style={{ fontFamily:mono, fontSize:14, color:C.amber, letterSpacing:"0.08em" }}>Drop file to load fabric context</div>
-      <div style={{ fontFamily:mono, fontSize:11, color:C.muted, marginTop:8 }}>.txt .log .csv .conf .cfg .json supported</div>
+    <div style={{ position:"absolute", inset:0, zIndex:50, background:`${theme.bg}E8`, backdropFilter:"blur(4px)", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", border:`2px dashed ${theme.amber}`, animation:"fadeUp 0.15s ease", pointerEvents:"none" }}>
+      <div style={{ fontSize:32, marginBottom:16, color:theme.amber }}>↓</div>
+      <div style={{ fontFamily:mono, fontSize:14, color:theme.amber, letterSpacing:"0.08em" }}>Drop file to load fabric context</div>
+      <div style={{ fontFamily:mono, fontSize:11, color:theme.muted, marginTop:8 }}>.txt .log .csv .conf .cfg .json supported</div>
     </div>
   );
 }
@@ -307,31 +352,31 @@ export function DragOverlay({ visible }) {
 // ─────────────────────────────────────────────
 // PSIRT PROGRESS
 // ─────────────────────────────────────────────
-export function PSIRTProgress({ progress }) {
+export function PSIRTProgress({ progress, theme = C }) {
   if (!progress) return null;
   const { total, done, results } = progress;
   const pct = total > 0 ? Math.round((done/total)*100) : 0;
   return (
-    <div style={{ background:"#0A0E1A", border:`1px solid ${C.amber}30`, borderLeft:`3px solid ${C.amber}`, padding:"14px 16px", marginBottom:8, animation:"fadeUp 0.2s ease" }}>
+    <div style={{ background:theme.hi, border:`1px solid ${theme.amber}30`, borderLeft:`3px solid ${theme.amber}`, padding:"14px 16px", marginBottom:8, animation:"fadeUp 0.2s ease" }}>
       <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:10 }}>
         <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-          <span style={{ color:C.amber, fontFamily:mono, fontSize:12, animation:done<total?"spin 1s linear infinite":"none", display:"inline-block" }}>{done<total?"⟳":"✓"}</span>
-          <span style={{ fontFamily:mono, fontSize:11, color:C.amber }}>{done<total?`Querying Cisco PSIRT API… ${done}/${total} devices`:`PSIRT query complete — ${total} devices checked`}</span>
+          <span style={{ color:theme.amber, fontFamily:mono, fontSize:12, animation:done<total?"spin 1s linear infinite":"none", display:"inline-block" }}>{done<total?"⟳":"✓"}</span>
+          <span style={{ fontFamily:mono, fontSize:11, color:theme.amber }}>{done<total?`Querying Cisco PSIRT API… ${done}/${total} devices`:`PSIRT query complete — ${total} devices checked`}</span>
         </div>
-        <span style={{ fontFamily:mono, fontSize:11, color:C.muted }}>{pct}%</span>
+        <span style={{ fontFamily:mono, fontSize:11, color:theme.muted }}>{pct}%</span>
       </div>
-      <div style={{ height:3, background:"rgba(212,160,0,0.1)", marginBottom:10, overflow:"hidden" }}>
-        <div style={{ height:"100%", background:C.amber, width:`${pct}%`, transition:"width 0.4s ease" }}/>
+      <div style={{ height:3, background:`${theme.amber}1A`, marginBottom:10, overflow:"hidden" }}>
+        <div style={{ height:"100%", background:theme.amber, width:`${pct}%`, transition:"width 0.4s ease" }}/>
       </div>
       <div style={{ display:"flex", flexDirection:"column", gap:4 }}>
         {results.map((r,i)=>(
           <div key={i} style={{ display:"flex", alignItems:"center", gap:8, fontFamily:mono, fontSize:10 }}>
-            <span style={{ color:r.status==="done"?C.green:r.status==="error"?C.red:r.status==="querying"?C.amber:C.muted, width:12, flexShrink:0 }}>
+            <span style={{ color:r.status==="done"?theme.green:r.status==="error"?theme.red:r.status==="querying"?theme.amber:theme.muted, width:12, flexShrink:0 }}>
               {r.status==="done"?"✓":r.status==="error"?"✕":r.status==="querying"?"→":"○"}
             </span>
-            <span style={{ color:r.status==="pending"?C.muted:C.dim, flex:1, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{r.name} {r.version?`v${r.version}`:"(no version)"}</span>
-            {r.status==="done"&&r.count!==undefined && <span style={{ color:r.count>0?C.orange:C.green, flexShrink:0 }}>{r.count>0?`${r.count} advisory${r.count!==1?"s":""}`:""}</span>}
-            {r.status==="skipped" && <span style={{ color:C.muted, flexShrink:0 }}>skipped — no version</span>}
+            <span style={{ color:r.status==="pending"?theme.muted:theme.dim, flex:1, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{r.name} {r.version?`v${r.version}`:"(no version)"}</span>
+            {r.status==="done"&&r.count!==undefined && <span style={{ color:r.count>0?theme.orange:theme.green, flexShrink:0 }}>{r.count>0?`${r.count} advisory${r.count!==1?"s":""}`:""}</span>}
+            {r.status==="skipped" && <span style={{ color:theme.muted, flexShrink:0 }}>skipped — no version</span>}
           </div>
         ))}
       </div>
