@@ -336,6 +336,9 @@ async function runFabricAnalysis(devices, advisorySummary, aciFabric, ctx, advMa
   const inventoryCsv = "Platform, Version, Role\n" +
         devices.map(d => `${d.name}, ${d.ver || "not provided"}, ${d.role || "unknown"}`).join("\n");
 
+  const totalAdvisoryCount = Object.values(advMap || {})
+        .reduce((sum, d) => sum + (d.advisories?.length || 0), 0);
+
   const userContent = `Validated device inventory (engineer-confirmed):
   ${inventoryCsv}
 
@@ -356,10 +359,12 @@ async function runFabricAnalysis(devices, advisorySummary, aciFabric, ctx, advMa
         },
         body: JSON.stringify({
                 model:      "claude-sonnet-5",
-                // v3.7 — fix: v3.5's 3000+150/device budget still truncated real fabrics
-                // (confirmed via the v3.6 stop_reason guard). Each device emits a written
-                // "rec" plus priority/intel prose, so scale more generously.
-                max_tokens: Math.min(16000, 6000 + devices.length * 400),
+                // v3.8 — fix: v3.7's device-count-only budget (6000 + 400/device, capped
+                // at 16000) still truncated real fabrics — confirmed live with just 4
+                // devices but 22 advisories between them. Output length tracks advisory
+                // count (each one gets written detail) far more than device count, so
+                // scale on both and raise the ceiling.
+                max_tokens: Math.min(32000, 6000 + devices.length * 400 + totalAdvisoryCount * 250),
                 system:     [{ type: "text", text: buildAnalysisSystemPrompt(aciFabric), cache_control: { type: "ephemeral" } }],
                 messages:   [{ role: "user", content: userContent }],
         }),
