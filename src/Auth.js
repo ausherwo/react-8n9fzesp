@@ -106,7 +106,7 @@ export function AuthProvider({ children }) {
       if (!mounted) return;
       if (event === 'INITIAL_SESSION') return;
       if (event === 'TOKEN_REFRESHED') {
-        if (newSession) setSession(newSession);
+        applySession(newSession);
         return;
       }
       if (event === 'SIGNED_OUT') {
@@ -517,8 +517,8 @@ export function SignupPage() {
       p_name: name, p_org_name: orgName, p_org_slug: slug,
     });
 
-    setLoading(false);
     if (rpcErr) {
+      setLoading(false);
       if (rpcErr.message?.includes('unique') || rpcErr.message?.includes('slug')) {
         setError('That organisation URL is already taken.'); setStep(2);
       } else {
@@ -526,6 +526,11 @@ export function SignupPage() {
       }
       return;
     }
+    // signUp() minted this session's token before the org/member row existed, so it's
+    // missing the member_id/org_id claims — refresh now so the redirect lands signed in
+    // with the org attached instead of bouncing back to /login.
+    await supabase.auth.refreshSession();
+    setLoading(false);
     window.location.href = '/';
   };
 
