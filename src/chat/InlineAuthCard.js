@@ -121,11 +121,16 @@ export default function InlineAuthCard() {
     const { error: rpcErr } = await supabase.rpc('handle_new_signup', {
       p_user_id: authData.user.id, p_email: email, p_name: name, p_org_name: orgName, p_org_slug: slug,
     });
-    setLoading(false);
     if (rpcErr) {
+      setLoading(false);
       setError(rpcErr.message?.includes('slug') || rpcErr.message?.includes('unique') ? "That organisation URL is already taken." : rpcErr.message || "Something went wrong.");
       return;
     }
+    // signUp() minted this session's token before the org/member row existed, so it's
+    // missing the member_id/org_id claims — refresh now to pick them up immediately
+    // instead of leaving the user signed in with no attached organisation.
+    await supabase.auth.refreshSession();
+    setLoading(false);
     try { posthog.capture('home_signup_gate_signup_completed'); } catch {}
   };
 
