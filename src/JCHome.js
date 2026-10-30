@@ -89,7 +89,7 @@ function Composer({ variant, input, setInput, onSend, onAttach, aiTyping, inputR
 }
 
 export default function JCHome() {
-  const { session, member, org } = useAuth();
+  const { session, member, org, signOut } = useAuth();
 
   const [messages, setMessages]       = useState([]);
   const [input, setInput]             = useState("");
@@ -372,7 +372,13 @@ export default function JCHome() {
         <div style={{ maxWidth:1040, margin:"0 auto", padding:"0 24px", display:"flex", alignItems:"center", justifyContent:"space-between", height:56 }}>
           <span style={{ fontWeight:600, fontSize:14, color:C.dim, fontFamily:sans }}>netwrkr<span style={{ color:C.amber }}>.ai</span></span>
           {session && member ? <UserBadge theme={C}/> : session ? (
-            <span style={{ color:C.red, fontFamily:sans, fontSize:12.5 }}>Account setup incomplete</span>
+            <div style={{ display:"flex", alignItems:"center", gap:12 }}>
+              <span style={{ color:C.red, fontFamily:sans, fontSize:12.5 }}>Account setup incomplete</span>
+              <button onClick={async ()=>{ await signOut(); window.location.href="/login"; }}
+                style={{ background:"none", border:`1px solid ${C.border}`, borderRadius:999, padding:"4px 12px", color:C.dim, fontFamily:sans, fontSize:12.5, cursor:"pointer" }}>
+                Sign out
+              </button>
+            </div>
           ) : (
             <button onClick={()=>window.location.href="/login"} style={{ background:"none", border:"none", color:C.dim, fontFamily:sans, fontSize:13, fontWeight:500, cursor:"pointer" }}>Sign in</button>
           )}
