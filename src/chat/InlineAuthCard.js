@@ -47,7 +47,7 @@ function ErrorNote({ message }) {
 }
 
 export default function InlineAuthCard() {
-  const { session } = useAuth();
+  const { session, member } = useAuth();
   const [mode, setMode] = useState("choice"); // choice | signup | login
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -57,10 +57,18 @@ export default function InlineAuthCard() {
   const [loading, setLoading] = useState(false);
   const [awaitingConfirmation, setAwaitingConfirmation] = useState(false);
 
-  if (session) {
+  if (session && member) {
     return (
       <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14, color: C.green, fontFamily: sans }}>
         <span>✓</span><span>Signed in — picking up right where we left off.</span>
+      </div>
+    );
+  }
+
+  if (session && !member) {
+    return (
+      <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14, color: C.red, fontFamily: sans }}>
+        <span>Signed in, but this account isn't attached to an organisation — contact support.</span>
       </div>
     );
   }

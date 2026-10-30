@@ -200,7 +200,9 @@ export default function JCHome() {
           persona: "jc",
           fabricContext,
           psirtContext,
-          messages: newMsgs.map(m => ({ role: m.role === "ai" ? "assistant" : "user", content: m.content })),
+          messages: newMsgs
+            .filter(m => typeof m.content === "string" && m.content.length > 0)
+            .map(m => ({ role: m.role === "ai" ? "assistant" : "user", content: m.content })),
         }),
       });
       if (!res.ok || !res.body) {
