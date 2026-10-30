@@ -36,13 +36,14 @@ function toTheme(theme) {
   };
 }
 
-export default function UserBadge({ theme }) {
+export default function UserBadge({ theme, variant = 'nav' }) {
   const { member, org, signOut } = useAuth();
   const [open, setOpen]         = useState(false);
   const [signingOut, setSigningOut] = useState(false);
   const ref = useRef(null);
   const t = toTheme(theme);
   const s = getStyles(t);
+  const corner = variant === 'corner';
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -63,6 +64,7 @@ export default function UserBadge({ theme }) {
     : member.email?.[0]?.toUpperCase() || '?';
 
   const displayName = member.name || member.email;
+  const firstName = member.name ? member.name.trim().split(/\s+/)[0] : member.email;
 
   const handleSignOut = async () => {
     setSigningOut(true);
@@ -73,36 +75,52 @@ export default function UserBadge({ theme }) {
   return (
     <div
       ref={ref}
-      style={s.wrapper}
+      style={corner ? s.cornerWrapper : s.wrapper}
     >
       {/* ── Trigger button ── */}
-      <button
-        style={{ ...s.trigger, ...(open ? s.triggerOpen : {}) }}
-        onClick={() => setOpen(v => !v)}
-        aria-label="User menu"
-      >
-        {/* Avatar */}
-        <div style={s.avatar}>
-          <span style={s.avatarText}>{initials}</span>
-        </div>
-
-        {/* Name + role */}
-        <div style={s.info}>
-          <span style={s.name}>{displayName}</span>
-          <span style={{ ...s.role, ...roleColor(member.role, theme) }}>
-            {member.role}
+      {corner ? (
+        <button
+          style={{ ...s.cornerTrigger, ...(open ? s.cornerTriggerOpen : {}) }}
+          onClick={() => setOpen(v => !v)}
+          aria-label="User menu"
+        >
+          <div style={s.cornerAvatar}>
+            <span style={s.cornerAvatarText}>{initials[0]}</span>
+          </div>
+          <span style={s.cornerLabel}>
+            {firstName}{org?.name ? <><span style={s.cornerDot}> · </span>{org.name}</> : null}
           </span>
-        </div>
+          <span style={{ ...s.chevron, ...(open ? s.chevronOpen : {}) }}>▾</span>
+        </button>
+      ) : (
+        <button
+          style={{ ...s.trigger, ...(open ? s.triggerOpen : {}) }}
+          onClick={() => setOpen(v => !v)}
+          aria-label="User menu"
+        >
+          {/* Avatar */}
+          <div style={s.avatar}>
+            <span style={s.avatarText}>{initials}</span>
+          </div>
 
-        {/* Chevron */}
-        <span style={{ ...s.chevron, ...(open ? s.chevronOpen : {}) }}>
-          ▾
-        </span>
-      </button>
+          {/* Name + role */}
+          <div style={s.info}>
+            <span style={s.name}>{displayName}</span>
+            <span style={{ ...s.role, ...roleColor(member.role, theme) }}>
+              {member.role}
+            </span>
+          </div>
+
+          {/* Chevron */}
+          <span style={{ ...s.chevron, ...(open ? s.chevronOpen : {}) }}>
+            ▾
+          </span>
+        </button>
+      )}
 
       {/* ── Dropdown ── */}
       {open && (
-        <div style={s.dropdown}>
+        <div style={corner ? s.cornerDropdown : s.dropdown}>
 
           {/* User details header */}
           <div style={s.dropdownHeader}>
@@ -202,6 +220,72 @@ function getStyles(t) {
     wrapper: {
       position:  'relative',
       fontFamily: "'DM Sans', sans-serif",
+    },
+
+    // Corner variant — fixed bottom-right, minimal "avatar · name · org" row
+    cornerWrapper: {
+      position:   'fixed',
+      bottom:     16,
+      right:      16,
+      zIndex:     50,
+      fontFamily: "'DM Sans', sans-serif",
+    },
+    cornerTrigger: {
+      display:       'flex',
+      alignItems:    'center',
+      gap:           8,
+      background:    t.surface,
+      border:        `1px solid ${t.border}`,
+      borderRadius:  999,
+      padding:       '6px 12px 6px 6px',
+      cursor:        'pointer',
+      transition:    'border-color 0.15s, box-shadow 0.15s',
+      boxShadow:     t.shadow.replace('32px', '16px'),
+    },
+    cornerTriggerOpen: {
+      borderColor: t.borderOpen,
+      boxShadow:   `0 0 0 3px ${t.focusRing}`,
+    },
+    cornerAvatar: {
+      width:          22,
+      height:         22,
+      borderRadius:   '50%',
+      background:     t.amberBg,
+      border:         `1px solid ${t.amberBorder}`,
+      display:        'flex',
+      alignItems:     'center',
+      justifyContent: 'center',
+      flexShrink:     0,
+    },
+    cornerAvatarText: {
+      fontFamily: "'DM Sans', sans-serif",
+      fontSize:   11,
+      fontWeight: 600,
+      color:      t.amber,
+    },
+    cornerLabel: {
+      fontSize:    13,
+      fontWeight:  500,
+      color:       t.text,
+      whiteSpace:  'nowrap',
+      maxWidth:    220,
+      overflow:    'hidden',
+      textOverflow:'ellipsis',
+    },
+    cornerDot: {
+      color: t.muted,
+    },
+    cornerDropdown: {
+      position:  'absolute',
+      bottom:    'calc(100% + 8px)',
+      right:     0,
+      minWidth:  220,
+      background:t.surface,
+      border:    `1px solid ${t.border}`,
+      boxShadow: t.shadow,
+      borderRadius: 12,
+      zIndex:    1001,
+      animation: 'fadeUp 0.12s ease both',
     },
 
     // Trigger button
@@ -386,6 +470,10 @@ if (typeof document !== 'undefined') {
   style.textContent = `
     @keyframes fadeDown {
       from { opacity: 0; transform: translateY(-6px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(6px); }
       to   { opacity: 1; transform: translateY(0); }
     }
   `;
