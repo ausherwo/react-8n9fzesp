@@ -64,12 +64,19 @@ function Footer() {
 // COMPOSER — the "hero" variant sits centered in the empty state; "docked" is the same
 // shape, smaller, fixed to the bottom of the viewport once a conversation is running.
 // ─────────────────────────────────────────────
-function Composer({ variant, input, setInput, onSend, onAttach, aiTyping, inputRef, placeholder }) {
+function Composer({ variant, input, setInput, onSend, onAttach, onPasteText, aiTyping, inputRef, placeholder }) {
   const hero = variant === "hero";
   return (
     <div style={{ width:"100%", maxWidth:hero?680:720, margin:"0 auto", background:C.surface, border:`1px solid ${C.border}`, borderRadius:22,
       boxShadow:"0 1px 2px rgba(26,24,16,0.04), 0 16px 40px rgba(26,24,16,0.06)", padding: hero ? "18px 20px 12px" : "14px 16px 10px" }}>
       <input ref={inputRef} value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&onSend(input)}
+        onPaste={e=>{
+          const text = e.clipboardData.getData("text");
+          // A multi-line paste is almost always a device inventory dump (show version
+          // output, CSV rows), not a typed question — route it to extraction instead
+          // of dropping it into the single-line input.
+          if (onPasteText && text.includes("\n")) { e.preventDefault(); onPasteText(text); }
+        }}
         placeholder={placeholder}
         style={{ width:"100%", border:"none", outline:"none", background:"transparent", fontSize:15, fontFamily:sans, color:C.text, marginBottom:20, display:"block" }}/>
       <div style={{ display:"flex", alignItems:"center", gap:10 }}>
@@ -228,33 +235,43 @@ export default function JCHome() {
   };
 
   // ── Fabric analysis folded into chat ───────────────────────────
-  const handleFile = async (file) => {
-    if (!file) return;
-    if (file.size > MAX_FILE_SIZE) { addMessage({ role:"ai", content:"That file is too large — 5MB max." }); return; }
-
+  // Shared by file upload and a raw multi-line paste into the composer — both just
+  // need to get inventory text through /api/extract and into a device-review card.
+  const extractAndReview = async (text, fileName, fileSize) => {
     const uploadCardId = newId();
-    addMessage({ id:uploadCardId, role:"user", type:"file", fileData:{ fileName:file.name, fileSize:file.size, status:"uploading" } });
+    addMessage({ id:uploadCardId, role:"user", type:"file", fileData:{ fileName, fileSize, status:"uploading" } });
 
     try {
-      const text = await new Promise((resolve, reject) => { const r = new FileReader(); r.onload = e => resolve(e.target.result); r.onerror = reject; r.readAsText(file); });
       const warnings = preflightCheck(text);
-      updateMessage(uploadCardId, { fileData:{ fileName:file.name, fileSize:file.size, status:"extracting", warnings } });
+      updateMessage(uploadCardId, { fileData:{ fileName, fileSize, status:"extracting", warnings } });
 
       const extractRes = await fetch("/api/extract", { method:"POST", headers: authHeaders(), body: JSON.stringify({ text }) });
       const extractData = await extractRes.json();
       if (extractData.error) throw new Error(extractData.message || extractData.error);
 
       const grouped = groupDevices(extractData.devices);
-      updateMessage(uploadCardId, { fileData:{ fileName:file.name, fileSize:file.size, status:"done", warnings } });
+      updateMessage(uploadCardId, { fileData:{ fileName, fileSize, status:"done", warnings } });
       try { posthog.capture('home_paste_submitted'); } catch {}
 
       addMessage({ role:"ai", type:"device-review", devices: grouped, confirmed:false });
     } catch (err) {
       console.error("Extract error:", err);
-      updateMessage(uploadCardId, { fileData:{ fileName:file.name, fileSize:file.size, status:"error" } });
+      updateMessage(uploadCardId, { fileData:{ fileName, fileSize, status:"error" } });
       addMessage({ role:"ai", content: err.message || "Extraction failed — please try again." });
       try { posthog.capture('home_extract_failed', { error: err.message }); } catch {}
     }
+  };
+
+  const handleFile = async (file) => {
+    if (!file) return;
+    if (file.size > MAX_FILE_SIZE) { addMessage({ role:"ai", content:"That file is too large — 5MB max." }); return; }
+    const text = await new Promise((resolve, reject) => { const r = new FileReader(); r.onload = e => resolve(e.target.result); r.onerror = reject; r.readAsText(file); });
+    await extractAndReview(text, file.name, file.size);
+  };
+
+  const handlePasteText = async (text) => {
+    if (!text.trim() || aiTyping) return;
+    await extractAndReview(text, "Pasted inventory", text.length);
   };
 
   const groupDevices = (rawDevices) => {
@@ -396,7 +413,7 @@ export default function JCHome() {
             </h1>
           </div>
 
-          <Composer variant="hero" input={input} setInput={setInput} onSend={sendMessage} onAttach={()=>fileRef.current?.click()}
+          <Composer variant="hero" input={input} setInput={setInput} onSend={sendMessage} onAttach={()=>fileRef.current?.click()} onPasteText={handlePasteText}
             aiTyping={aiTyping} inputRef={inputRef} placeholder="Ask JC anything, or paste your device inventory…"/>
           {fileInput}
 
@@ -424,7 +441,7 @@ export default function JCHome() {
 
           <div style={{ position:"fixed", left:0, right:0, bottom:0, background:`linear-gradient(to top, ${C.bg} 60%, transparent)`, padding:"32px 24px 24px" }}>
             <div style={{ maxWidth:720, margin:"0 auto" }}>
-              <Composer variant="docked" input={input} setInput={setInput} onSend={sendMessage} onAttach={()=>fileRef.current?.click()}
+              <Composer variant="docked" input={input} setInput={setInput} onSend={sendMessage} onAttach={()=>fileRef.current?.click()} onPasteText={handlePasteText}
                 aiTyping={aiTyping} inputRef={inputRef} placeholder="Reply to JC…"/>
               {fileInput}
               <div style={{ textAlign:"center", marginTop:10, fontSize:11, color:C.muted, fontFamily:sans }}>
