@@ -371,7 +371,7 @@ export default function JCHome() {
       <nav style={{ flexShrink:0, position:"relative", zIndex:2 }}>
         <div style={{ maxWidth:1040, margin:"0 auto", padding:"0 24px", display:"flex", alignItems:"center", justifyContent:"space-between", height:56 }}>
           <span style={{ fontWeight:600, fontSize:14, color:C.dim, fontFamily:sans }}>netwrkr<span style={{ color:C.amber }}>.ai</span></span>
-          {session && member ? <UserBadge theme={C}/> : session ? (
+          {session && member ? null : session ? (
             <div style={{ display:"flex", alignItems:"center", gap:12 }}>
               <span style={{ color:C.red, fontFamily:sans, fontSize:12.5 }}>Account setup incomplete</span>
               <button onClick={async ()=>{ await signOut(); window.location.href="/login"; }}
@@ -384,6 +384,8 @@ export default function JCHome() {
           )}
         </div>
       </nav>
+
+      {session && member && <UserBadge theme={C} variant="corner"/>}
 
       {isEmpty ? (
         <div style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:24 }}>
