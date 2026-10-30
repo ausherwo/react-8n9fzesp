@@ -354,7 +354,7 @@ export function LoginPage() {
     if (err) {
       setError(err.message === 'Invalid login credentials' ? 'Incorrect email or password.' : err.message);
     } else {
-      window.location.href = '/app';
+      window.location.href = '/';
     }
   };
 
@@ -519,7 +519,7 @@ export function SignupPage() {
       }
       return;
     }
-    window.location.href = '/app';
+    window.location.href = '/';
   };
 
   return (
