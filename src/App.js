@@ -2,6 +2,7 @@
 // App v3.12 — /security in top nav + serious title on security page
 
 import { useState, useEffect } from "react";
+import posthog from "posthog-js";
 import AnalysisApp from "./AnalysisApp";
 import RinconChatPrototype from "./RinconChatPrototype";
 import JCHome from "./JCHome";
@@ -186,13 +187,15 @@ function Router() {
     const { member, org } = useAuth();
       useEffect(() => {
           if (member) {
-                posthog.identify(member.id, {
-                        org_id: org.id,
-                                org_slug: org.slug,
-                                        role: member.role
-                                              });
-                                                  }
-                                                    }, [member]);
+                try {
+                  posthog.identify(member.id, {
+                    org_id: org?.id,
+                    org_slug: org?.slug,
+                    role: member.role
+                  });
+                } catch {}
+          }
+      }, [member, org]);
   const path = window.location.pathname;
   if (path === '/login')                  return <LoginPage />;
   if (path === '/signup')                 return <SignupPage />;
