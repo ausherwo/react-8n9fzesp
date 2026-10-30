@@ -237,26 +237,26 @@ export default function JCHome() {
   // ── Fabric analysis folded into chat ───────────────────────────
   // Shared by file upload and a raw multi-line paste into the composer — both just
   // need to get inventory text through /api/extract and into a device-review card.
-  const extractAndReview = async (text, fileName, fileSize) => {
+  const extractAndReview = async (text, fileName, fileSize, pastedText) => {
     const uploadCardId = newId();
-    addMessage({ id:uploadCardId, role:"user", type:"file", fileData:{ fileName, fileSize, status:"uploading" } });
+    addMessage({ id:uploadCardId, role:"user", type:"file", fileData:{ fileName, fileSize, pastedText, status:"uploading" } });
 
     try {
       const warnings = preflightCheck(text);
-      updateMessage(uploadCardId, { fileData:{ fileName, fileSize, status:"extracting", warnings } });
+      updateMessage(uploadCardId, { fileData:{ fileName, fileSize, pastedText, status:"extracting", warnings } });
 
       const extractRes = await fetch("/api/extract", { method:"POST", headers: authHeaders(), body: JSON.stringify({ text }) });
       const extractData = await extractRes.json();
       if (extractData.error) throw new Error(extractData.message || extractData.error);
 
       const grouped = groupDevices(extractData.devices);
-      updateMessage(uploadCardId, { fileData:{ fileName, fileSize, status:"done", warnings } });
+      updateMessage(uploadCardId, { fileData:{ fileName, fileSize, pastedText, status:"done", warnings } });
       try { posthog.capture('home_paste_submitted'); } catch {}
 
       addMessage({ role:"ai", type:"device-review", devices: grouped, confirmed:false });
     } catch (err) {
       console.error("Extract error:", err);
-      updateMessage(uploadCardId, { fileData:{ fileName, fileSize, status:"error" } });
+      updateMessage(uploadCardId, { fileData:{ fileName, fileSize, pastedText, status:"error" } });
       addMessage({ role:"ai", content: err.message || "Extraction failed — please try again." });
       try { posthog.capture('home_extract_failed', { error: err.message }); } catch {}
     }
@@ -271,7 +271,7 @@ export default function JCHome() {
 
   const handlePasteText = async (text) => {
     if (!text.trim() || aiTyping) return;
-    await extractAndReview(text, "Pasted inventory", text.length);
+    await extractAndReview(text, "Pasted inventory", text.length, text);
   };
 
   const groupDevices = (rawDevices) => {
