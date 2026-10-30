@@ -47,7 +47,7 @@ function ErrorNote({ message }) {
 }
 
 export default function InlineAuthCard() {
-  const { session, member } = useAuth();
+  const { session, member, signOut } = useAuth();
   const [mode, setMode] = useState("choice"); // choice | signup | login
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -67,8 +67,11 @@ export default function InlineAuthCard() {
 
   if (session && !member) {
     return (
-      <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14, color: C.red, fontFamily: sans }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, fontSize: 14, color: C.red, fontFamily: sans, flexWrap: "wrap" }}>
         <span>Signed in, but this account isn't attached to an organisation — contact support.</span>
+        <button onClick={async () => { await signOut(); window.location.href = "/login"; }} style={ghostBtnStyle}>
+          Sign out
+        </button>
       </div>
     );
   }
