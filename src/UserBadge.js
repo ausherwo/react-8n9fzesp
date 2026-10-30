@@ -140,6 +140,7 @@ export default function UserBadge({ theme, variant = 'nav' }) {
 
           {/* Menu items */}
           <DropdownItem
+            s={s}
             icon="⚙"
             label="Account settings"
             onClick={() => { window.location.href = '/settings'; setOpen(false); }}
@@ -147,6 +148,7 @@ export default function UserBadge({ theme, variant = 'nav' }) {
 
           {member.role === 'admin' && (
             <DropdownItem
+              s={s}
               icon="👥"
               label="Team"
               onClick={() => { window.location.href = '/settings?tab=team'; setOpen(false); }}
@@ -155,6 +157,7 @@ export default function UserBadge({ theme, variant = 'nav' }) {
 
           {member.role === 'admin' && (
             <DropdownItem
+              s={s}
               icon="💳"
               label="Billing"
               onClick={() => { window.location.href = '/settings?tab=billing'; setOpen(false); }}
@@ -164,6 +167,7 @@ export default function UserBadge({ theme, variant = 'nav' }) {
           <div style={s.dropdownDivider} />
 
           <DropdownItem
+            s={s}
             icon="→"
             label={signingOut ? 'Signing out…' : 'Sign out'}
             onClick={handleSignOut}
@@ -179,7 +183,7 @@ export default function UserBadge({ theme, variant = 'nav' }) {
 // ─────────────────────────────────────────────
 // DROPDOWN ITEM
 // ─────────────────────────────────────────────
-function DropdownItem({ icon, label, onClick, danger }) {
+function DropdownItem({ s, icon, label, onClick, danger }) {
   const [hovered, setHovered] = useState(false);
   return (
     <button
