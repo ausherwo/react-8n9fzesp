@@ -371,7 +371,9 @@ export default function JCHome() {
       <nav style={{ flexShrink:0, position:"relative", zIndex:2 }}>
         <div style={{ maxWidth:1040, margin:"0 auto", padding:"0 24px", display:"flex", alignItems:"center", justifyContent:"space-between", height:56 }}>
           <span style={{ fontWeight:600, fontSize:14, color:C.dim, fontFamily:sans }}>netwrkr<span style={{ color:C.amber }}>.ai</span></span>
-          {session ? <UserBadge/> : (
+          {session && member ? <UserBadge theme={C}/> : session ? (
+            <span style={{ color:C.red, fontFamily:sans, fontSize:12.5 }}>Account setup incomplete</span>
+          ) : (
             <button onClick={()=>window.location.href="/login"} style={{ background:"none", border:"none", color:C.dim, fontFamily:sans, fontSize:13, fontWeight:500, cursor:"pointer" }}>Sign in</button>
           )}
         </div>
