@@ -88,6 +88,15 @@ export default function InlineAuthCard() {
     const { data: authData, error: authErr } = await supabase.auth.signUp({ email, password, options: { data: { name } } });
     if (authErr) { setLoading(false); setError(authErr.message); return; }
 
+    // Supabase returns a user object with no identities (and no error) when the email
+    // already belongs to a confirmed account — calling the RPC with that id would hit a
+    // foreign-key violation, so catch it here instead.
+    if (authData.user && authData.user.identities && authData.user.identities.length === 0) {
+      setLoading(false);
+      setError("An account with that email already exists. Try signing in instead.");
+      return;
+    }
+
     if (!authData.session) {
       // Email confirmation required before a session exists — org gets created once they
       // confirm and sign in, same as the full-page signup flow's assumption.

@@ -505,6 +505,13 @@ export function SignupPage() {
 
     if (authErr) { setLoading(false); setError(authErr.message); return; }
 
+    if (authData.user && authData.user.identities && authData.user.identities.length === 0) {
+      setLoading(false);
+      setError('An account with that email already exists. Try signing in instead.');
+      setStep(1);
+      return;
+    }
+
     const { error: rpcErr } = await supabase.rpc('handle_new_signup', {
       p_user_id: authData.user.id, p_email: email,
       p_name: name, p_org_name: orgName, p_org_slug: slug,
