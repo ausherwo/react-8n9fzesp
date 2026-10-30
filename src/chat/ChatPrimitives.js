@@ -72,6 +72,7 @@ export const LIGHT = {
 
 export const mono = "JetBrains Mono, Fira Code, monospace";
 export const sans = "'DM Sans', system-ui, sans-serif";
+export const homeSerif = "'Source Serif 4', Georgia, serif";
 
 export const ACCEPTED_TYPES = ['.txt', '.log', '.csv', '.conf', '.cfg', '.json', '.xlsx', '.xls'];
 export const MAX_FILE_SIZE  = 5 * 1024 * 1024;
@@ -253,10 +254,81 @@ export function FileUploadCard({ fileName, fileSize, status, warnings, theme = C
 // extraCard lets a caller render a custom card for message types this module doesn't know about
 // (e.g. JCHome's device-review / analysis-result / signup-gate cards).
 // ─────────────────────────────────────────────
-export function MessageBubble({ msg, member, personaName = "Rincon", personaTitle = "DC Expert", extraCard, theme = C }) {
+// Copy-to-clipboard action under a plain-text JC reply. Kept to just the one functional
+// action — a fuller feedback/regenerate row is a follow-up once that plumbing exists, rather
+// than shipping decorative buttons that do nothing.
+function MessageActions({ content, theme }) {
+  const [copied, setCopied] = useState(false);
+  const copy = () => {
+    try { navigator.clipboard.writeText(content); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch {}
+  };
+  return (
+    <button onClick={copy} aria-label="Copy response" title={copied ? "Copied" : "Copy"}
+      style={{ background:"none", border:"none", padding:0, marginTop:12, cursor:"pointer", color:theme.muted, display:"flex", alignItems:"center", gap:6, fontSize:12, fontFamily:sans }}>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="4" y="4" width="13" height="13" rx="2"/><path d="M8 17v1a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2v-9a2 2 0 0 0-2-2h-1"/></svg>
+      {copied ? "Copied" : ""}
+    </button>
+  );
+}
+
+// ─────────────────────────────────────────────
+// MESSAGE BUBBLE — "plain" mode (JCHome): no avatars, no bubble chrome for JC's replies
+// (plain serif text + a copy action, Claude/ChatGPT-style), a light pill for the visitor's
+// own messages. Everything else (device-review/result/signup-gate cards, PSIRT progress)
+// still renders via extraCard, just without the avatar row around it.
+// ─────────────────────────────────────────────
+function PlainMessage({ msg, extraCard, theme }) {
   const isUser = msg.role === "user";
   const isFile = msg.type === "file";
   const custom = extraCard ? extraCard(msg) : null;
+
+  if (custom) return <div style={{ marginTop:28 }}>{custom}</div>;
+
+  if (msg.type === "psirt-progress" || msg.type === "psirt-done") {
+    return (
+      <div style={{ marginTop:28 }}>
+        <PSIRTProgress progress={msg.psirtProgress} theme={theme}/>
+        {msg.type === "psirt-done" && msg.psirtSummary && (
+          <div style={{ background:msg.psirtSummary.advisories>0?`${theme.red}10`:`${theme.green}10`, border:`1px solid ${msg.psirtSummary.advisories>0?`${theme.red}40`:`${theme.green}40`}`, borderRadius:10, padding:"10px 14px", marginTop:8, display:"flex", alignItems:"center", gap:10 }}>
+            <span style={{ fontSize:13, color:msg.psirtSummary.advisories>0?theme.red:theme.green }}>{msg.psirtSummary.advisories>0?"⚠":"✓"}</span>
+            <span style={{ fontSize:13, color:theme.dim, fontFamily:sans }}>
+              PSIRT complete — {msg.psirtSummary.advisories>0?`${msg.psirtSummary.advisories} advisories found across ${msg.psirtSummary.total} devices`:`All ${msg.psirtSummary.total} devices checked — no advisories found`}
+            </span>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  if (isFile) {
+    return <div style={{ marginTop:28, display:"flex", justifyContent:"flex-end" }}><FileUploadCard {...msg.fileData} theme={theme}/></div>;
+  }
+
+  if (isUser) {
+    return (
+      <div style={{ marginTop:28, display:"flex", justifyContent:"flex-end" }}>
+        <div style={{ maxWidth:"72%", background:theme.hi2, borderRadius:18, padding:"10px 16px" }}>
+          <div style={{ fontSize:15, lineHeight:1.6, color:theme.text, fontFamily:sans }}>{msg.content}</div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ marginTop:28 }}>
+      <div style={{ fontSize:17, lineHeight:1.7, color:theme.text, fontFamily:homeSerif, maxWidth:640 }}>
+        {renderMarkdown(msg.content, theme)}
+      </div>
+      {msg.content && <MessageActions content={msg.content} theme={theme}/>}
+    </div>
+  );
+}
+
+export function MessageBubble({ msg, member, personaName = "Rincon", personaTitle = "DC Expert", extraCard, theme = C, plain = false }) {
+  const isUser = msg.role === "user";
+  const isFile = msg.type === "file";
+  const custom = extraCard ? extraCard(msg) : null;
+  if (plain) return <PlainMessage msg={msg} extraCard={extraCard} theme={theme}/>;
   return (
     <div style={{ display:"flex", gap:14, marginTop:20, flexDirection:isUser?"row-reverse":"row", animation:"fadeUp 0.2s ease" }}>
       {isUser ? <UserAvatar member={member} theme={theme}/> : <BotAvatar theme={theme}/>}

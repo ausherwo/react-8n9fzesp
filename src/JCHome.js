@@ -11,8 +11,8 @@ import { useAuth } from "./Auth";
 import { supabase } from "./supabaseClient";
 import UserBadge from "./UserBadge";
 import {
-  LIGHT as C, mono, sans, ACCEPTED_TYPES, MAX_FILE_SIZE,
-  preflightCheck, MessageBubble, SuggestionChips, DragOverlay, TypingDots,
+  LIGHT as C, sans, homeSerif, ACCEPTED_TYPES, MAX_FILE_SIZE,
+  preflightCheck, MessageBubble, DragOverlay, TypingDots,
   queryPSIRTForDevices,
 } from "./chat/ChatPrimitives";
 import { DeviceReviewCard, ResultCard } from "./chat/FabricAnalysisCards";
@@ -23,14 +23,6 @@ const REQUIRE_SIGNUP_FOR_ANALYSIS = process.env.REACT_APP_REQUIRE_SIGNUP_FOR_ANA
 const ANON_SESSION_KEY = "nw_anon_session";
 const ANON_CONV_KEY    = "nw_anon_conversation";
 const ANON_COUNT_KEY   = "nw_home_count";
-
-const DEFAULT_EXAMPLE_QUESTIONS = [
-  "What's the safest upgrade path for a 9.3(x) ACI fabric?",
-  "How do I check if a CVE affects my fabric?",
-  "What should I do before a major APIC upgrade?",
-  "Border leaf BGP best practices for ACI",
-  "Paste your device inventory to analyse your fabric →",
-];
 
 function getAnonSessionId() {
   try {
@@ -61,19 +53,19 @@ function newId() { return `${Date.now()}-${Math.random().toString(36).slice(2, 8
 // ─────────────────────────────────────────────
 function SignupGateCard() {
   return (
-    <div style={{ background:C.surface, border:`1px solid ${C.amber}44`, borderLeft:`3px solid ${C.amber}`, padding:"16px 18px", maxWidth:480 }}>
-      <div style={{ fontFamily:mono, fontSize:11, color:C.amber, letterSpacing:"0.08em", textTransform:"uppercase", marginBottom:8 }}>// free questions used</div>
-      <div style={{ fontSize:14, color:C.text, lineHeight:1.7, marginBottom:14 }}>
+    <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:16, padding:"18px 20px", maxWidth:480, boxShadow:"0 1px 2px rgba(26,24,16,0.04), 0 12px 32px rgba(26,24,16,0.05)" }}>
+      <div style={{ fontSize:11, fontWeight:600, color:C.amber, letterSpacing:"0.06em", textTransform:"uppercase", marginBottom:8, fontFamily:sans }}>Free questions used</div>
+      <div style={{ fontSize:14.5, color:C.text, lineHeight:1.7, marginBottom:16, fontFamily:sans }}>
         You've used your {FREE_QUESTION_LIMIT} free questions. Create a free account to keep talking to JC — your conversation carries over, nothing is lost.
       </div>
-      <div style={{ display:"flex", gap:8 }}>
+      <div style={{ display:"flex", gap:10 }}>
         <button onClick={()=>{ try{posthog.capture('home_signup_gate_signup_clicked');}catch{} window.location.href="/signup"; }}
-          style={{ background:C.amber, border:"none", color:C.onAmber, fontFamily:mono, fontWeight:700, fontSize:12, padding:"9px 16px", cursor:"pointer" }}>
-          create_account() →
+          style={{ background:C.amber, border:"none", borderRadius:999, color:C.onAmber, fontFamily:sans, fontWeight:600, fontSize:13.5, padding:"9px 18px", cursor:"pointer" }}>
+          Create a free account
         </button>
         <button onClick={()=>window.location.href="/login"}
-          style={{ background:"none", border:`1px solid ${C.border}`, color:C.dim, fontFamily:mono, fontSize:12, padding:"9px 16px", cursor:"pointer" }}>
-          already have an account?
+          style={{ background:"none", border:`1px solid ${C.border}`, borderRadius:999, color:C.dim, fontFamily:sans, fontSize:13.5, padding:"9px 18px", cursor:"pointer" }}>
+          I already have an account
         </button>
       </div>
     </div>
@@ -82,15 +74,40 @@ function SignupGateCard() {
 
 function Footer() {
   return (
-    <footer style={{ borderTop:`1px solid ${C.border}`, padding:"16px 24px", flexShrink:0 }}>
-      <div style={{ maxWidth:740, margin:"0 auto", display:"flex", justifyContent:"space-between", alignItems:"center", flexWrap:"wrap", gap:10 }}>
-        <span style={{ fontFamily:mono, fontSize:12, fontWeight:700, color:C.text }}>netwrkr<span style={{ color:C.amber }}>.ai</span></span>
-        <div style={{ display:"flex", gap:16 }}>
-          <button onClick={()=>window.location.href="/jc"} style={{ background:"none", border:"none", color:C.muted, fontFamily:mono, fontSize:11, cursor:"pointer" }}>what is JC?</button>
-          <button onClick={()=>window.location.href="/security"} style={{ background:"none", border:"none", color:C.muted, fontFamily:mono, fontSize:11, cursor:"pointer" }}>security</button>
-        </div>
+    <footer style={{ flexShrink:0, padding:"16px 24px" }}>
+      <div style={{ maxWidth:1040, margin:"0 auto", display:"flex", justifyContent:"center", gap:24 }}>
+        <button onClick={()=>window.location.href="/jc"} style={{ background:"none", border:"none", color:C.muted, fontFamily:sans, fontSize:12, cursor:"pointer" }}>What is JC from Netwrkr?</button>
+        <button onClick={()=>window.location.href="/security"} style={{ background:"none", border:"none", color:C.muted, fontFamily:sans, fontSize:12, cursor:"pointer" }}>Security</button>
       </div>
     </footer>
+  );
+}
+
+// ─────────────────────────────────────────────
+// COMPOSER — the "hero" variant sits centered in the empty state; "docked" is the same
+// shape, smaller, fixed to the bottom of the viewport once a conversation is running.
+// ─────────────────────────────────────────────
+function Composer({ variant, input, setInput, onSend, onAttach, aiTyping, inputRef, placeholder }) {
+  const hero = variant === "hero";
+  return (
+    <div style={{ width:"100%", maxWidth:hero?680:720, margin:"0 auto", background:C.surface, border:`1px solid ${C.border}`, borderRadius:22,
+      boxShadow:"0 1px 2px rgba(26,24,16,0.04), 0 16px 40px rgba(26,24,16,0.06)", padding: hero ? "18px 20px 12px" : "14px 16px 10px" }}>
+      <input ref={inputRef} value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&onSend(input)}
+        placeholder={placeholder}
+        style={{ width:"100%", border:"none", outline:"none", background:"transparent", fontSize:15, fontFamily:sans, color:C.text, marginBottom:20, display:"block" }}/>
+      <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+        <button onClick={onAttach} title="Upload inventory file" aria-label="Attach file"
+          style={{ background:"none", border:`1px solid ${C.border}`, borderRadius:"50%", width:30, height:30, display:"flex", alignItems:"center", justifyContent:"center", color:C.muted, cursor:"pointer", flexShrink:0 }}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 5v14M5 12h14"/></svg>
+        </button>
+        <div style={{ flex:1 }}/>
+        <button onClick={()=>onSend(input)} disabled={!input.trim()||aiTyping} aria-label="Send message"
+          style={{ width:30, height:30, borderRadius:"50%", border:"none", background:input.trim()&&!aiTyping?C.amber:C.border,
+            display:"flex", alignItems:"center", justifyContent:"center", cursor:input.trim()&&!aiTyping?"pointer":"default", flexShrink:0 }}>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"><path d="M12 19V5"/><path d="M5 12l7-7 7 7"/></svg>
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -101,7 +118,6 @@ export default function JCHome() {
   const [input, setInput]             = useState("");
   const [aiTyping, setAiTyping]       = useState(false);
   const [dragOver, setDragOver]       = useState(false);
-  const [exampleQuestions, setExampleQuestions] = useState(DEFAULT_EXAMPLE_QUESTIONS);
   const [fabricContext, setFabricContext] = useState(null);
   const [psirtContext, setPsirtContext]   = useState(null);
   const [activeConvId, setActiveConvId]   = useState(null);
@@ -125,19 +141,6 @@ export default function JCHome() {
     if (session) return;
     saveAnonConversation(messages);
   }, [messages, session]);
-
-  // ── Example questions — random pick from the Supabase pool ────
-  useEffect(() => {
-    (async () => {
-      try {
-        const { data, error } = await supabase.from('homepage_example_questions').select('question').eq('active', true);
-        if (!error && data && data.length) {
-          const shuffled = [...data].sort(() => Math.random() - 0.5).map(r => r.question);
-          setExampleQuestions(shuffled.slice(0, 4));
-        }
-      } catch { /* fall back to DEFAULT_EXAMPLE_QUESTIONS */ }
-    })();
-  }, []);
 
   // ── Continuity: migrate a stashed anonymous conversation once the visitor signs in ──
   useEffect(() => {
@@ -346,7 +349,7 @@ export default function JCHome() {
   const extraCard = (msg) => {
     if (msg.type === "signup-gate") return <SignupGateCard/>;
     if (msg.type === "device-review") {
-      if (msg.cancelled) return <div style={{ fontFamily:mono, fontSize:12, color:C.muted }}>// cancelled</div>;
+      if (msg.cancelled) return <div style={{ fontFamily:sans, fontSize:13, color:C.muted }}>Cancelled</div>;
       return (
         <DeviceReviewCard
           devices={msg.devices}
@@ -363,13 +366,20 @@ export default function JCHome() {
     return null;
   };
 
+  const fileInput = (
+    <input ref={fileRef} type="file" accept={ACCEPTED_TYPES.join(',')} style={{ display:"none" }}
+      onChange={e=>{ const f=e.target.files[0]; if (f) handleFile(f); e.target.value=""; }}/>
+  );
+
+  const questionsLeft = FREE_QUESTION_LIMIT - getAnonQuestionCount();
+
   return (
     <div style={{ background:C.bg, color:C.text, minHeight:"100vh", fontFamily:sans, display:"flex", flexDirection:"column", position:"relative" }}
       onDragOver={e=>{ e.preventDefault(); setDragOver(true); }}
       onDragLeave={()=>setDragOver(false)}
       onDrop={e=>{ e.preventDefault(); setDragOver(false); const f=e.dataTransfer.files[0]; if (f) handleFile(f); }}>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400&family=JetBrains+Mono:wght@400;500;700&display=swap');
         *,*::before,*::after{box-sizing:border-box;}
         @keyframes fadeUp{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:translateY(0);}}
         @keyframes dotPulse{0%,100%{opacity:0.3;}50%{opacity:1;}}
@@ -379,83 +389,65 @@ export default function JCHome() {
 
       <DragOverlay visible={dragOver} theme={C}/>
 
-      <nav style={{ borderBottom:`1px solid ${C.border}`, padding:"0 24px", flexShrink:0 }}>
-        <div style={{ maxWidth:740, margin:"0 auto", display:"flex", alignItems:"center", justifyContent:"space-between", height:56 }}>
-          <div style={{ display:"flex", alignItems:"center", gap:9 }}>
-            <div style={{ width:27, height:27, background:C.amberG, border:`1px solid ${C.amber}44`, borderRadius:6, display:"flex", alignItems:"center", justifyContent:"center" }}>
-              <svg width="13" height="13" viewBox="0 0 14 14" fill="none"><polyline points="1,10 4,6 7,8.5 10,3.5 13,5.5" stroke={C.amber} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
-            </div>
-            <span style={{ fontFamily:mono, fontWeight:700, fontSize:15, color:C.text }}>netwrkr<span style={{ color:C.amber }}>.ai</span></span>
-          </div>
-          {session ? (
-            <div style={{ position:"relative" }}><UserBadge/></div>
-          ) : (
-            <button onClick={()=>window.location.href="/login"} style={{ background:"none", border:`1px solid ${C.border}`, color:C.dim, borderRadius:6, fontFamily:mono, fontSize:12, padding:"7px 14px", cursor:"pointer" }}>sign_in()</button>
+      <nav style={{ flexShrink:0, position:"relative", zIndex:2 }}>
+        <div style={{ maxWidth:1040, margin:"0 auto", padding:"0 24px", display:"flex", alignItems:"center", justifyContent:"space-between", height:56 }}>
+          <span style={{ fontWeight:600, fontSize:14, color:C.dim, fontFamily:sans }}>netwrkr<span style={{ color:C.amber }}>.ai</span></span>
+          {session ? <UserBadge/> : (
+            <button onClick={()=>window.location.href="/login"} style={{ background:"none", border:"none", color:C.dim, fontFamily:sans, fontSize:13, fontWeight:500, cursor:"pointer" }}>Sign in</button>
           )}
         </div>
       </nav>
 
-      <div style={{ flex:1, overflowY:"auto", padding: isEmpty ? "60px 24px" : "24px 24px 8px" }}>
-        <div style={{ maxWidth:740, margin:"0 auto" }}>
-          {isEmpty && (
-            <div style={{ textAlign:"center", marginBottom:32, animation:"fadeUp 0.3s ease" }}>
-              <div style={{ fontFamily:mono, fontSize:11, color:C.amber, letterSpacing:"0.1em", marginBottom:14 }}>// JC · data centre copilot</div>
-              <h1 style={{ fontSize:28, fontWeight:300, letterSpacing:"-0.02em", lineHeight:1.3, marginBottom:10 }}>
-                Ask JC anything about your <span style={{ color:C.amber }}>data centre fabric</span>.
-              </h1>
-              <p style={{ fontSize:14, color:C.dim, lineHeight:1.7 }}>No sign-up needed to start. Paste your device inventory and JC will analyse it right here.</p>
-            </div>
-          )}
-
-          {messages.map(msg => (
-            <MessageBubble key={msg.id} msg={msg} member={member} personaName="JC" personaTitle="Data Centre Copilot" extraCard={extraCard} theme={C}/>
-          ))}
-
-          {aiTyping && messages[messages.length-1]?.content === "" && (
-            <div style={{ display:"flex", gap:14, marginTop:20 }}>
-              <div style={{ flexShrink:0, width:34, height:34, borderRadius:"50%", background:C.amberG, border:`1px solid ${C.amber}35`, display:"flex", alignItems:"center", justifyContent:"center" }}>
-                <span style={{ color:C.amber, fontSize:15 }}>◈</span>
-              </div>
-              <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:"2px 12px 12px 12px", padding:"14px 18px" }}>
-                <TypingDots theme={C}/>
-              </div>
-            </div>
-          )}
-          <div ref={bottomRef}/>
-        </div>
-      </div>
-
-      {isEmpty && <SuggestionChips suggestions={exampleQuestions} onSelect={s=>{ setInput(s); inputRef.current?.focus(); }} onUpload={()=>fileRef.current?.click()} theme={C}/>}
-
-      <div style={{ background:C.hi, borderTop:`1px solid ${C.border}`, padding:"14px 24px", flexShrink:0 }}>
-        <div style={{ maxWidth:740, margin:"0 auto" }}>
-          <div style={{ background:C.surface, border:`1px solid ${C.border}`, display:"flex", alignItems:"center", gap:8, padding:"10px 14px" }}>
-            <span style={{ color:C.muted, fontFamily:mono, fontSize:12, flexShrink:0 }}>→</span>
-            <input ref={inputRef} value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&sendMessage(input)}
-              placeholder="Ask JC anything, or paste your device inventory…"
-              style={{ flex:1, background:"transparent", border:"none", outline:"none", color:C.text, fontSize:14, fontFamily:sans, caretColor:C.amber }}/>
-            <button onClick={()=>fileRef.current?.click()} title="Upload inventory file"
-              style={{ background:"none", border:`1px solid ${C.border}`, color:C.muted, fontFamily:mono, fontSize:13, padding:"7px 10px", cursor:"pointer" }}>
-              📎
-            </button>
-            <button onClick={()=>sendMessage(input)} disabled={!input.trim()||aiTyping}
-              style={{ width:36, height:36, border:"none", flexShrink:0, background:input.trim()&&!aiTyping?C.amber:C.muted, cursor:input.trim()&&!aiTyping?"pointer":"default", display:"flex", alignItems:"center", justifyContent:"center" }}>
-              <span style={{ color:C.onAmber, fontSize:15, fontWeight:700 }}>↑</span>
-            </button>
+      {isEmpty ? (
+        <div style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:24 }}>
+          <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:14, marginBottom:32, animation:"fadeUp 0.3s ease" }}>
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M12 2l2.2 6.8H21l-5.6 4.1 2.2 6.8L12 15.6l-5.6 4.1 2.2-6.8L3 8.8h6.8z" fill={C.amber}/></svg>
+            <h1 style={{ fontSize:34, fontWeight:400, letterSpacing:"-0.01em", color:C.text, margin:0, textAlign:"center", fontFamily:homeSerif }}>
+              Let's talk DC networking…
+            </h1>
           </div>
-          <input ref={fileRef} type="file" accept={ACCEPTED_TYPES.join(',')} style={{ display:"none" }}
-            onChange={e=>{ const f=e.target.files[0]; if (f) handleFile(f); e.target.value=""; }}/>
-          {!session && (
-            <div style={{ fontFamily:mono, fontSize:10, color:C.muted, marginTop:6, textAlign:"center" }}>
-              {FREE_QUESTION_LIMIT - getAnonQuestionCount() > 0
-                ? `// ${FREE_QUESTION_LIMIT - getAnonQuestionCount()} free question${FREE_QUESTION_LIMIT - getAnonQuestionCount() !== 1 ? "s" : ""} left`
-                : "// free questions used — sign up to continue"}
-            </div>
-          )}
-        </div>
-      </div>
 
-      <Footer/>
+          <Composer variant="hero" input={input} setInput={setInput} onSend={sendMessage} onAttach={()=>fileRef.current?.click()}
+            aiTyping={aiTyping} inputRef={inputRef} placeholder="Ask JC anything, or paste your device inventory…"/>
+          {fileInput}
+
+          <div style={{ marginTop:28, display:"flex", alignItems:"center", gap:18, fontSize:13, color:C.muted, fontFamily:sans, flexWrap:"wrap", justifyContent:"center" }}>
+            <span>Free to start</span>
+            <span style={{ width:3, height:3, borderRadius:"50%", background:C.border }}/>
+            <span>Live Cisco PSIRT API</span>
+            <span style={{ width:3, height:3, borderRadius:"50%", background:C.border }}/>
+            <span>Nothing stored</span>
+          </div>
+        </div>
+      ) : (
+        <>
+          <div style={{ flex:1, overflowY:"auto", padding:"40px 24px 170px" }}>
+            <div style={{ maxWidth:720, margin:"0 auto" }}>
+              {messages.map(msg => (
+                <MessageBubble key={msg.id} msg={msg} member={member} extraCard={extraCard} theme={C} plain/>
+              ))}
+              {aiTyping && messages[messages.length-1]?.content === "" && (
+                <div style={{ marginTop:28 }}><TypingDots theme={C}/></div>
+              )}
+              <div ref={bottomRef}/>
+            </div>
+          </div>
+
+          <div style={{ position:"fixed", left:0, right:0, bottom:0, background:`linear-gradient(to top, ${C.bg} 60%, transparent)`, padding:"32px 24px 24px" }}>
+            <div style={{ maxWidth:720, margin:"0 auto" }}>
+              <Composer variant="docked" input={input} setInput={setInput} onSend={sendMessage} onAttach={()=>fileRef.current?.click()}
+                aiTyping={aiTyping} inputRef={inputRef} placeholder="Reply to JC…"/>
+              {fileInput}
+              <div style={{ textAlign:"center", marginTop:10, fontSize:11, color:C.muted, fontFamily:sans }}>
+                {!session && questionsLeft > 0 && `${questionsLeft} free question${questionsLeft !== 1 ? "s" : ""} left · `}
+                JC can make mistakes. Verify advisories against Cisco PSIRT before acting.
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {isEmpty && <Footer/>}
     </div>
   );
 }

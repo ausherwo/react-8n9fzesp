@@ -15,7 +15,7 @@ import { C, mono, sans } from './ChatPrimitives';
 
 export function Badge({ level, sm, theme = C }) {
   const s = theme.sev[level] || theme.sev.LOW;
-  return <span style={{fontFamily:mono,fontSize:sm?9:11,fontWeight:700,color:s.color,background:s.bg,border:`1px solid ${s.bd}`,padding:sm?"1px 6px":"2px 9px",borderRadius:3}}>{level}</span>;
+  return <span style={{fontFamily:mono,fontSize:sm?9:11,fontWeight:700,color:s.color,background:s.bg,border:`1px solid ${s.bd}`,padding:sm?"1px 6px":"2px 9px",borderRadius:6}}>{level}</span>;
 }
 
 export function isAciFabric(devList) {
@@ -192,9 +192,9 @@ export function DeviceReviewCard({ devices, onChange, onConfirm, onCancel, confi
   const hidden = devices.length - filteredDevices.length;
 
   return (
-    <div style={{ background:theme.surface, border:`1px solid ${theme.border}`, borderLeft:`3px solid ${theme.amber}`, padding:"16px 18px", maxWidth:620, fontFamily:sans }}>
-      <div style={{ fontFamily:mono, fontSize:11, color:theme.amber, letterSpacing:"0.08em", textTransform:"uppercase", marginBottom:6 }}>// confirm your devices</div>
-      <div style={{ fontSize:13, color:theme.dim, lineHeight:1.6, marginBottom:12 }}>
+    <div style={{ background:theme.surface, border:`1px solid ${theme.border}`, borderRadius:16, padding:"18px 20px", maxWidth:640, fontFamily:sans, boxShadow:"0 1px 2px rgba(26,24,16,0.04), 0 12px 32px rgba(26,24,16,0.05)" }}>
+      <div style={{ fontSize:11, fontWeight:600, color:theme.amber, letterSpacing:"0.06em", textTransform:"uppercase", marginBottom:8 }}>Confirm your devices</div>
+      <div style={{ fontSize:13.5, color:theme.dim, lineHeight:1.6, marginBottom:14 }}>
         Found {totalDeviceCount} device{totalDeviceCount!==1?"s":""} across {devices.length} unique platform group{devices.length!==1?"s":""}. Check the details — especially software versions — then confirm.
       </div>
 
@@ -226,7 +226,7 @@ export function DeviceReviewCard({ devices, onChange, onConfirm, onCancel, confi
         </div>
       )}
 
-      <div style={{ border:`1px solid ${theme.border}`, marginBottom:14 }}>
+      <div style={{ border:`1px solid ${theme.border}`, borderRadius:12, overflow:"hidden", marginBottom:14 }}>
         <div style={{ display:"grid", gridTemplateColumns:"2fr 1.3fr 1fr 44px 28px", background:theme.hi, padding:"8px 12px", borderBottom:`1px solid ${theme.border}` }}>
           {["PLATFORM","VERSION","ROLE","CT",""].map(h=><div key={h} style={{ fontFamily:mono, fontSize:9, color:theme.muted, letterSpacing:"0.08em" }}>{h}</div>)}
         </div>
@@ -254,14 +254,14 @@ export function DeviceReviewCard({ devices, onChange, onConfirm, onCancel, confi
 
       {!confirmed ? (
         <div style={{ display:"flex", gap:8 }}>
-          <button onClick={onCancel} style={{ background:"none", border:`1px solid ${theme.border}`, color:theme.dim, fontFamily:mono, fontSize:12, padding:"9px 16px", cursor:"pointer" }}>cancel</button>
+          <button onClick={onCancel} style={{ background:"none", border:`1px solid ${theme.border}`, borderRadius:999, color:theme.dim, fontFamily:sans, fontSize:13, padding:"9px 18px", cursor:"pointer" }}>Cancel</button>
           <button onClick={onConfirm} disabled={!canConfirm}
-            style={{ flex:1, background:canConfirm?theme.amber:theme.hi, color:canConfirm?theme.onAmber:theme.muted, border:`1px solid ${canConfirm?theme.amber:theme.border}`, fontFamily:mono, fontWeight:700, fontSize:13, padding:"10px", cursor:canConfirm?"pointer":"not-allowed" }}>
-            confirm_and_analyse() →
+            style={{ flex:1, background:canConfirm?theme.amber:theme.hi, color:canConfirm?theme.onAmber:theme.muted, border:`1px solid ${canConfirm?theme.amber:theme.border}`, borderRadius:999, fontFamily:sans, fontWeight:600, fontSize:13.5, padding:"10px", cursor:canConfirm?"pointer":"not-allowed" }}>
+            Confirm and analyse
           </button>
         </div>
       ) : (
-        <div style={{ fontFamily:mono, fontSize:11, color:theme.green }}>✓ confirmed</div>
+        <div style={{ fontSize:12.5, color:theme.green, fontFamily:sans }}>✓ Confirmed</div>
       )}
     </div>
   );
@@ -275,7 +275,7 @@ function VerifiedAdvisoryCard({ item, theme = C }) {
   const sev = theme.sev[item.sev] || theme.sev.MEDIUM;
   return (
     <div style={{ marginBottom:8 }}>
-      <div onClick={()=>setOpen(!open)} style={{ background:theme.blueG, border:`1px solid ${theme.blueBd}`, padding:"10px 12px", cursor:"pointer" }}>
+      <div onClick={()=>setOpen(!open)} style={{ background:theme.blueG, border:`1px solid ${theme.blueBd}`, borderRadius:open?"12px 12px 0 0":12, padding:"10px 12px", cursor:"pointer" }}>
         <div style={{ display:"flex", alignItems:"flex-start", gap:10 }}>
           <div style={{ flex:1 }}>
             <div style={{ display:"flex", alignItems:"center", gap:7, marginBottom:4, flexWrap:"wrap" }}>
@@ -289,7 +289,7 @@ function VerifiedAdvisoryCard({ item, theme = C }) {
         </div>
       </div>
       {open && (
-        <div style={{ background:theme.surface, border:`1px solid ${theme.blueBd}`, borderTop:"none", padding:"12px 14px" }}>
+        <div style={{ background:theme.surface, border:`1px solid ${theme.blueBd}`, borderTop:"none", borderRadius:"0 0 12px 12px", padding:"12px 14px" }}>
           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"8px 16px", marginBottom:10 }}>
             {item.cvss && <div><div style={{ fontFamily:mono, fontSize:10, color:theme.muted, marginBottom:2 }}>CVSS</div><div style={{ fontFamily:mono, fontSize:13, fontWeight:600, color:sev.color }}>{item.cvss}</div></div>}
             {item.fixedVersion && <div><div style={{ fontFamily:mono, fontSize:10, color:theme.muted, marginBottom:2 }}>FIXED VERSION</div><div style={{ fontFamily:mono, fontSize:13, fontWeight:600, color:theme.green }}>{item.fixedVersion}</div></div>}
@@ -316,24 +316,24 @@ export function ResultCard({ data, theme = C }) {
   const unverifiedItems = (data.netwrkrIntel?.items||[]).filter(i=>!i.verified);
 
   return (
-    <div style={{ background:theme.surface, border:`1px solid ${theme.border}`, padding:"18px 20px", maxWidth:620, fontFamily:sans }}>
-      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:14, flexWrap:"wrap", gap:8 }}>
-        <div style={{ display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
-          <span style={{ fontFamily:mono, fontSize:11, color:theme.amber, letterSpacing:"0.08em", textTransform:"uppercase" }}>// analysis complete</span>
-          <span style={{ fontFamily:mono, fontSize:11, fontWeight:700, color:riskColor[fabricRisk]||theme.green, background:(riskColor[fabricRisk]||theme.green)+"18", border:`1px solid ${(riskColor[fabricRisk]||theme.green)}40`, padding:"2px 10px" }}>{fabricRisk} RISK</span>
+    <div style={{ background:theme.surface, border:`1px solid ${theme.border}`, borderRadius:18, padding:"20px 22px", maxWidth:660, fontFamily:sans, boxShadow:"0 1px 2px rgba(26,24,16,0.04), 0 12px 32px rgba(26,24,16,0.05)" }}>
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:16, flexWrap:"wrap", gap:8 }}>
+        <div style={{ display:"flex", alignItems:"center", gap:10, flexWrap:"wrap" }}>
+          <span style={{ fontSize:15, fontWeight:600, color:theme.text }}>Fabric risk: {fabricRisk[0] + fabricRisk.slice(1).toLowerCase()}</span>
+          <span style={{ fontSize:11, fontWeight:700, color:riskColor[fabricRisk]||theme.green, background:(riskColor[fabricRisk]||theme.green)+"18", border:`1px solid ${(riskColor[fabricRisk]||theme.green)}40`, borderRadius:999, padding:"2px 10px" }}>{fabricRisk}</span>
         </div>
-        <button onClick={()=>exportReport(data)} style={{ background:theme.amber, border:"none", color:theme.onAmber, fontFamily:mono, fontSize:12, fontWeight:700, padding:"7px 13px", cursor:"pointer" }}>export_report()</button>
+        <button onClick={()=>exportReport(data)} style={{ background:theme.hi, border:`1px solid ${theme.border}`, borderRadius:999, color:theme.dim, fontFamily:sans, fontSize:12.5, fontWeight:500, padding:"7px 14px", cursor:"pointer" }}>Export report</button>
       </div>
 
-      <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:10, paddingBottom:8, borderBottom:`1px solid ${theme.blueBd}` }}>
+      <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:10, paddingBottom:8, borderBottom:`1px solid ${theme.border}` }}>
         <div style={{ width:7, height:7, borderRadius:"50%", background:theme.blue }}/>
-        <span style={{ fontFamily:mono, fontSize:11, fontWeight:600, color:theme.blue, letterSpacing:"0.08em", textTransform:"uppercase" }}>cisco verified advisories</span>
-        <span style={{ marginLeft:"auto", fontFamily:mono, fontSize:10, color:theme.blue, background:theme.blueG, border:`1px solid ${theme.blueBd}`, padding:"1px 8px" }}>live PSIRT</span>
+        <span style={{ fontSize:11, fontWeight:600, color:theme.blue, letterSpacing:"0.06em", textTransform:"uppercase" }}>Cisco-verified advisories</span>
+        <span style={{ marginLeft:"auto", fontSize:10, color:theme.blue, background:theme.blueG, border:`1px solid ${theme.blueBd}`, borderRadius:999, padding:"1px 8px" }}>Live PSIRT</span>
       </div>
       {verifiedItems.length > 0
         ? verifiedItems.map((item,i)=><VerifiedAdvisoryCard key={i} item={item} theme={theme}/>)
         : (
-          <div style={{ background:theme.greenG, border:`1px solid ${theme.green}30`, padding:"9px 12px", display:"flex", alignItems:"center", gap:8, marginBottom:14 }}>
+          <div style={{ background:theme.greenG, border:`1px solid ${theme.green}30`, borderRadius:12, padding:"9px 12px", display:"flex", alignItems:"center", gap:8, marginBottom:14 }}>
             <span style={{ color:theme.green }}>✓</span>
             <div>
               <div style={{ fontFamily:mono, fontSize:12, color:theme.green, marginBottom:2 }}>No advisories found</div>
@@ -344,11 +344,11 @@ export function ResultCard({ data, theme = C }) {
 
       {data.priorityAssessment?.items?.length > 0 && (
         <div style={{ marginTop:14 }}>
-          <div style={{ fontFamily:mono, fontSize:10, color:theme.amber, letterSpacing:"0.08em", textTransform:"uppercase", marginBottom:8, paddingBottom:6, borderBottom:`1px solid ${theme.border}` }}>// priorities</div>
+          <div style={{ fontSize:11, fontWeight:600, color:theme.amber, letterSpacing:"0.06em", textTransform:"uppercase", marginBottom:8, paddingBottom:6, borderBottom:`1px solid ${theme.border}` }}>Priorities</div>
           {data.priorityAssessment.items.map((item,i)=>{
             const pColor = i===0?theme.red:i===1?theme.orange:theme.yellow;
             return (
-              <div key={i} style={{ background:theme.hi, border:`1px solid ${theme.border}`, borderLeft:`2px solid ${pColor}`, padding:"9px 12px", marginBottom:6 }}>
+              <div key={i} style={{ background:theme.hi, border:`1px solid ${theme.border}`, borderLeft:`2px solid ${pColor}`, borderRadius:10, padding:"9px 12px", marginBottom:6 }}>
                 <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:3 }}>
                   <span style={{ fontFamily:mono, fontSize:10, fontWeight:700, color:pColor, background:pColor+"18", border:`1px solid ${pColor}40`, padding:"1px 7px" }}>{item.priority}</span>
                   <span style={{ fontSize:13, fontWeight:500, color:theme.text }}>{item.title}</span>
@@ -362,8 +362,8 @@ export function ResultCard({ data, theme = C }) {
 
       {data.fabricAnalysis?.mismatches?.length > 0 && (
         <div style={{ marginTop:14 }}>
-          <div style={{ fontFamily:mono, fontSize:10, color:theme.amber, letterSpacing:"0.08em", textTransform:"uppercase", marginBottom:8, paddingBottom:6, borderBottom:`1px solid ${theme.border}` }}>// fabric risk</div>
-          <div style={{ background:theme.sev.HIGH.bg, border:`1px solid ${theme.sev.HIGH.bd}`, padding:"9px 12px" }}>
+          <div style={{ fontSize:11, fontWeight:600, color:theme.amber, letterSpacing:"0.06em", textTransform:"uppercase", marginBottom:8, paddingBottom:6, borderBottom:`1px solid ${theme.border}` }}>Fabric risk</div>
+          <div style={{ background:theme.sev.HIGH.bg, border:`1px solid ${theme.sev.HIGH.bd}`, borderRadius:10, padding:"9px 12px" }}>
             {data.fabricAnalysis.mismatches.map((m,i)=><div key={i} style={{ fontSize:12, color:theme.dim }}>{m}</div>)}
           </div>
         </div>
@@ -372,13 +372,13 @@ export function ResultCard({ data, theme = C }) {
       {unverifiedItems.length > 0 && (
         <div style={{ marginTop:14 }}>
           <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:8, paddingBottom:6, borderBottom:`1px solid ${theme.border}` }}>
-            <span style={{ fontFamily:mono, fontSize:10, color:theme.muted, letterSpacing:"0.08em", textTransform:"uppercase" }}>// netwrkr intel</span>
+            <span style={{ fontSize:11, fontWeight:600, color:theme.muted, letterSpacing:"0.06em", textTransform:"uppercase" }}>netwrkr intel</span>
             <span style={{ marginLeft:"auto", fontFamily:mono, fontSize:10, color:theme.orange, background:theme.sev.HIGH.bg, border:`1px solid ${theme.sev.HIGH.bd}`, padding:"1px 8px" }}>⚠ unverified</span>
           </div>
           {unverifiedItems.map((item,i)=>{
             const s = theme.sev[item.sev] || theme.sev.MEDIUM;
             return (
-              <div key={i} style={{ border:`1px solid ${s.bd}`, padding:"8px 11px", marginBottom:6, background:s.bg }}>
+              <div key={i} style={{ border:`1px solid ${s.bd}`, borderRadius:10, padding:"8px 11px", marginBottom:6, background:s.bg }}>
                 <div style={{ display:"flex", alignItems:"center", gap:7, marginBottom:3, flexWrap:"wrap" }}>
                   <Badge level={item.sev} sm theme={theme}/>
                   <span style={{ fontSize:12, fontWeight:500, color:theme.text }}>{item.title}</span>
@@ -393,8 +393,8 @@ export function ResultCard({ data, theme = C }) {
 
       {data.devices?.length > 0 && (
         <div style={{ marginTop:14 }}>
-          <div style={{ fontFamily:mono, fontSize:10, color:theme.amber, letterSpacing:"0.08em", textTransform:"uppercase", marginBottom:8, paddingBottom:6, borderBottom:`1px solid ${theme.border}` }}>// devices</div>
-          <div style={{ background:theme.hi, border:`1px solid ${theme.border}` }}>
+          <div style={{ fontSize:11, fontWeight:600, color:theme.amber, letterSpacing:"0.06em", textTransform:"uppercase", marginBottom:8, paddingBottom:6, borderBottom:`1px solid ${theme.border}` }}>Devices</div>
+          <div style={{ background:theme.hi, border:`1px solid ${theme.border}`, borderRadius:12, overflow:"hidden" }}>
             {data.devices.map((d,di)=>{
               const dotColor = theme.sev[d.fabricRisk]?.color || theme.green;
               const countMatch = d.name?.match(/\(x(\d+)\)$/);
