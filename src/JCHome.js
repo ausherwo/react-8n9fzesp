@@ -8,6 +8,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import posthog from "posthog-js";
 import { useAuth } from "./Auth";
+import InlineAuthCard from "./chat/InlineAuthCard";
 import { supabase } from "./supabaseClient";
 import UserBadge from "./UserBadge";
 import {
@@ -47,30 +48,6 @@ function getAnonQuestionCount() { try { return parseInt(localStorage.getItem(ANO
 function incAnonQuestionCount() { try { localStorage.setItem(ANON_COUNT_KEY, String(getAnonQuestionCount() + 1)); } catch {} }
 
 function newId() { return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`; }
-
-// ─────────────────────────────────────────────
-// INLINE SIGN-UP GATE CARD — rendered as a message in the conversation, not a modal/popup.
-// ─────────────────────────────────────────────
-function SignupGateCard() {
-  return (
-    <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:16, padding:"18px 20px", maxWidth:480, boxShadow:"0 1px 2px rgba(26,24,16,0.04), 0 12px 32px rgba(26,24,16,0.05)" }}>
-      <div style={{ fontSize:11, fontWeight:600, color:C.amber, letterSpacing:"0.06em", textTransform:"uppercase", marginBottom:8, fontFamily:sans }}>Free questions used</div>
-      <div style={{ fontSize:14.5, color:C.text, lineHeight:1.7, marginBottom:16, fontFamily:sans }}>
-        You've used your {FREE_QUESTION_LIMIT} free questions. Create a free account to keep talking to JC — your conversation carries over, nothing is lost.
-      </div>
-      <div style={{ display:"flex", gap:10 }}>
-        <button onClick={()=>{ try{posthog.capture('home_signup_gate_signup_clicked');}catch{} window.location.href="/signup"; }}
-          style={{ background:C.amber, border:"none", borderRadius:999, color:C.onAmber, fontFamily:sans, fontWeight:600, fontSize:13.5, padding:"9px 18px", cursor:"pointer" }}>
-          Create a free account
-        </button>
-        <button onClick={()=>window.location.href="/login"}
-          style={{ background:"none", border:`1px solid ${C.border}`, borderRadius:999, color:C.dim, fontFamily:sans, fontSize:13.5, padding:"9px 18px", cursor:"pointer" }}>
-          I already have an account
-        </button>
-      </div>
-    </div>
-  );
-}
 
 function Footer() {
   return (
@@ -347,7 +324,7 @@ export default function JCHome() {
   const isEmpty = messages.length === 0;
 
   const extraCard = (msg) => {
-    if (msg.type === "signup-gate") return <SignupGateCard/>;
+    if (msg.type === "signup-gate") return <InlineAuthCard/>;
     if (msg.type === "device-review") {
       if (msg.cancelled) return <div style={{ fontFamily:sans, fontSize:13, color:C.muted }}>Cancelled</div>;
       return (
