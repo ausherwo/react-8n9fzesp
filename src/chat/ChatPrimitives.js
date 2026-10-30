@@ -219,7 +219,7 @@ export function FabricContextBanner({ fabricFile, devices, onClear }) {
 // ─────────────────────────────────────────────
 // FILE UPLOAD CARD
 // ─────────────────────────────────────────────
-export function FileUploadCard({ fileName, fileSize, status, warnings, theme = C }) {
+export function FileUploadCard({ fileName, fileSize, status, warnings, pastedText, theme = C }) {
   const statusConfig = {
     uploading:  { color:theme.amber,  icon:"⟳", label:"Uploading…" },
     extracting: { color:theme.amber,  icon:"◈", label:"Extracting fabric data…" },
@@ -237,6 +237,18 @@ export function FileUploadCard({ fileName, fileSize, status, warnings, theme = C
           <div style={{ fontFamily:mono, fontSize:10, color:theme.muted, marginTop:2 }}>{fileName} {kb&&`· ${kb}`}</div>
         </div>
       </div>
+      {pastedText && (() => {
+        const lines = pastedText.split("\n");
+        const preview = lines.slice(0, 6);
+        const truncated = lines.length > 6;
+        return (
+          <div style={{ marginTop:8, padding:"8px 10px", background:theme.hi, border:`1px solid ${theme.border}`, maxHeight:140, overflow:"hidden" }}>
+            <pre style={{ margin:0, fontFamily:mono, fontSize:10.5, color:theme.dim, whiteSpace:"pre-wrap", wordBreak:"break-word" }}>
+              {preview.join("\n")}{truncated && `\n… +${lines.length - 6} more lines`}
+            </pre>
+          </div>
+        );
+      })()}
       {warnings?.length>0 && (
         <div style={{ marginTop:8, padding:"8px 10px", background:`${theme.orange}10`, border:`1px solid ${theme.orange}30` }}>
           <div style={{ fontFamily:mono, fontSize:10, color:theme.orange, marginBottom:4 }}>⚠ Possible sensitive data detected — review before proceeding:</div>
