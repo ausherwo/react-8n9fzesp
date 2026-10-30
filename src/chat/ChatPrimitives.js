@@ -316,7 +316,7 @@ function PlainMessage({ msg, extraCard, theme }) {
 
   return (
     <div style={{ marginTop:28 }}>
-      <div style={{ fontSize:16.5, fontWeight:300, lineHeight:1.7, letterSpacing:"-0.005em", color:theme.text, fontFamily:homeSerif, maxWidth:640 }}>
+      <div style={{ fontSize:16.5, fontWeight:350, lineHeight:1.7, letterSpacing:"-0.005em", color:theme.text, fontFamily:homeSerif, maxWidth:640 }}>
         {renderMarkdown(msg.content, theme)}
       </div>
       {msg.content && <MessageActions content={msg.content} theme={theme}/>}

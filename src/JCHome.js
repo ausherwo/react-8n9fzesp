@@ -379,7 +379,7 @@ export default function JCHome() {
       onDragLeave={()=>setDragOver(false)}
       onDrop={e=>{ e.preventDefault(); setDragOver(false); const f=e.dataTransfer.files[0]; if (f) handleFile(f); }}>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,300;8..60,400&family=JetBrains+Mono:wght@400;500;700&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,350;8..60,400&family=JetBrains+Mono:wght@400;500;700&display=swap');
         *,*::before,*::after{box-sizing:border-box;}
         @keyframes fadeUp{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:translateY(0);}}
         @keyframes dotPulse{0%,100%{opacity:0.3;}50%{opacity:1;}}
