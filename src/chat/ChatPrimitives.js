@@ -219,7 +219,7 @@ export function FabricContextBanner({ fabricFile, devices, onClear }) {
 // ─────────────────────────────────────────────
 // FILE UPLOAD CARD
 // ─────────────────────────────────────────────
-export function FileUploadCard({ fileName, fileSize, status, warnings, pastedText, theme = C }) {
+export function FileUploadCard({ fileName, fileSize, status, warnings, pastedText, theme = C, wide = false }) {
   const statusConfig = {
     uploading:  { color:theme.amber,  icon:"⟳", label:"Uploading…" },
     extracting: { color:theme.amber,  icon:"◈", label:"Extracting fabric data…" },
@@ -228,8 +228,13 @@ export function FileUploadCard({ fileName, fileSize, status, warnings, pastedTex
     preflight:  { color:theme.orange, icon:"⚠", label:"Sensitive data detected" },
   }[status] || { color:theme.muted, icon:"…", label:status };
   const kb = fileSize ? `${(fileSize/1024).toFixed(1)} KB` : "";
+  // "wide" matches the composer's own shape (rounded, 720px, same border/shadow) so the
+  // card reads as part of the same input surface rather than a separate widget type.
+  const cardStyle = wide
+    ? { background:theme.surface, border:`1px solid ${theme.border}`, borderRadius:22, padding:"16px 20px", maxWidth:720, width:"100%", boxShadow:"0 1px 2px rgba(26,24,16,0.04), 0 16px 40px rgba(26,24,16,0.06)" }
+    : { background:theme.surface, border:`1px solid ${statusConfig.color}30`, borderLeft:`3px solid ${statusConfig.color}`, padding:"12px 16px", maxWidth:400 };
   return (
-    <div style={{ background:theme.surface, border:`1px solid ${statusConfig.color}30`, borderLeft:`3px solid ${statusConfig.color}`, padding:"12px 16px", maxWidth:400 }}>
+    <div style={cardStyle}>
       <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:6 }}>
         <span style={{ color:statusConfig.color, fontFamily:mono, fontSize:14 }}>{statusConfig.icon}</span>
         <div>
@@ -242,7 +247,7 @@ export function FileUploadCard({ fileName, fileSize, status, warnings, pastedTex
         const preview = lines.slice(0, 6);
         const truncated = lines.length > 6;
         return (
-          <div style={{ marginTop:8, padding:"8px 10px", background:theme.hi, border:`1px solid ${theme.border}`, maxHeight:140, overflow:"hidden" }}>
+          <div style={{ marginTop:8, padding:"8px 10px", background:theme.hi, border:`1px solid ${theme.border}`, borderRadius:wide?12:0, maxHeight:140, overflow:"hidden" }}>
             <pre style={{ margin:0, fontFamily:mono, fontSize:10.5, color:theme.dim, whiteSpace:"pre-wrap", wordBreak:"break-word" }}>
               {preview.join("\n")}{truncated && `\n… +${lines.length - 6} more lines`}
             </pre>
@@ -313,7 +318,7 @@ function PlainMessage({ msg, extraCard, theme }) {
   }
 
   if (isFile) {
-    return <div style={{ marginTop:28, display:"flex", justifyContent:"flex-end" }}><FileUploadCard {...msg.fileData} theme={theme}/></div>;
+    return <div style={{ marginTop:28 }}><FileUploadCard {...msg.fileData} theme={theme} wide/></div>;
   }
 
   if (isUser) {
