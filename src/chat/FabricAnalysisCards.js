@@ -192,7 +192,7 @@ export function DeviceReviewCard({ devices, onChange, onConfirm, onCancel, confi
   const hidden = devices.length - filteredDevices.length;
 
   return (
-    <div style={{ background:theme.surface, border:`1px solid ${theme.border}`, borderRadius:16, padding:"18px 20px", maxWidth:640, fontFamily:sans, boxShadow:"0 1px 2px rgba(26,24,16,0.04), 0 12px 32px rgba(26,24,16,0.05)" }}>
+    <div style={{ background:theme.surface, border:`1px solid ${theme.border}`, borderRadius:22, padding:"20px 24px", maxWidth:720, width:"100%", fontFamily:sans, boxShadow:"0 1px 2px rgba(26,24,16,0.04), 0 16px 40px rgba(26,24,16,0.06)" }}>
       <div style={{ fontSize:11, fontWeight:600, color:theme.amber, letterSpacing:"0.06em", textTransform:"uppercase", marginBottom:8 }}>Confirm your devices</div>
       <div style={{ fontSize:13.5, color:theme.dim, lineHeight:1.6, marginBottom:14 }}>
         Found {totalDeviceCount} device{totalDeviceCount!==1?"s":""} across {devices.length} unique platform group{devices.length!==1?"s":""}. Check the details — especially software versions — then confirm.
