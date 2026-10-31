@@ -380,6 +380,7 @@ export default function JCHome() {
         @keyframes fadeUp{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:translateY(0);}}
         @keyframes dotPulse{0%,100%{opacity:0.3;}50%{opacity:1;}}
         @keyframes spin{from{transform:rotate(0deg);}to{transform:rotate(360deg);}}
+        @keyframes indeterminate{0%{transform:translateX(-100%);}100%{transform:translateX(320%);}}
         ::selection{background:${C.amber}40;color:${C.amberB};}
       `}</style>
 
