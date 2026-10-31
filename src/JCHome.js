@@ -391,7 +391,10 @@ export default function JCHome() {
 
       <nav style={{ flexShrink:0, position:"relative", zIndex:2 }}>
         <div style={{ maxWidth:1040, margin:"0 auto", padding:"0 24px", display:"flex", alignItems:"center", justifyContent:"space-between", height:56 }}>
-          <span style={{ fontWeight:600, fontSize:14, color:C.dim, fontFamily:sans }}>netwrkr<span style={{ color:C.amber }}>.ai</span></span>
+          <button onClick={()=>window.location.href="/"} aria-label="Go to home"
+            style={{ background:"none", border:"none", padding:0, cursor:"pointer", fontWeight:600, fontSize:14, color:C.dim, fontFamily:sans }}>
+            netwrkr<span style={{ color:C.amber }}>.ai</span>
+          </button>
           {session && member ? null : session ? (
             <div style={{ display:"flex", alignItems:"center", gap:12 }}>
               <span style={{ color:C.red, fontFamily:sans, fontSize:12.5 }}>Account setup incomplete</span>
