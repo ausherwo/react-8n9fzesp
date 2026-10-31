@@ -316,6 +316,7 @@ export default function JCHome() {
 
       updateMessage(psirtCardId, {
         type: "psirt-done",
+        analyzing: true,
         psirtSummary: { total: devicesWithVersions.length, advisories: psirtResult.totalAdvisories },
         psirtProgress: {
           total: devicesWithVersions.length, done: devicesWithVersions.length,
@@ -332,9 +333,11 @@ export default function JCHome() {
       if (parsed.error) throw new Error(parsed.message || parsed.error);
       try { posthog.capture('home_analysis_run', { device_count: devices.length }); } catch {}
 
+      updateMessage(psirtCardId, { analyzing: false });
       addMessage({ role:"ai", type:"analysis-result", data: parsed });
     } catch (err) {
       console.error("Analysis error:", err);
+      updateMessage(psirtCardId, { analyzing: false });
       addMessage({ role:"ai", content: err.message || "Analysis failed — please try again." });
       try { posthog.capture('home_analysis_failed', { error: err.message }); } catch {}
     }

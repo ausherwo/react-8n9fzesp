@@ -317,13 +317,27 @@ function PlainMessage({ msg, extraCard, theme }) {
   if (msg.type === "psirt-progress" || msg.type === "psirt-done") {
     return (
       <div style={{ marginTop:28 }}>
-        <PSIRTProgress progress={msg.psirtProgress} theme={theme}/>
+        <PSIRTProgress progress={msg.psirtProgress} theme={theme} wide/>
         {msg.type === "psirt-done" && msg.psirtSummary && (
-          <div style={{ background:msg.psirtSummary.advisories>0?`${theme.red}10`:`${theme.green}10`, border:`1px solid ${msg.psirtSummary.advisories>0?`${theme.red}40`:`${theme.green}40`}`, borderRadius:10, padding:"10px 14px", marginTop:8, display:"flex", alignItems:"center", gap:10 }}>
-            <span style={{ fontSize:13, color:msg.psirtSummary.advisories>0?theme.red:theme.green }}>{msg.psirtSummary.advisories>0?"⚠":"✓"}</span>
-            <span style={{ fontSize:13, color:theme.dim, fontFamily:sans }}>
-              PSIRT complete — {msg.psirtSummary.advisories>0?`${msg.psirtSummary.advisories} advisories found across ${msg.psirtSummary.total} devices`:`All ${msg.psirtSummary.total} devices checked — no advisories found`}
-            </span>
+          <div style={{ background:msg.psirtSummary.advisories>0?`${theme.red}10`:`${theme.green}10`, border:`1px solid ${msg.psirtSummary.advisories>0?`${theme.red}40`:`${theme.green}40`}`, borderRadius:16, padding:"12px 16px", marginTop:8, maxWidth:720 }}>
+            <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+              <span style={{ fontSize:13, color:msg.psirtSummary.advisories>0?theme.red:theme.green }}>{msg.psirtSummary.advisories>0?"⚠":"✓"}</span>
+              <span style={{ fontSize:13, color:theme.dim, fontFamily:sans }}>
+                PSIRT complete — {msg.psirtSummary.advisories>0?`${msg.psirtSummary.advisories} advisories found across ${msg.psirtSummary.total} devices`:`All ${msg.psirtSummary.total} devices checked — no advisories found`}
+              </span>
+            </div>
+            {msg.analyzing && (
+              <div style={{ display:"flex", alignItems:"center", gap:8, marginTop:10, paddingTop:10, borderTop:`1px solid ${theme.border}` }}>
+                <span style={{ color:theme.amber, fontFamily:mono, fontSize:12, display:"inline-block", animation:"spin 1s linear infinite" }}>◈</span>
+                <span style={{ fontSize:12.5, color:theme.dim, fontFamily:sans }}>Running fabric risk analysis…</span>
+                <span style={{ display:"flex", gap:3 }}>
+                  {[0,1,2].map(i => <span key={i} style={{ width:4, height:4, borderRadius:"50%", background:theme.amber, opacity:0.5, animation:`dotPulse 1.2s ease-in-out ${i*0.18}s infinite` }}/>)}
+                </span>
+                <div style={{ flex:1, height:3, background:`${theme.amber}1A`, overflow:"hidden", marginLeft:4 }}>
+                  <div style={{ height:"100%", width:"30%", background:theme.amber, animation:"indeterminate 1.1s ease-in-out infinite" }}/>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -454,12 +468,15 @@ export function DragOverlay({ visible, theme = C }) {
 // ─────────────────────────────────────────────
 // PSIRT PROGRESS
 // ─────────────────────────────────────────────
-export function PSIRTProgress({ progress, theme = C }) {
+export function PSIRTProgress({ progress, theme = C, wide = false }) {
   if (!progress) return null;
   const { total, done, results } = progress;
   const pct = total > 0 ? Math.round((done/total)*100) : 0;
+  const cardStyle = wide
+    ? { background:theme.surface, border:`1px solid ${theme.border}`, borderRadius:22, padding:"18px 20px", maxWidth:720, width:"100%", boxShadow:"0 1px 2px rgba(26,24,16,0.04), 0 16px 40px rgba(26,24,16,0.06)", marginBottom:8, animation:"fadeUp 0.2s ease" }
+    : { background:theme.hi, border:`1px solid ${theme.amber}30`, borderLeft:`3px solid ${theme.amber}`, padding:"14px 16px", marginBottom:8, animation:"fadeUp 0.2s ease" };
   return (
-    <div style={{ background:theme.hi, border:`1px solid ${theme.amber}30`, borderLeft:`3px solid ${theme.amber}`, padding:"14px 16px", marginBottom:8, animation:"fadeUp 0.2s ease" }}>
+    <div style={cardStyle}>
       <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:10 }}>
         <div style={{ display:"flex", alignItems:"center", gap:8 }}>
           <span style={{ color:theme.amber, fontFamily:mono, fontSize:12, animation:done<total?"spin 1s linear infinite":"none", display:"inline-block" }}>{done<total?"⟳":"✓"}</span>
