@@ -228,6 +228,7 @@ export function FileUploadCard({ fileName, fileSize, status, warnings, pastedTex
     preflight:  { color:theme.orange, icon:"⚠", label:"Sensitive data detected" },
   }[status] || { color:theme.muted, icon:"…", label:status };
   const kb = fileSize ? `${(fileSize/1024).toFixed(1)} KB` : "";
+  const active = status === "uploading" || status === "extracting";
   // "wide" matches the composer's own shape (rounded, 720px, same border/shadow) so the
   // card reads as part of the same input surface rather than a separate widget type.
   const cardStyle = wide
@@ -236,12 +237,24 @@ export function FileUploadCard({ fileName, fileSize, status, warnings, pastedTex
   return (
     <div style={cardStyle}>
       <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:6 }}>
-        <span style={{ color:statusConfig.color, fontFamily:mono, fontSize:14 }}>{statusConfig.icon}</span>
+        <span style={{ color:statusConfig.color, fontFamily:mono, fontSize:14, display:"inline-block", animation:active?"spin 1s linear infinite":"none" }}>{statusConfig.icon}</span>
         <div>
-          <div style={{ fontFamily:mono, fontSize:11, color:statusConfig.color }}>{statusConfig.label}</div>
+          <div style={{ fontFamily:mono, fontSize:11, color:statusConfig.color, display:"flex", alignItems:"center", gap:7 }}>
+            {statusConfig.label}
+            {active && (
+              <span style={{ display:"flex", gap:3 }}>
+                {[0,1,2].map(i => <span key={i} style={{ width:4, height:4, borderRadius:"50%", background:statusConfig.color, opacity:0.5, animation:`dotPulse 1.2s ease-in-out ${i*0.18}s infinite` }}/>)}
+              </span>
+            )}
+          </div>
           <div style={{ fontFamily:mono, fontSize:10, color:theme.muted, marginTop:2 }}>{fileName} {kb&&`· ${kb}`}</div>
         </div>
       </div>
+      {active && (
+        <div style={{ height:3, background:`${statusConfig.color}1A`, marginTop:2, marginBottom:4, overflow:"hidden" }}>
+          <div style={{ height:"100%", width:"30%", background:statusConfig.color, animation:"indeterminate 1.1s ease-in-out infinite" }}/>
+        </div>
+      )}
       {pastedText && (() => {
         const lines = pastedText.split("\n");
         const preview = lines.slice(0, 6);

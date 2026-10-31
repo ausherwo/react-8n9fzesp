@@ -729,6 +729,7 @@ export default function RinconChatPrototype() {
         @keyframes fadeUp{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:translateY(0);}}
         @keyframes dotPulse{0%,100%{transform:scale(1);opacity:0.5;}50%{transform:scale(1.4);opacity:1;}}
         @keyframes spin{to{transform:rotate(360deg);}}
+        @keyframes indeterminate{0%{transform:translateX(-100%);}100%{transform:translateX(320%);}}
       `}</style>
 
       {/* TOPBAR */}
