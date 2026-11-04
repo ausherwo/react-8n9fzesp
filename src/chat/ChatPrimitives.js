@@ -442,7 +442,7 @@ export function SuggestionChips({ suggestions, onSelect, onUpload, theme = C }) 
         <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
           {suggestions.map(s=>(
             <button key={s} onClick={()=>s.includes("Upload")?onUpload?.():onSelect(s)}
-              style={{ background:s.includes("Upload")?theme.amberG:"transparent", border:`1px solid ${s.includes("Upload")?`${theme.amber}44`:theme.border}`, color:s.includes("Upload")?theme.amber:theme.dim, fontFamily:mono, fontSize:11, padding:"6px 13px", cursor:"pointer", transition:"all 0.15s" }}
+              style={{ background:s.includes("Upload")?theme.amberG:theme.surface, border:`1px solid ${s.includes("Upload")?`${theme.amber}44`:theme.border}`, borderRadius:999, boxShadow:"0 1px 2px rgba(26,24,16,0.04)", color:s.includes("Upload")?theme.amber:theme.dim, fontFamily:mono, fontSize:11, padding:"6px 13px", cursor:"pointer", transition:"all 0.15s" }}
               onMouseEnter={e=>{ e.currentTarget.style.borderColor=`${theme.amber}55`; e.currentTarget.style.color=theme.text; }}
               onMouseLeave={e=>{ e.currentTarget.style.borderColor=s.includes("Upload")?`${theme.amber}44`:theme.border; e.currentTarget.style.color=s.includes("Upload")?theme.amber:theme.dim; }}>
               {s}

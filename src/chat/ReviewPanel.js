@@ -24,7 +24,7 @@ function Badge({ children, color }) {
 function RunCard({ run, expanded, onToggle, facts, loadingFacts }) {
   const runLabel = run.run_started_at ? new Date(run.run_started_at).toLocaleDateString(undefined,{ month:"short", day:"numeric" }) : "unknown run";
   return (
-    <div style={{ border:`1px solid ${C.border}`, background:C.surface, marginBottom:10 }}>
+    <div style={{ border:`1px solid ${C.border}`, borderRadius:14, boxShadow:"0 1px 2px rgba(26,24,16,0.04), 0 8px 20px rgba(26,24,16,0.05)", background:C.surface, marginBottom:10, overflow:"hidden" }}>
       <div onClick={onToggle} style={{ padding:"10px 12px", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
         <div>
           <div style={{ fontFamily:mono, fontSize:11, color:C.text, marginBottom:3 }}>{runLabel} · {run.count} pending</div>
@@ -110,15 +110,15 @@ export default function ReviewPanel({ authHeaders, version, onClose }) {
   const totalPending = summary.reduce((sum, r) => sum + r.count, 0);
 
   return (
-    <div style={{ width:300, flexShrink:0, background:C.surface, borderLeft:`1px solid ${C.border}`, display:"flex", flexDirection:"column", overflow:"hidden" }}>
+    <div style={{ width:300, flexShrink:0, background:C.bg, borderLeft:`1px solid ${C.border}`, display:"flex", flexDirection:"column", overflow:"hidden" }}>
       <div style={{ padding:"12px 14px", borderBottom:`1px solid ${C.border}`, display:"flex", alignItems:"center", justifyContent:"space-between" }}>
         <div>
           <div style={{ fontFamily:mono, fontSize:9, color:C.muted, letterSpacing:"0.15em", textTransform:"uppercase" }}>// review queue</div>
           <div style={{ fontFamily:sans, fontSize:13, color:C.text, marginTop:2 }}>Freddy the Ledger</div>
         </div>
         <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-          <button onClick={loadSummary} title="Refresh" style={{ background:"none", border:`1px solid ${C.border}`, color:C.muted, fontFamily:mono, fontSize:11, padding:"3px 7px", cursor:"pointer" }}>⟳</button>
-          {onClose && <button onClick={onClose} title="Hide panel" style={{ background:"none", border:`1px solid ${C.border}`, color:C.muted, fontFamily:mono, fontSize:11, padding:"3px 7px", cursor:"pointer" }}>✕</button>}
+          <button onClick={loadSummary} title="Refresh" style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:"50%", width:26, height:26, color:C.muted, fontFamily:mono, fontSize:11, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" }}>⟳</button>
+          {onClose && <button onClick={onClose} title="Hide panel" style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:"50%", width:26, height:26, color:C.muted, fontFamily:mono, fontSize:11, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" }}>✕</button>}
         </div>
       </div>
 

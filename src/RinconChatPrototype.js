@@ -46,7 +46,7 @@ function FabricContextBanner({ fabricFile, devices, onClear }) {
   const tierGroups = {};
   devices.forEach(d => { const t = d.tier||3; if (!tierGroups[t]) tierGroups[t]=[]; tierGroups[t].push(d); });
   return (
-    <div style={{ background:`${C.amber}08`, border:`1px solid ${C.amber}30`, borderLeft:`3px solid ${C.amber}`, margin:"0 0 16px", animation:"fadeUp 0.3s ease" }}>
+    <div style={{ background:C.surface, border:`1px solid ${C.amber}30`, borderLeft:`3px solid ${C.amber}`, borderRadius:16, boxShadow:"0 1px 2px rgba(26,24,16,0.04), 0 8px 20px rgba(26,24,16,0.05)", overflow:"hidden", margin:"0 0 16px", animation:"fadeUp 0.3s ease" }}>
       <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"10px 14px", cursor:"pointer" }} onClick={() => setExpanded(v=>!v)}>
         <div style={{ display:"flex", alignItems:"center", gap:10 }}>
           <span style={{ color:C.amber, fontFamily:mono, fontSize:12 }}>◈</span>
@@ -270,7 +270,7 @@ function ChatGreeting({ member, greetingData, convId, saveMessage, onViewFull, o
               <div style={{ width:26, height:26, background:C.amber, display:'flex', alignItems:'center', justifyContent:'center' }}>
                 <span style={{ color:'#000', fontFamily:mono, fontSize:13, fontWeight:700 }}>◈</span>
               </div>
-              <span style={{ fontFamily:mono, fontSize:11, color:C.amber }}>Rincon · DC Expert</span>
+              <span style={{ fontFamily:mono, fontSize:11, color:C.amber }}>JC · DC Expert</span>
             </div>
             <p style={{ fontSize:24, fontWeight:300, color:C.text, letterSpacing:'-0.02em', lineHeight:1.3, marginBottom:8 }}>
               Hey <span style={{ color:C.amber }}>{firstName}</span>, your fabric analysis is ready.
@@ -310,15 +310,15 @@ function ChatGreeting({ member, greetingData, convId, saveMessage, onViewFull, o
 
           <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
             {chatMsgs.map((msg,i)=>(
-              <div key={i} style={{ alignSelf:msg.role==='user'?'flex-end':'flex-start', maxWidth:'85%', background:msg.role==='user'?`${C.amber}12`:C.surface, border:`1px solid ${msg.role==='user'?`${C.amber}25`:C.border}`, borderRadius:msg.role==='user'?'12px 2px 12px 12px':'2px 12px 12px 12px', padding:'12px 16px', fontSize:14, color:C.text, lineHeight:1.75, fontFamily:sans, animation:'fadeUp 0.2s ease' }}>
-                {msg.role==='assistant' && <div style={{ fontFamily:mono, fontSize:10, color:C.amber, marginBottom:6 }}>Rincon · DC Expert</div>}
+              <div key={i} style={{ alignSelf:msg.role==='user'?'flex-end':'flex-start', maxWidth:'85%', background:msg.role==='user'?`${C.amber}12`:C.surface, border:`1px solid ${msg.role==='user'?`${C.amber}25`:C.border}`, borderRadius:msg.role==='user'?'16px 4px 16px 16px':'4px 16px 16px 16px', boxShadow:"0 1px 2px rgba(26,24,16,0.04), 0 8px 20px rgba(26,24,16,0.05)", padding:'12px 16px', fontSize:14, color:C.text, lineHeight:1.75, fontFamily:sans, animation:'fadeUp 0.2s ease' }}>
+                {msg.role==='assistant' && <div style={{ fontFamily:mono, fontSize:10, color:C.amber, marginBottom:6 }}>JC · DC Expert</div>}
                 {msg.role==='user' ? msg.content : renderMarkdown(msg.content, C)}
               </div>
             ))}
             {loading && (
-              <div style={{ alignSelf:'flex-start', background:C.surface, border:`1px solid ${C.border}`, borderRadius:'2px 12px 12px 12px', padding:'14px 18px' }}>
-                <div style={{ fontFamily:mono, fontSize:10, color:C.amber, marginBottom:8 }}>Rincon · thinking</div>
-                <TypingDots/>
+              <div style={{ alignSelf:'flex-start', background:C.surface, border:`1px solid ${C.border}`, borderRadius:'4px 16px 16px 16px', boxShadow:"0 1px 2px rgba(26,24,16,0.04), 0 8px 20px rgba(26,24,16,0.05)", padding:'14px 18px' }}>
+                <div style={{ fontFamily:mono, fontSize:10, color:C.amber, marginBottom:8 }}>JC · thinking</div>
+                <TypingDots theme={C}/>
               </div>
             )}
           </div>
@@ -357,7 +357,7 @@ function ChatGreeting({ member, greetingData, convId, saveMessage, onViewFull, o
 // SYSTEM PROMPT BUILDER (shared by greeting + main chat)
 // ─────────────────────────────────────────────
 function buildSystemPromptOverride(greetingData, psirtCtx) {
-  return `You are Rincon, an expert Cisco DC network engineer embedded in netwrkr.ai.
+  return `You are JC, an expert Cisco DC network engineer embedded in netwrkr.ai.
 The engineer has just had their fabric analysed. Answer their questions concisely and directly.
 Use cautious language for unverified findings. Never say "upgrade immediately" or "critical patch required".
 Use "priority review recommended" for unverified findings. Cite exact CSC IDs when available from PSIRT data.
@@ -768,35 +768,24 @@ export default function RinconChatPrototype() {
       {/* TOPBAR */}
       <div style={{ background:C.hi, borderBottom:`1px solid ${C.border}`, padding:"11px 20px", display:"flex", alignItems:"center", justifyContent:"space-between", flexShrink:0, zIndex:10 }}>
         <div style={{ display:"flex", alignItems:"center", gap:12 }}>
-          <button onClick={()=>setSidebarOpen(v=>!v)} style={{ background:"none", border:`1px solid ${C.border}`, color:C.muted, padding:"5px 8px", cursor:"pointer", fontFamily:mono, fontSize:11 }}>{sidebarOpen?"◧":"▣"}</button>
+          <button onClick={()=>setSidebarOpen(v=>!v)} style={{ background:"none", border:`1px solid ${C.border}`, borderRadius:999, color:C.muted, padding:"5px 8px", cursor:"pointer", fontFamily:mono, fontSize:11 }}>{sidebarOpen?"◧":"▣"}</button>
           <div style={{ display:"flex", alignItems:"center", gap:8 }}>
             <div style={{ width:26, height:26, background:C.amber, display:"flex", alignItems:"center", justifyContent:"center" }}>
               <span style={{ color:"#000", fontFamily:mono, fontSize:13, fontWeight:700 }}>◈</span>
             </div>
             <span style={{ fontFamily:mono, fontSize:13, fontWeight:600, color:C.text }}>netwrkr<span style={{ color:C.amber }}>.ai</span></span>
-            <span style={{ color:C.muted, fontFamily:mono, fontSize:11 }}>/ rincon</span>
+            <span style={{ color:C.muted, fontFamily:mono, fontSize:11 }}>/ dashboard</span>
           </div>
           {fabricFile && (
-            <div style={{ display:"flex", alignItems:"center", gap:6, background:C.amberG, border:`1px solid ${C.amber}30`, padding:"3px 10px" }}>
+            <div style={{ display:"flex", alignItems:"center", gap:6, background:C.amberG, border:`1px solid ${C.amber}30`, borderRadius:999, padding:"3px 10px" }}>
               <span style={{ color:C.amber, fontSize:10 }}>◈</span>
               <span style={{ fontFamily:mono, fontSize:10, color:C.amber }}>{fabricFile.name} · {fabricDevices.length} devices</span>
             </div>
           )}
         </div>
         <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-          {licenceStatus && (
-            <div style={{ fontFamily:mono, fontSize:10, color:licenceStatus.analyses_used>=licenceStatus.analyses_limit?C.red:C.muted, padding:"3px 10px", border:`1px solid ${licenceStatus.analyses_used>=licenceStatus.analyses_limit?C.red:C.border}` }}>
-              {licenceStatus.analyses_used} / {licenceStatus.analyses_limit} analyses
-            </div>
-          )}
-          <button onClick={newConversation} style={{ background:"transparent", border:`1px solid ${C.border}`, color:C.dim, fontFamily:mono, fontSize:10, padding:"5px 12px", cursor:"pointer", letterSpacing:"0.05em" }} onMouseEnter={e=>{e.currentTarget.style.borderColor=`${C.amber}55`;e.currentTarget.style.color=C.text;}} onMouseLeave={e=>{e.currentTarget.style.borderColor=C.border;e.currentTarget.style.color=C.dim;}}>
-            + new_chat()
-          </button>
-          <button onClick={()=>fileRef.current?.click()} style={{ background:C.amberG, border:`1px solid ${C.amber}40`, color:C.amber, fontFamily:mono, fontSize:10, padding:"5px 12px", cursor:"pointer", letterSpacing:"0.05em" }} disabled={uploading}>
-            {uploading?"uploading…":"↑ upload_fabric()"}
-          </button>
           {reviewPanelVisible && !reviewPanelOpen && (
-            <button onClick={()=>setReviewPanelOpen(true)} style={{ background:"transparent", border:`1px solid ${C.border}`, color:C.dim, fontFamily:mono, fontSize:10, padding:"5px 12px", cursor:"pointer", letterSpacing:"0.05em" }}>
+            <button onClick={()=>setReviewPanelOpen(true)} style={{ background:"transparent", border:`1px solid ${C.border}`, borderRadius:999, color:C.dim, fontFamily:mono, fontSize:10, padding:"5px 12px", cursor:"pointer", letterSpacing:"0.05em" }}>
               review queue →
             </button>
           )}
@@ -813,7 +802,7 @@ export default function RinconChatPrototype() {
           <div style={{ width:260, flexShrink:0, background:C.surface, borderRight:`1px solid ${C.border}`, display:"flex", flexDirection:"column", overflow:"hidden" }}>
             <div style={{ padding:"14px 16px 10px", borderBottom:`1px solid ${C.border}` }}>
               <div style={{ fontFamily:mono, fontSize:9, color:C.muted, letterSpacing:"0.15em", textTransform:"uppercase", marginBottom:10 }}>// conversations</div>
-              <button onClick={newConversation} style={{ width:"100%", background:C.amberG, border:`1px solid ${C.amber}30`, color:C.amber, fontFamily:mono, fontSize:11, padding:"8px", cursor:"pointer" }}>+ new_chat()</button>
+              <button onClick={newConversation} style={{ width:"100%", background:C.amberG, border:`1px solid ${C.amber}30`, borderRadius:999, color:C.amber, fontFamily:mono, fontSize:11, padding:"8px", cursor:"pointer" }}>+ new_chat()</button>
             </div>
             <div style={{ flex:1, overflowY:"auto" }}>
               {loadingHistory ? (
@@ -834,12 +823,12 @@ export default function RinconChatPrototype() {
               )}
             </div>
             <div style={{ padding:"12px 16px", borderTop:`1px solid ${C.border}` }}>
-              <div style={{ background:`${C.amber}06`, border:`1px solid ${C.amber}20`, padding:"10px 12px", marginBottom:10 }}>
+              <div style={{ background:C.surface, border:`1px solid ${C.amber}20`, borderRadius:14, boxShadow:"0 1px 2px rgba(26,24,16,0.04), 0 8px 20px rgba(26,24,16,0.05)", padding:"10px 12px", marginBottom:10 }}>
                 <div style={{ fontFamily:mono, fontSize:9, color:C.amber, marginBottom:4, letterSpacing:"0.1em" }}>// enterprise</div>
                 <div style={{ fontSize:11, color:C.muted, lineHeight:1.5, marginBottom:8 }}>Connect directly to APIC or Nexus Dashboard — no file upload needed.</div>
-                <button style={{ width:"100%", background:"none", border:`1px solid ${C.amber}30`, color:C.amber, fontFamily:mono, fontSize:10, padding:"5px", cursor:"not-allowed", opacity:0.5 }}>🔒 connect_apic() — enterprise</button>
+                <button style={{ width:"100%", background:"none", border:`1px solid ${C.amber}30`, borderRadius:999, color:C.amber, fontFamily:mono, fontSize:10, padding:"5px", cursor:"not-allowed", opacity:0.5 }}>🔒 connect_apic() — enterprise</button>
               </div>
-              <button onClick={()=>window.location.href='/history'} style={{ width:"100%", background:"none", border:`1px solid ${C.border}`, color:C.muted, fontFamily:mono, fontSize:10, padding:"7px", cursor:"pointer" }} onMouseEnter={e=>{e.currentTarget.style.borderColor=`${C.amber}44`;e.currentTarget.style.color=C.dim;}} onMouseLeave={e=>{e.currentTarget.style.borderColor=C.border;e.currentTarget.style.color=C.muted;}}>
+              <button onClick={()=>window.location.href='/history'} style={{ width:"100%", background:"none", border:`1px solid ${C.border}`, borderRadius:999, color:C.muted, fontFamily:mono, fontSize:10, padding:"7px", cursor:"pointer" }} onMouseEnter={e=>{e.currentTarget.style.borderColor=`${C.amber}44`;e.currentTarget.style.color=C.dim;}} onMouseLeave={e=>{e.currentTarget.style.borderColor=C.border;e.currentTarget.style.color=C.muted;}}>
                 view_full_history() →
               </button>
             </div>
@@ -848,7 +837,7 @@ export default function RinconChatPrototype() {
 
         {/* CHAT AREA */}
         <div ref={chatAreaRef} style={{ flex:1, display:"flex", flexDirection:"column", overflow:"hidden", minWidth:0, position:"relative" }} onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop}>
-          <DragOverlay visible={dragOver}/>
+          <DragOverlay visible={dragOver} theme={C}/>
 
           {showChatGreeting ? (
             <ChatGreeting
@@ -866,24 +855,24 @@ export default function RinconChatPrototype() {
                   {isEmpty && (
                     <div style={{ animation:"fadeUp 0.4s ease" }}>
                       <div style={{ marginBottom:32, paddingTop:20 }}>
-                        <div style={{ display:"inline-flex", alignItems:"center", gap:10, background:C.amberG, border:`1px solid ${C.amber}30`, padding:"8px 16px", marginBottom:24 }}>
+                        <div style={{ display:"inline-flex", alignItems:"center", gap:10, background:C.amberG, border:`1px solid ${C.amber}30`, borderRadius:999, padding:"8px 16px", marginBottom:24 }}>
                           <span style={{ color:C.amber, fontSize:16 }}>◈</span>
-                          <span style={{ fontFamily:mono, fontSize:11, color:C.amber, letterSpacing:"0.08em" }}>Rincon · DC Expert</span>
+                          <span style={{ fontFamily:mono, fontSize:11, color:C.amber, letterSpacing:"0.08em" }}>JC · DC Expert</span>
                         </div>
                         <h1 style={{ fontSize:32, fontWeight:400, letterSpacing:"-0.01em", lineHeight:1.2, marginBottom:14, color:C.text, fontFamily:homeSerif }}>What does your fabric<br/><span style={{ color:C.amber }}>need to know?</span></h1>
                         <p style={{ fontSize:14, color:C.dim, lineHeight:1.8, maxWidth:480 }}>Ask anything about your Cisco DC fabric, or upload a config file to ground the conversation in your actual inventory.</p>
                       </div>
-                      <div onClick={()=>fileRef.current?.click()} style={{ border:`1px dashed ${C.amber}40`, padding:"20px 24px", marginBottom:24, cursor:"pointer", transition:"all 0.2s", background:`${C.amber}04`, display:"flex", alignItems:"center", gap:16 }} onMouseEnter={e=>e.currentTarget.style.borderColor=`${C.amber}80`} onMouseLeave={e=>e.currentTarget.style.borderColor=`${C.amber}40`}>
+                      <div onClick={()=>fileRef.current?.click()} style={{ border:`1px dashed ${C.amber}40`, borderRadius:16, padding:"20px 24px", marginBottom:24, cursor:"pointer", transition:"all 0.2s", background:C.surface, boxShadow:"0 1px 2px rgba(26,24,16,0.04), 0 16px 40px rgba(26,24,16,0.06)", display:"flex", alignItems:"center", gap:16 }} onMouseEnter={e=>e.currentTarget.style.borderColor=`${C.amber}80`} onMouseLeave={e=>e.currentTarget.style.borderColor=`${C.amber}40`}>
                         <div style={{ fontSize:24, color:C.amber }}>↑</div>
                         <div>
                           <div style={{ fontFamily:mono, fontSize:12, color:C.amber, marginBottom:4 }}>upload_fabric_file()</div>
-                          <div style={{ fontSize:13, color:C.muted }}>Drop a config file, show version output, or CSV inventory. Rincon will parse it and answer questions about your specific fabric.</div>
+                          <div style={{ fontSize:13, color:C.muted }}>Drop a config file, show version output, or CSV inventory. JC will parse it and answer questions about your specific fabric.</div>
                           <div style={{ fontFamily:mono, fontSize:10, color:C.faint, marginTop:6 }}>.txt .log .csv .conf .cfg .json · max 5MB · drag and drop supported</div>
                         </div>
                       </div>
                       <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:10, marginBottom:24 }}>
                         {[["↑","Upgrade sequencing","Safe order for your fabric tier by tier"],["⚠","Bug research","Known issues for your platform + version"],["⟳","Version compatibility","APIC ↔ leaf ↔ spine alignment"]].map(([icon,title,desc])=>(
-                          <div key={title} style={{ background:C.surface, border:`1px solid ${C.border}`, padding:"14px 16px" }}>
+                          <div key={title} style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:16, boxShadow:"0 1px 2px rgba(26,24,16,0.04), 0 16px 40px rgba(26,24,16,0.06)", padding:"14px 16px" }}>
                             <div style={{ fontFamily:mono, fontSize:16, color:C.amber, marginBottom:8 }}>{icon}</div>
                             <div style={{ fontSize:13, fontWeight:500, color:C.text, marginBottom:4 }}>{title}</div>
                             <div style={{ fontSize:12, color:C.muted, lineHeight:1.5 }}>{desc}</div>
@@ -894,14 +883,14 @@ export default function RinconChatPrototype() {
                   )}
 
                   {fabricFile && <FabricContextBanner fabricFile={fabricFile} devices={fabricDevices} onClear={()=>{ setFabricContext(null); setFabricDevices([]); setFabricFile(null); setPsirtContext(null); setPsirtProgress(null); }}/>}
-                  {messages.map(msg=><MessageBubble key={msg.id} msg={msg} member={member}/>)}
+                  {messages.map(msg=><MessageBubble key={msg.id} msg={msg} member={member} theme={C} personaName="JC"/>)}
 
                   {aiTyping && (
                     <div style={{ display:"flex", gap:14, marginTop:20 }}>
-                      <RinconAvatar/>
-                      <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:"2px 12px 12px 12px", padding:"14px 18px" }}>
-                        <div style={{ fontFamily:mono, fontSize:11, color:C.amber, marginBottom:8 }}>Rincon · thinking</div>
-                        <TypingDots/>
+                      <RinconAvatar theme={C}/>
+                      <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:"4px 16px 16px 16px", boxShadow:"0 1px 2px rgba(26,24,16,0.04), 0 8px 20px rgba(26,24,16,0.05)", padding:"14px 18px" }}>
+                        <div style={{ fontFamily:mono, fontSize:11, color:C.amber, marginBottom:8 }}>JC · thinking</div>
+                        <TypingDots theme={C}/>
                       </div>
                     </div>
                   )}
@@ -909,25 +898,24 @@ export default function RinconChatPrototype() {
                 </div>
               </div>
 
-              {isEmpty && <SuggestionChips suggestions={SUGGESTIONS} onSelect={s=>{ setInput(s); inputRef.current?.focus(); }} onUpload={()=>fileRef.current?.click()}/>}
+              {isEmpty && <SuggestionChips suggestions={SUGGESTIONS} onSelect={s=>{ setInput(s); inputRef.current?.focus(); }} onUpload={()=>fileRef.current?.click()} theme={C}/>}
 
               {/* INPUT BAR */}
-              <div style={{ background:C.hi, borderTop:`1px solid ${C.border}`, padding:"14px 24px", flexShrink:0 }}>
+              <div style={{ background:C.bg, borderTop:`1px solid ${C.border}`, padding:"14px 24px", flexShrink:0 }}>
                 <div style={{ maxWidth:740, margin:"0 auto" }}>
-                  <div style={{ background:C.surface, border:`1px solid ${C.border}`, display:"flex", alignItems:"flex-end", gap:8, padding:"10px 14px" }}>
-                    <button onClick={()=>fileRef.current?.click()} disabled={uploading} title="Upload fabric file" style={{ background:"none", border:"none", color:uploading?C.amber:C.muted, cursor:"pointer", padding:"4px", flexShrink:0, fontSize:16, transition:"color 0.15s" }} onMouseEnter={e=>e.currentTarget.style.color=C.amber} onMouseLeave={e=>e.currentTarget.style.color=uploading?C.amber:C.muted}>
+                  <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:22, boxShadow:"0 1px 2px rgba(26,24,16,0.04), 0 16px 40px rgba(26,24,16,0.06)", display:"flex", alignItems:"flex-end", gap:8, padding:"10px 10px 10px 16px" }}>
+                    <button onClick={()=>fileRef.current?.click()} disabled={uploading} title="Upload fabric file" style={{ background:"none", border:`1px solid ${C.border}`, borderRadius:"50%", width:30, height:30, color:uploading?C.amber:C.muted, cursor:"pointer", flexShrink:0, fontSize:14, display:"flex", alignItems:"center", justifyContent:"center", transition:"color 0.15s" }} onMouseEnter={e=>e.currentTarget.style.color=C.amber} onMouseLeave={e=>e.currentTarget.style.color=uploading?C.amber:C.muted}>
                       {uploading?<span style={{ display:"inline-block", animation:"spin 0.7s linear infinite" }}>⟳</span>:"↑"}
                     </button>
-                    <span style={{ color:C.muted, fontFamily:mono, fontSize:12, flexShrink:0, paddingBottom:2 }}>→</span>
-                    <textarea ref={inputRef} value={input} onChange={e=>setInput(e.target.value)} onKeyDown={handleKey} placeholder={fabricFile?`Ask about ${fabricFile.name}…`:"Ask Rincon anything about your Cisco DC fabric…"} disabled={aiTyping} rows={1}
-                      style={{ flex:1, background:"transparent", border:"none", outline:"none", color:C.text, fontSize:14, fontFamily:sans, resize:"none", lineHeight:1.5, maxHeight:120, overflowY:"auto", caretColor:C.amber }}
+                    <textarea ref={inputRef} value={input} onChange={e=>setInput(e.target.value)} onKeyDown={handleKey} placeholder={fabricFile?`Ask about ${fabricFile.name}…`:"Ask JC anything about your Cisco DC fabric…"} disabled={aiTyping} rows={1}
+                      style={{ flex:1, background:"transparent", border:"none", outline:"none", color:C.text, fontSize:14, fontFamily:sans, resize:"none", lineHeight:1.5, maxHeight:120, overflowY:"auto", caretColor:C.amber, padding:"5px 0" }}
                       onInput={e=>{ e.target.style.height="auto"; e.target.style.height=Math.min(e.target.scrollHeight,120)+"px"; }}/>
-                    <button onClick={()=>send()} disabled={!input.trim()||aiTyping} style={{ width:36, height:36, border:"none", flexShrink:0, background:input.trim()&&!aiTyping?C.amber:C.muted, cursor:input.trim()&&!aiTyping?"pointer":"default", display:"flex", alignItems:"center", justifyContent:"center", transition:"background 0.15s" }}>
-                      <span style={{ color:"#000", fontSize:15, fontWeight:700 }}>↑</span>
+                    <button onClick={()=>send()} disabled={!input.trim()||aiTyping} style={{ width:30, height:30, borderRadius:"50%", border:"none", flexShrink:0, background:input.trim()&&!aiTyping?C.amber:C.border, cursor:input.trim()&&!aiTyping?"pointer":"default", display:"flex", alignItems:"center", justifyContent:"center", transition:"background 0.15s" }}>
+                      <span style={{ color:"#FFF", fontSize:14, fontWeight:700 }}>↑</span>
                     </button>
                   </div>
                   <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginTop:6, paddingLeft:2 }}>
-                    <span style={{ fontFamily:mono, fontSize:10, color:C.muted }}>{fabricFile?`◈ Fabric context: ${fabricFile.name} · ${fabricDevices.length} devices`:"Rincon · Cisco DC Expert · powered by Claude"}</span>
+                    <span style={{ fontFamily:mono, fontSize:10, color:C.muted }}>{fabricFile?`◈ Fabric context: ${fabricFile.name} · ${fabricDevices.length} devices`:"JC · Cisco DC Expert · powered by Claude"}</span>
                     <span style={{ fontFamily:mono, fontSize:10, color:C.muted }}>↑ attach file · ↵ send</span>
                   </div>
                 </div>
