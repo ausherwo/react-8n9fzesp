@@ -474,7 +474,7 @@ export default function JCHome() {
           </button>
 
           <div style={{ marginTop:28, width:"100%" }}>
-            <SuggestionChips suggestions={suggestions} theme={C} center columns={2}
+            <SuggestionChips suggestions={suggestions} theme={C} center pop
               onSelect={s=>{ setInput(s); inputRef.current?.focus(); }}
               onUpload={()=>fileRef.current?.click()}/>
           </div>
