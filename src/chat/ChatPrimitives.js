@@ -434,15 +434,17 @@ export function ConversationItem({ conv, active, onClick, theme = C }) {
 // A suggestion whose text includes "Upload" fires onUpload instead of onSelect,
 // matching RinconChatPrototype's original convention.
 // ─────────────────────────────────────────────
-export function SuggestionChips({ suggestions, onSelect, onUpload, theme = C, center = false }) {
+export function SuggestionChips({ suggestions, onSelect, onUpload, theme = C, center = false, columns = null }) {
   return (
     <div style={{ padding:"0 24px 16px" }}>
       <div style={{ maxWidth:740, margin:"0 auto", textAlign:center?"center":"left" }}>
         <div style={{ fontFamily:mono, fontSize:10, color:theme.muted, marginBottom:10, letterSpacing:"0.08em" }}>// suggested</div>
-        <div style={{ display:"flex", gap:8, flexWrap:"wrap", justifyContent:center?"center":"flex-start" }}>
+        <div style={columns
+          ? { display:"grid", gridTemplateColumns:`repeat(${columns}, 1fr)`, gap:8 }
+          : { display:"flex", gap:8, flexWrap:"wrap", justifyContent:center?"center":"flex-start" }}>
           {suggestions.map(s=>(
             <button key={s} onClick={()=>s.includes("Upload")?onUpload?.():onSelect(s)}
-              style={{ background:s.includes("Upload")?theme.amberG:theme.surface, border:`1px solid ${s.includes("Upload")?`${theme.amber}44`:theme.border}`, borderRadius:999, boxShadow:"0 1px 2px rgba(26,24,16,0.04)", color:s.includes("Upload")?theme.amber:theme.dim, fontFamily:mono, fontSize:11, padding:"6px 13px", cursor:"pointer", transition:"all 0.15s" }}
+              style={{ background:s.includes("Upload")?theme.amberG:theme.surface, border:`1px solid ${s.includes("Upload")?`${theme.amber}44`:theme.border}`, borderRadius:999, boxShadow:"0 1px 2px rgba(26,24,16,0.04)", color:s.includes("Upload")?theme.amber:theme.dim, fontFamily:mono, fontSize:11, padding:"6px 13px", cursor:"pointer", transition:"all 0.15s", width:columns?"100%":undefined }}
               onMouseEnter={e=>{ e.currentTarget.style.borderColor=`${theme.amber}55`; e.currentTarget.style.color=theme.text; }}
               onMouseLeave={e=>{ e.currentTarget.style.borderColor=s.includes("Upload")?`${theme.amber}44`:theme.border; e.currentTarget.style.color=s.includes("Upload")?theme.amber:theme.dim; }}>
               {s}
