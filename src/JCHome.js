@@ -21,6 +21,21 @@ import { DeviceReviewCard, ResultCard } from "./chat/FabricAnalysisCards";
 const FREE_QUESTION_LIMIT = 3;
 const REQUIRE_SIGNUP_FOR_ANALYSIS = process.env.REACT_APP_REQUIRE_SIGNUP_FOR_ANALYSIS === "true";
 
+// A small ACI fabric with a deliberate version mismatch (older leafs, newer spines/APICs) so
+// the demo surfaces a real priority finding and a handful of live PSIRT advisories, without
+// anyone needing a real inventory on hand just to see what JC does.
+const SAMPLE_INVENTORY = `APIC1        APIC-SERVER-M3     5.2(3e)
+APIC2        APIC-SERVER-M3     5.2(3e)
+APIC3        APIC-SERVER-M3     5.2(3e)
+
+SPINE-101    N9K-C9364C         15.2(4d)
+SPINE-102    N9K-C9364C         15.2(4d)
+
+LEAF-201     N9K-C93180YC-EX    14.2(5i)
+LEAF-202     N9K-C93180YC-EX    14.2(5i)
+LEAF-203     N9K-C93180YC-FX    14.2(7p)
+BORDER-301   N9K-C9332C         15.2(4d)`;
+
 const ANON_SESSION_KEY = "nw_anon_session";
 const ANON_CONV_KEY    = "nw_anon_conversation";
 const ANON_COUNT_KEY   = "nw_home_count";
@@ -431,6 +446,12 @@ export default function JCHome() {
             <span style={{ width:3, height:3, borderRadius:"50%", background:C.border }}/>
             <span>Nothing stored</span>
           </div>
+
+          <button
+            onClick={() => { try { posthog.capture('home_sample_data_clicked'); } catch {} handlePasteText(SAMPLE_INVENTORY); }}
+            style={{ marginTop:16, background:"none", border:"none", color:C.amber, fontFamily:sans, fontSize:13, fontWeight:500, cursor:"pointer", textDecoration:"underline" }}>
+            Try a sample inventory →
+          </button>
         </div>
       ) : (
         <>
