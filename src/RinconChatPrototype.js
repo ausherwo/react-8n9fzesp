@@ -11,7 +11,28 @@ import {
   TypingDots, BotAvatar as RinconAvatar, UserAvatar, FileUploadCard,
   MessageBubble, ConversationItem, SuggestionChips, DragOverlay, PSIRTProgress,
 } from './chat/ChatPrimitives';
-import ReviewPanel from './chat/ReviewPanel';
+import OpsDashboardHome from './chat/OpsDashboardHome';
+import FreddyDashboardView from './chat/FreddyDashboardView';
+
+// ─────────────────────────────────────────────
+// OPS TOPBAR — shared by the dashboard/Freddy views (reviewers only), styled like the
+// JC homepage's own nav: a slim bar, logo left, content right. No sidebar toggle, no
+// chat-product chrome — this is the ops side of the page, not the customer chat product.
+// ─────────────────────────────────────────────
+function OpsTopbar({ crumb, onLogoClick }) {
+  return (
+    <div style={{ borderBottom:`1px solid ${C.border}`, padding:"14px 24px", display:"flex", alignItems:"center", justifyContent:"space-between", flexShrink:0 }}>
+      <button onClick={onLogoClick} style={{ background:"none", border:"none", padding:0, cursor:"pointer", display:"flex", alignItems:"center", gap:8 }}>
+        <div style={{ width:22, height:22, background:C.amber, display:"flex", alignItems:"center", justifyContent:"center", borderRadius:5 }}>
+          <span style={{ color:"#000", fontFamily:mono, fontSize:11, fontWeight:700 }}>◈</span>
+        </div>
+        <span style={{ fontFamily:sans, fontSize:14, fontWeight:600, color:C.text }}>netwrkr<span style={{ color:C.amber }}>.ai</span></span>
+        <span style={{ color:C.muted, fontFamily:mono, fontSize:11 }}>/ {crumb}</span>
+      </button>
+      <UserBadge theme={C}/>
+    </div>
+  );
+}
 
 function getJwtClaims() {
   try {
@@ -397,9 +418,13 @@ export default function RinconChatPrototype() {
   const [showChatGreeting, setShowChatGreeting] = useState(false);
   const [greetingData, setGreetingData]         = useState(null);
   const [licenceStatus, setLicenceStatus]       = useState(null);
-  const [reviewPanelVisible, setReviewPanelVisible] = useState(false);
-  const [reviewPanelOpen, setReviewPanelOpen]       = useState(true);
-  const [reviewPanelVersion, setReviewPanelVersion] = useState(0);
+  // Reviewer gating decides which top-level experience renders at all: an ops dashboard
+  // (Matt/Andrew) vs. the regular fabric-analysis chat product (every customer). Checked
+  // server-side (api/_lib/ledgerReview.js's email allowlist) — see checkReviewerAccess.
+  const [isReviewer, setIsReviewer]             = useState(false);
+  const [reviewerCheckDone, setReviewerCheckDone] = useState(false);
+  const [opsView, setOpsView]                   = useState('dashboard'); // 'dashboard' | 'freddy' | 'chat'
+  const [reviewQueueVersion, setReviewQueueVersion] = useState(0);
 
   const bottomRef   = useRef(null);
   const inputRef    = useRef(null);
@@ -455,12 +480,13 @@ export default function RinconChatPrototype() {
   };
 
   // Reviewer gating lives server-side (an email allowlist in api/_lib/ledgerReview.js) —
-  // the frontend just probes the endpoint and shows the panel only if it's allowed in.
+  // the frontend just probes the endpoint and decides which top-level experience to render.
   const checkReviewerAccess = async () => {
     try {
       const res = await fetch("/api/ledger-review", { headers:authHeaders() });
-      setReviewPanelVisible(res.ok);
-    } catch { setReviewPanelVisible(false); }
+      setIsReviewer(res.ok);
+    } catch { setIsReviewer(false); }
+    setReviewerCheckDone(true);
   };
 
   const loadLicence = async () => {
@@ -708,7 +734,7 @@ export default function RinconChatPrototype() {
           created_at: savedAiMsg?.created_at||new Date().toISOString()
         }]);
         loadConversations();
-        if (reviewEvents?.length) setReviewPanelVersion(v=>v+1);
+        if (reviewEvents?.length) setReviewQueueVersion(v=>v+1);
       } catch(err) {
         console.error("PSIRT re-run + chat error:", err);
         setAiTyping(false);
@@ -726,7 +752,7 @@ export default function RinconChatPrototype() {
       setAiTyping(false);
       setMessages(prev=>[...prev,{ ...(savedAiMsg||{}), id:savedAiMsg?.id||Date.now().toString(), role:"ai", content:aiResponse, created_at:savedAiMsg?.created_at||new Date().toISOString() }]);
       loadConversations();
-      if (reviewEvents?.length) setReviewPanelVersion(v=>v+1);
+      if (reviewEvents?.length) setReviewQueueVersion(v=>v+1);
     } catch(err) {
       console.error("Claude error:", err);
       setAiTyping(false);
@@ -752,18 +778,53 @@ export default function RinconChatPrototype() {
 
   const isEmpty = messages.length === 0;
 
+  const globalStyle = (
+    <style>{`
+      @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&family=Source+Serif+4:opsz,wght@8..60,350;8..60,400&display=swap');
+      * { box-sizing:border-box; margin:0; padding:0; }
+      ::-webkit-scrollbar{width:4px;} ::-webkit-scrollbar-track{background:transparent;} ::-webkit-scrollbar-thumb{background:${C.border};border-radius:2px;}
+      input::placeholder,textarea::placeholder{color:${C.muted};}
+      @keyframes fadeUp{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:translateY(0);}}
+      @keyframes dotPulse{0%,100%{transform:scale(1);opacity:0.5;}50%{transform:scale(1.4);opacity:1;}}
+      @keyframes spin{to{transform:rotate(360deg);}}
+      @keyframes indeterminate{0%{transform:translateX(-100%);}100%{transform:translateX(320%);}}
+    `}</style>
+  );
+
+  // Reviewer status is unknown for an instant on mount — hold off rendering either
+  // experience rather than flashing the customer chat product before swapping to the
+  // ops dashboard (or vice versa).
+  if (!reviewerCheckDone) {
+    return <div style={{ background:C.bg, minHeight:"100vh" }}/>;
+  }
+
+  // Ops dashboard — reviewers only (Matt/Andrew). Everyone else always gets the
+  // fabric-analysis chat product below, regardless of opsView (customers never set it).
+  if (isReviewer && opsView === 'dashboard') {
+    return (
+      <div style={{ background:C.bg, minHeight:"100vh", display:"flex", flexDirection:"column", fontFamily:sans, color:C.text }}>
+        {globalStyle}
+        <OpsTopbar crumb="dashboard" onLogoClick={()=>setOpsView('dashboard')}/>
+        <OpsDashboardHome member={member} org={org} authHeaders={authHeaders} onOpenFreddy={()=>setOpsView('freddy')} onOpenChat={()=>setOpsView('chat')}/>
+      </div>
+    );
+  }
+
+  if (isReviewer && opsView === 'freddy') {
+    return (
+      <div style={{ background:C.bg, minHeight:"100vh", display:"flex", flexDirection:"column", fontFamily:sans, color:C.text }}>
+        {globalStyle}
+        <OpsTopbar crumb="freddy the ledger" onLogoClick={()=>setOpsView('dashboard')}/>
+        <FreddyDashboardView authHeaders={authHeaders} version={reviewQueueVersion} onBack={()=>setOpsView('dashboard')} onOpenChat={()=>setOpsView('chat')}/>
+      </div>
+    );
+  }
+
+  // Chat experience — every regular customer lands here directly; a reviewer reaches it
+  // via "Ask JC" from the dashboard/Freddy views (opsView === 'chat').
   return (
     <div style={{ background:C.bg, minHeight:"100vh", display:"flex", flexDirection:"column", fontFamily:sans, color:C.text }}>
-      <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&family=Source+Serif+4:opsz,wght@8..60,350;8..60,400&display=swap');
-        * { box-sizing:border-box; margin:0; padding:0; }
-        ::-webkit-scrollbar{width:4px;} ::-webkit-scrollbar-track{background:transparent;} ::-webkit-scrollbar-thumb{background:${C.border};border-radius:2px;}
-        input::placeholder,textarea::placeholder{color:${C.muted};}
-        @keyframes fadeUp{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:translateY(0);}}
-        @keyframes dotPulse{0%,100%{transform:scale(1);opacity:0.5;}50%{transform:scale(1.4);opacity:1;}}
-        @keyframes spin{to{transform:rotate(360deg);}}
-        @keyframes indeterminate{0%{transform:translateX(-100%);}100%{transform:translateX(320%);}}
-      `}</style>
+      {globalStyle}
 
       {/* TOPBAR */}
       <div style={{ background:C.hi, borderBottom:`1px solid ${C.border}`, padding:"11px 20px", display:"flex", alignItems:"center", justifyContent:"space-between", flexShrink:0, zIndex:10 }}>
@@ -774,7 +835,11 @@ export default function RinconChatPrototype() {
               <span style={{ color:"#000", fontFamily:mono, fontSize:13, fontWeight:700 }}>◈</span>
             </div>
             <span style={{ fontFamily:mono, fontSize:13, fontWeight:600, color:C.text }}>netwrkr<span style={{ color:C.amber }}>.ai</span></span>
-            <span style={{ color:C.muted, fontFamily:mono, fontSize:11 }}>/ dashboard</span>
+            {isReviewer ? (
+              <button onClick={()=>setOpsView('dashboard')} style={{ background:"none", border:"none", padding:0, color:C.muted, fontFamily:mono, fontSize:11, cursor:"pointer" }}>← dashboard</button>
+            ) : (
+              <span style={{ color:C.muted, fontFamily:mono, fontSize:11 }}>/ chat</span>
+            )}
           </div>
           {fabricFile && (
             <div style={{ display:"flex", alignItems:"center", gap:6, background:C.amberG, border:`1px solid ${C.amber}30`, borderRadius:999, padding:"3px 10px" }}>
@@ -784,11 +849,6 @@ export default function RinconChatPrototype() {
           )}
         </div>
         <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-          {reviewPanelVisible && !reviewPanelOpen && (
-            <button onClick={()=>setReviewPanelOpen(true)} style={{ background:"transparent", border:`1px solid ${C.border}`, borderRadius:999, color:C.dim, fontFamily:mono, fontSize:10, padding:"5px 12px", cursor:"pointer", letterSpacing:"0.05em" }}>
-              review queue →
-            </button>
-          )}
           <div style={{ width:1, height:20, background:C.border }}/>
           <UserBadge theme={C}/>
         </div>
@@ -923,11 +983,6 @@ export default function RinconChatPrototype() {
             </>
           )}
         </div>
-
-        {/* REVIEW PANEL — Freddy the Ledger's pending-fact queue, netwrkr reviewers only */}
-        {reviewPanelVisible && reviewPanelOpen && (
-          <ReviewPanel authHeaders={authHeaders} version={reviewPanelVersion} onClose={()=>setReviewPanelOpen(false)}/>
-        )}
       </div>
 
       <input ref={fileRef} type="file" accept={ACCEPTED_TYPES.join(',')} style={{ display:"none" }} onChange={e=>{ const f=e.target.files[0]; if(f) handleFile(f); e.target.value=""; }}/>
