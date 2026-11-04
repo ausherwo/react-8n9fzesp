@@ -141,6 +141,13 @@ export default function UserBadge({ theme, variant = 'nav' }) {
           {/* Menu items */}
           <DropdownItem
             s={s}
+            icon="◈"
+            label="Dashboard"
+            onClick={() => { window.location.href = '/app'; setOpen(false); }}
+          />
+
+          <DropdownItem
+            s={s}
             icon="⚙"
             label="Account settings"
             onClick={() => { window.location.href = '/settings'; setOpen(false); }}
