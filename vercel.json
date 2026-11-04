@@ -1,5 +1,8 @@
 {
         "rewrites": [
                   { "source": "/((?!api/).*)", "destination": "/index.html" }
+        ],
+        "crons": [
+                  { "path": "/api/refresh-home-suggestions", "schedule": "0 6 * * *" }
         ]
 }
