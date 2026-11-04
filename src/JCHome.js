@@ -13,7 +13,7 @@ import { supabase } from "./supabaseClient";
 import UserBadge from "./UserBadge";
 import {
   LIGHT as C, sans, homeSerif, ACCEPTED_TYPES, MAX_FILE_SIZE,
-  preflightCheck, MessageBubble, DragOverlay, TypingDots,
+  preflightCheck, MessageBubble, DragOverlay, TypingDots, SuggestionChips,
   queryPSIRTForDevices,
 } from "./chat/ChatPrimitives";
 import { DeviceReviewCard, ResultCard } from "./chat/FabricAnalysisCards";
@@ -24,6 +24,16 @@ const REQUIRE_SIGNUP_FOR_ANALYSIS = process.env.REACT_APP_REQUIRE_SIGNUP_FOR_ANA
 // A small ACI fabric with a deliberate version mismatch (older leafs, newer spines/APICs) so
 // the demo surfaces a real priority finding and a handful of live PSIRT advisories, without
 // anyone needing a real inventory on hand just to see what JC does.
+// Used only if the home_suggestions table is empty or unreachable — e.g. the very first
+// moment after this table exists, before api/refresh-home-suggestions.js has ever run.
+const FALLBACK_SUGGESTIONS = [
+  "What's the safest upgrade path for a 9.3(x) ACI fabric?",
+  "How do I check if a CVE affects my fabric?",
+  "What should I do before a major APIC upgrade?",
+  "Border leaf BGP best practices for ACI",
+  "Upload a config file to analyse your fabric →",
+];
+
 const SAMPLE_INVENTORY = `APIC1        APIC-SERVER-M3     5.2(3e)
 APIC2        APIC-SERVER-M3     5.2(3e)
 APIC3        APIC-SERVER-M3     5.2(3e)
@@ -120,6 +130,7 @@ export default function JCHome() {
   const [fabricContext, setFabricContext] = useState(null);
   const [psirtContext, setPsirtContext]   = useState(null);
   const [activeConvId, setActiveConvId]   = useState(null);
+  const [suggestions, setSuggestions]     = useState(FALLBACK_SUGGESTIONS);
 
   const bottomRef = useRef(null);
   const inputRef  = useRef(null);
@@ -127,6 +138,15 @@ export default function JCHome() {
   const migratedRef = useRef(false);
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior:"smooth" }); }, [messages, aiTyping]);
+
+  // Suggestion chips refresh daily (api/refresh-home-suggestions.js, a Vercel Cron job) —
+  // this just reads whatever batch is currently active, falling back to a static list if
+  // the table's empty or unreachable.
+  useEffect(() => {
+    supabase.from('home_suggestions').select('text').eq('active', true).order('generated_at', { ascending:false }).limit(5)
+      .then(({ data }) => { if (data?.length) setSuggestions(data.map(r => r.text)); })
+      .catch(() => {});
+  }, []);
 
   // ── Anonymous conversation bootstrap ──────────────────────────
   useEffect(() => {
@@ -452,6 +472,12 @@ export default function JCHome() {
             style={{ marginTop:16, background:"none", border:"none", color:C.amber, fontFamily:sans, fontSize:13, fontWeight:500, cursor:"pointer", textDecoration:"underline" }}>
             Try a sample inventory →
           </button>
+
+          <div style={{ marginTop:28, width:"100%" }}>
+            <SuggestionChips suggestions={suggestions} theme={C} center
+              onSelect={s=>{ setInput(s); inputRef.current?.focus(); }}
+              onUpload={()=>fileRef.current?.click()}/>
+          </div>
         </div>
       ) : (
         <>
