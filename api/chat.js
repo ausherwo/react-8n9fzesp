@@ -1,7 +1,153 @@
 // api/chat.js
-// Vercel serverless function — Kelly chat conversation turns
-// Public endpoint — no auth required (free tier, unauthenticated users)
+// Vercel serverless function — Kelly/JC chat conversation turns
+// Public endpoint — no auth required (free tier, unauthenticated users). A Bearer token is
+// read when present (RinconChatPrototype always sends one) solely to detect a Freddy-the-Ledger
+// reviewer and hand them two extra tools — unauthenticated/non-reviewer traffic is unaffected.
 // v1.7 — streams token deltas to the client (Kelly replies + briefing appear as they generate); errors still returned as JSON before the stream starts
+// v1.8 — reviewer tool-calling: list/review Freddy's pending ledger_facts from inside the chat
+
+const { isReviewer, memberFromToken, bearerToken, listPendingFacts, pendingSummary, applyReviews } = require('./_lib/ledgerReview');
+
+const REVIEW_TOOLS = [
+  {
+    name: "list_pending_ledger_runs",
+    description: "Summarise Freddy the Ledger's research runs that still have pending facts awaiting review: run id, when it ran, and counts by platform/fact_type. Use this to resolve a relative reference like \"Monday's run\" to a run_id before calling list_pending_ledger_facts or review_ledger_facts.",
+    input_schema: { type: "object", properties: {} },
+  },
+  {
+    name: "list_pending_ledger_facts",
+    description: "List facts from Freddy the Ledger awaiting review (review_status = pending). Each fact comes back tagged with a short #ref (1, 2, 3...) unique to this result — use that tag when presenting facts so the reviewer can refer back to one unambiguously (e.g. \"approve #3\"). Omit filters to see the most recent pending facts across all runs.",
+    input_schema: {
+      type: "object",
+      properties: {
+        run_id: { type: "string", description: "Restrict to one ledger_runs id. Use list_pending_ledger_runs first if you need to find a run by date." },
+        platform: { type: "string", enum: ["nxos", "aci"] },
+        fact_type: { type: "string", enum: ["bug", "upgrade_path", "compatibility", "scale_limit", "lifecycle", "design_guidance"] },
+        confidence: { type: "string", enum: ["confirmed", "flagged"] },
+        limit: { type: "integer", description: "Max facts to return. Default 50, max 200." },
+      },
+    },
+  },
+  {
+    name: "review_ledger_facts",
+    description: "Approve or reject specific pending facts. Only call this on an explicit, unambiguous instruction (e.g. \"approve #3\", \"reject #7\", \"approve all the lifecycle facts from Monday's run\") — never infer approval from vague or general conversation. If you aren't sure exactly which facts are meant, ask instead of calling this. This can only change review_status, reviewed_by and reviewed_at (plus an optional short reviewer note) on rows that are currently pending — it never touches the fact's own content, and never re-reviews a fact that's already been decided.",
+    input_schema: {
+      type: "object",
+      properties: {
+        items: {
+          type: "array",
+          description: "Facts to review, using the ids returned by list_pending_ledger_facts (match ids up from the #ref tags the reviewer referred to).",
+          items: {
+            type: "object",
+            properties: {
+              id: { type: "string", description: "The fact's id (uuid) — not the #ref number shown to the reviewer." },
+              decision: { type: "string", enum: ["approved", "rejected"] },
+              note: { type: "string", description: "Optional short reviewer note, e.g. why a fact was rejected." },
+            },
+            required: ["id", "decision"],
+          },
+        },
+      },
+      required: ["items"],
+    },
+  },
+];
+
+const REVIEW_SYSTEM_ADDENDUM = `
+
+─────────────────────────────────────────────
+FACT REVIEW — Freddy the Ledger
+─────────────────────────────────────────────
+
+You're talking with a netwrkr staff reviewer who can approve or reject facts Freddy the Ledger (an automated research agent) has extracted from Cisco documentation into a shared fact ledger. Facts needing human review are in review_status "pending" — lower-stakes, self-confirmed fact types already auto-approved, so what you see here is the set that genuinely needs a human judgment call.
+
+You have three tools: list_pending_ledger_runs, list_pending_ledger_facts, and review_ledger_facts.
+- Use list_pending_ledger_facts to show what's pending, grouped sensibly (by run, platform, or fact_type) as asked. Tag each fact with its #ref from the tool result so the reviewer can refer back to it in their next message.
+- Only call review_ledger_facts on an explicit, unambiguous instruction to approve or reject named facts. Never call it from a vague or general remark — ask for clarification instead if it's not clear exactly which facts are meant.
+- After calling review_ledger_facts, confirm exactly what changed, referencing the same #ref tags.`;
+
+async function runAnthropicTurn({ apiKey, systemPrompt, messages, tools, maxTokens }) {
+  const response = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01",
+    },
+    body: JSON.stringify({
+      model: "claude-sonnet-5",
+      max_tokens: maxTokens || 1500,
+      system: [{ type: "text", text: systemPrompt, cache_control: { type: "ephemeral" } }],
+      messages,
+      tools,
+      stream: false,
+    }),
+  });
+  if (!response.ok) {
+    let message = `Anthropic API error (${response.status})`;
+    try { const errJson = await response.json(); message = errJson.error?.message || message; } catch {}
+    throw new Error(message);
+  }
+  return response.json();
+}
+
+// Runs a tool_use round-trip loop (list/review ledger facts) to completion, then
+// returns the final assistant text plus a log of any review decisions actually applied —
+// the frontend uses that log to refresh the side panel without re-fetching blindly.
+async function runReviewerLoop({ apiKey, systemPrompt, messages, maxTokens, reviewerId }) {
+  const working = [...messages];
+  const reviewEvents = [];
+  const MAX_TURNS = 6;
+
+  for (let turn = 0; turn < MAX_TURNS; turn++) {
+    const result = await runAnthropicTurn({ apiKey, systemPrompt, messages: working, tools: REVIEW_TOOLS, maxTokens });
+
+    if (result.stop_reason !== "tool_use") {
+      const text = (result.content || []).filter(b => b.type === "text").map(b => b.text).join("");
+      return { text, reviewEvents };
+    }
+
+    working.push({ role: "assistant", content: result.content });
+    const toolResults = [];
+    for (const block of result.content || []) {
+      if (block.type !== "tool_use") continue;
+      let output;
+      try {
+        output = await executeReviewTool(block.name, block.input || {}, reviewerId, reviewEvents);
+      } catch (err) {
+        output = { error: err.message };
+      }
+      toolResults.push({ type: "tool_result", tool_use_id: block.id, content: JSON.stringify(output) });
+    }
+    working.push({ role: "user", content: toolResults });
+  }
+
+  return { text: "I had to stop after several tool calls — let me know if you'd like me to keep going.", reviewEvents };
+}
+
+async function executeReviewTool(name, input, reviewerId, reviewEvents) {
+  if (name === "list_pending_ledger_runs") {
+    return { runs: await pendingSummary() };
+  }
+  if (name === "list_pending_ledger_facts") {
+    // input is the tool call's JSON-schema args (snake_case: run_id, fact_type) —
+    // listPendingFacts expects camelCase, so map explicitly rather than passing input through.
+    const facts = await listPendingFacts({
+      runId: input.run_id,
+      platform: input.platform,
+      factType: input.fact_type,
+      confidence: input.confidence,
+      limit: input.limit,
+    });
+    return { count: facts.length, facts };
+  }
+  if (name === "review_ledger_facts") {
+    const { updated, skipped } = await applyReviews(input.items, reviewerId);
+    reviewEvents.push(...updated.map(u => ({ id: u.id, decision: u.review_status })));
+    return { updated, skipped };
+  }
+  return { error: `unknown tool: ${name}` };
+}
 
 module.exports = async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -22,11 +168,30 @@ module.exports = async function handler(req, res) {
     return res.status(500).json({ error: "upstream_error", message: "Anthropic API key not configured" });
   }
 
-  const systemPrompt = system || (persona === "jc"
+  let member = null;
+  try { member = await memberFromToken(bearerToken(req)); } catch { /* unauthenticated traffic is fine here */ }
+  const reviewer = isReviewer(member);
+
+  let systemPrompt = system || (persona === "jc"
     ? buildJCPrompt(fabricContext || null, psirtContext || null)
     : buildKellyPrompt(fabricContext || null, psirtContext || null));
+  if (reviewer) systemPrompt += REVIEW_SYSTEM_ADDENDUM;
 
   try {
+    // Reviewer path: tool-calling needs the full response up front (Anthropic doesn't
+    // stream tool_use blocks incrementally in a way that's worth threading through here),
+    // so this branch resolves the whole turn — including any tool round-trips — before
+    // writing anything, then sends the final text as a single chunk on the same
+    // text/plain contract the streaming path below uses.
+    if (reviewer) {
+      const { text, reviewEvents } = await runReviewerLoop({ apiKey, systemPrompt, messages, maxTokens, reviewerId: member.id });
+      res.setHeader("Content-Type", "text/plain; charset=utf-8");
+      if (reviewEvents.length) {
+        res.setHeader("X-Review-Events", Buffer.from(JSON.stringify(reviewEvents)).toString("base64"));
+      }
+      return res.status(200).send(text);
+    }
+
     const response = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: {

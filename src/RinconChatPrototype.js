@@ -1,7 +1,7 @@
 // RinconChatPrototype.js — v4.4
 // v4.4 — PSIRT re-run detection: Kelly can trigger a fresh PSIRT query mid-conversation
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useAuth } from './Auth';
 import { supabase } from './supabaseClient';
 import UserBadge from './UserBadge';
@@ -11,6 +11,7 @@ import {
   TypingDots, BotAvatar as RinconAvatar, UserAvatar, FileUploadCard,
   MessageBubble, ConversationItem, SuggestionChips, DragOverlay, PSIRTProgress,
 } from './chat/ChatPrimitives';
+import ReviewPanel from './chat/ReviewPanel';
 
 function getJwtClaims() {
   try {
@@ -396,19 +397,22 @@ export default function RinconChatPrototype() {
   const [showChatGreeting, setShowChatGreeting] = useState(false);
   const [greetingData, setGreetingData]         = useState(null);
   const [licenceStatus, setLicenceStatus]       = useState(null);
+  const [reviewPanelVisible, setReviewPanelVisible] = useState(false);
+  const [reviewPanelOpen, setReviewPanelOpen]       = useState(true);
+  const [reviewPanelVersion, setReviewPanelVersion] = useState(0);
 
   const bottomRef   = useRef(null);
   const inputRef    = useRef(null);
   const fileRef     = useRef(null);
   const chatAreaRef = useRef(null);
 
-  const authHeaders = () => ({
+  const authHeaders = useCallback(() => ({
     "Content-Type": "application/json",
     ...(session?.access_token ? { "Authorization": `Bearer ${session.access_token}` } : {}),
-  });
+  }), [session?.access_token]);
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior:"smooth" }); }, [messages, aiTyping]);
-  useEffect(() => { if (session) { loadConversations(); loadLicence(); } }, [session]);
+  useEffect(() => { if (session) { loadConversations(); loadLicence(); checkReviewerAccess(); } }, [session]);
   useEffect(() => {
     if (activeConvId) {
       setShowChatGreeting(false);
@@ -448,6 +452,15 @@ export default function RinconChatPrototype() {
     } else {
       setFabricContext(null); setFabricDevices([]); setFabricFile(null); setPsirtContext(null);
     }
+  };
+
+  // Reviewer gating lives server-side (an email allowlist in api/_lib/ledgerReview.js) —
+  // the frontend just probes the endpoint and shows the panel only if it's allowed in.
+  const checkReviewerAccess = async () => {
+    try {
+      const res = await fetch("/api/ledger-review", { headers:authHeaders() });
+      setReviewPanelVisible(res.ok);
+    } catch { setReviewPanelVisible(false); }
   };
 
   const loadLicence = async () => {
@@ -635,9 +648,27 @@ export default function RinconChatPrototype() {
         messages: conversationHistory.filter(m=>m.type!=="file").map(m=>({ role:m.role==="ai"?"assistant":"user", content:m.content })),
       }),
     });
-    const data = await res.json();
-    if (data.error) throw new Error(data.message || data.error);
-    return data.text;
+    if (!res.ok || !res.body) {
+      const data = await res.json().catch(()=>({}));
+      throw new Error(data.message || data.error || "Something went wrong");
+    }
+    // /api/chat streams plain-text deltas (see api/chat.js v1.7+); a reviewer turn instead
+    // resolves fully server-side (tool round-trips) and sends one chunk, with any applied
+    // fact reviews reported back in the X-Review-Events header so the side panel can refresh.
+    const reviewEventsHeader = res.headers.get("X-Review-Events");
+    const reader  = res.body.getReader();
+    const decoder = new TextDecoder();
+    let text = "";
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      text += decoder.decode(value, { stream:true });
+    }
+    let reviewEvents = null;
+    if (reviewEventsHeader) {
+      try { reviewEvents = JSON.parse(atob(reviewEventsHeader)); } catch {}
+    }
+    return { text, reviewEvents };
   };
 
   // ─────────────────────────────────────────────
@@ -667,7 +698,7 @@ export default function RinconChatPrototype() {
       try {
         const freshPsirtCtx = await handlePsirtRerun();
         const history = [...messages, localMsg];
-        const aiResponse = await callClaude(history, undefined, freshPsirtCtx || psirtContext);
+        const { text: aiResponse, reviewEvents } = await callClaude(history, undefined, freshPsirtCtx || psirtContext);
         const savedAiMsg = await saveMessage(convId, "assistant", aiResponse);
         setAiTyping(false);
         setMessages(prev=>[...prev,{
@@ -677,6 +708,7 @@ export default function RinconChatPrototype() {
           created_at: savedAiMsg?.created_at||new Date().toISOString()
         }]);
         loadConversations();
+        if (reviewEvents?.length) setReviewPanelVersion(v=>v+1);
       } catch(err) {
         console.error("PSIRT re-run + chat error:", err);
         setAiTyping(false);
@@ -689,11 +721,12 @@ export default function RinconChatPrototype() {
     setAiTyping(true);
     try {
       const history    = [...messages, localMsg];
-      const aiResponse = await callClaude(history);
+      const { text: aiResponse, reviewEvents } = await callClaude(history);
       const savedAiMsg = await saveMessage(convId,"assistant",aiResponse);
       setAiTyping(false);
       setMessages(prev=>[...prev,{ ...(savedAiMsg||{}), id:savedAiMsg?.id||Date.now().toString(), role:"ai", content:aiResponse, created_at:savedAiMsg?.created_at||new Date().toISOString() }]);
       loadConversations();
+      if (reviewEvents?.length) setReviewPanelVersion(v=>v+1);
     } catch(err) {
       console.error("Claude error:", err);
       setAiTyping(false);
@@ -762,6 +795,11 @@ export default function RinconChatPrototype() {
           <button onClick={()=>fileRef.current?.click()} style={{ background:C.amberG, border:`1px solid ${C.amber}40`, color:C.amber, fontFamily:mono, fontSize:10, padding:"5px 12px", cursor:"pointer", letterSpacing:"0.05em" }} disabled={uploading}>
             {uploading?"uploading…":"↑ upload_fabric()"}
           </button>
+          {reviewPanelVisible && !reviewPanelOpen && (
+            <button onClick={()=>setReviewPanelOpen(true)} style={{ background:"transparent", border:`1px solid ${C.border}`, color:C.dim, fontFamily:mono, fontSize:10, padding:"5px 12px", cursor:"pointer", letterSpacing:"0.05em" }}>
+              review queue →
+            </button>
+          )}
           <div style={{ width:1, height:20, background:C.border }}/>
           <UserBadge/>
         </div>
@@ -897,6 +935,11 @@ export default function RinconChatPrototype() {
             </>
           )}
         </div>
+
+        {/* REVIEW PANEL — Freddy the Ledger's pending-fact queue, netwrkr reviewers only */}
+        {reviewPanelVisible && reviewPanelOpen && (
+          <ReviewPanel authHeaders={authHeaders} version={reviewPanelVersion} onClose={()=>setReviewPanelOpen(false)}/>
+        )}
       </div>
 
       <input ref={fileRef} type="file" accept={ACCEPTED_TYPES.join(',')} style={{ display:"none" }} onChange={e=>{ const f=e.target.files[0]; if(f) handleFile(f); e.target.value=""; }}/>
