@@ -6,7 +6,7 @@
 // after a chat turn reports review decisions via the X-Review-Events header.
 
 import { useEffect, useState, useCallback } from "react";
-import { C, mono, sans } from "./ChatPrimitives";
+import { LIGHT as C, mono, sans } from "./ChatPrimitives";
 
 const FACT_TYPE_LABEL = {
   bug: "Bug", upgrade_path: "Upgrade path", compatibility: "Compatibility",

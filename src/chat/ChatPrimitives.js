@@ -106,7 +106,7 @@ export function preflightCheck(text) {
 }
 
 export function tierLabel(tier) { return {1:"Controller",2:"Spine / Border Leaf",3:"Leaf",4:"Distribution / Firewall"}[tier] || "Unknown"; }
-export function tierColor(tier) { return {1:C.amber,2:C.orange,3:C.green,4:C.dim}[tier] || C.muted; }
+export function tierColor(tier, theme = C) { return {1:theme.amber,2:theme.orange,3:theme.green,4:theme.dim}[tier] || theme.muted; }
 
 // ─────────────────────────────────────────────
 // MARKDOWN RENDERER
@@ -413,17 +413,17 @@ export function MessageBubble({ msg, member, personaName = "Rincon", personaTitl
 // ─────────────────────────────────────────────
 // CONVERSATION SIDEBAR ITEM
 // ─────────────────────────────────────────────
-export function ConversationItem({ conv, active, onClick }) {
+export function ConversationItem({ conv, active, onClick, theme = C }) {
   const [hov, setHov] = useState(false);
   return (
     <div onClick={onClick} onMouseEnter={()=>setHov(true)} onMouseLeave={()=>setHov(false)}
-      style={{ padding:"11px 16px", background:active?C.amberG:hov?C.hi:"transparent", borderLeft:`2px solid ${active?C.amber:"transparent"}`, cursor:"pointer", transition:"all 0.15s" }}>
-      <div style={{ fontSize:12, color:active?C.text:C.dim, fontWeight:active?500:400, marginBottom:3, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+      style={{ padding:"11px 16px", background:active?theme.amberG:hov?theme.hi:"transparent", borderLeft:`2px solid ${active?theme.amber:"transparent"}`, cursor:"pointer", transition:"all 0.15s" }}>
+      <div style={{ fontSize:12, color:active?theme.text:theme.dim, fontWeight:active?500:400, marginBottom:3, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
         {conv.title||"New conversation"}
       </div>
       <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-        <span style={{ fontFamily:mono, fontSize:10, color:C.muted }}>{timeAgo(conv.created_at)}</span>
-        {conv.has_fabric && <span style={{ fontFamily:mono, fontSize:9, color:C.green, background:C.greenG, border:`1px solid ${C.green}30`, padding:"1px 5px" }}>fabric</span>}
+        <span style={{ fontFamily:mono, fontSize:10, color:theme.muted }}>{timeAgo(conv.created_at)}</span>
+        {conv.has_fabric && <span style={{ fontFamily:mono, fontSize:9, color:theme.green, background:theme.greenG||`${theme.green}20`, border:`1px solid ${theme.green}30`, padding:"1px 5px" }}>fabric</span>}
       </div>
     </div>
   );
