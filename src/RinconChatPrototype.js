@@ -6,7 +6,7 @@ import { useAuth } from './Auth';
 import { supabase } from './supabaseClient';
 import UserBadge from './UserBadge';
 import {
-  C, mono, sans, ACCEPTED_TYPES, MAX_FILE_SIZE,
+  LIGHT as C, mono, sans, homeSerif, ACCEPTED_TYPES, MAX_FILE_SIZE,
   preflightCheck, tierLabel, tierColor, renderMarkdown, renderInline,
   TypingDots, BotAvatar as RinconAvatar, UserAvatar, FileUploadCard,
   MessageBubble, ConversationItem, SuggestionChips, DragOverlay, PSIRTProgress,
@@ -65,10 +65,10 @@ function FabricContextBanner({ fabricFile, devices, onClear }) {
           <div style={{ fontFamily:mono, fontSize:9, color:C.muted, letterSpacing:"0.12em", textTransform:"uppercase", marginBottom:10 }}>Extracted inventory</div>
           {Object.entries(tierGroups).sort(([a],[b])=>Number(a)-Number(b)).map(([tier,devs])=>(
             <div key={tier} style={{ marginBottom:10 }}>
-              <div style={{ fontFamily:mono, fontSize:9, color:tierColor(Number(tier)), marginBottom:5, letterSpacing:"0.1em" }}>// {tierLabel(Number(tier))}</div>
+              <div style={{ fontFamily:mono, fontSize:9, color:tierColor(Number(tier), C), marginBottom:5, letterSpacing:"0.1em" }}>// {tierLabel(Number(tier))}</div>
               {devs.map((d,i)=>(
                 <div key={i} style={{ display:"flex", alignItems:"center", gap:10, padding:"4px 0", borderBottom:`1px solid ${C.faint}` }}>
-                  <div style={{ width:6, height:6, borderRadius:"50%", background:tierColor(Number(tier)), flexShrink:0 }} />
+                  <div style={{ width:6, height:6, borderRadius:"50%", background:tierColor(Number(tier), C), flexShrink:0 }} />
                   <span style={{ fontFamily:mono, fontSize:12, color:C.text, flex:1 }}>{d.name}</span>
                   {d.version && <span style={{ fontFamily:mono, fontSize:11, color:C.dim }}>v{d.version}</span>}
                   {d.role   && <span style={{ fontFamily:mono, fontSize:10, color:C.muted, background:C.faint, padding:"1px 6px" }}>{d.role}</span>}
@@ -312,7 +312,7 @@ function ChatGreeting({ member, greetingData, convId, saveMessage, onViewFull, o
             {chatMsgs.map((msg,i)=>(
               <div key={i} style={{ alignSelf:msg.role==='user'?'flex-end':'flex-start', maxWidth:'85%', background:msg.role==='user'?`${C.amber}12`:C.surface, border:`1px solid ${msg.role==='user'?`${C.amber}25`:C.border}`, borderRadius:msg.role==='user'?'12px 2px 12px 12px':'2px 12px 12px 12px', padding:'12px 16px', fontSize:14, color:C.text, lineHeight:1.75, fontFamily:sans, animation:'fadeUp 0.2s ease' }}>
                 {msg.role==='assistant' && <div style={{ fontFamily:mono, fontSize:10, color:C.amber, marginBottom:6 }}>Rincon · DC Expert</div>}
-                {msg.role==='user' ? msg.content : renderMarkdown(msg.content)}
+                {msg.role==='user' ? msg.content : renderMarkdown(msg.content, C)}
               </div>
             ))}
             {loading && (
@@ -755,7 +755,7 @@ export default function RinconChatPrototype() {
   return (
     <div style={{ background:C.bg, minHeight:"100vh", display:"flex", flexDirection:"column", fontFamily:sans, color:C.text }}>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&family=Source+Serif+4:opsz,wght@8..60,350;8..60,400&display=swap');
         * { box-sizing:border-box; margin:0; padding:0; }
         ::-webkit-scrollbar{width:4px;} ::-webkit-scrollbar-track{background:transparent;} ::-webkit-scrollbar-thumb{background:${C.border};border-radius:2px;}
         input::placeholder,textarea::placeholder{color:${C.muted};}
@@ -801,7 +801,7 @@ export default function RinconChatPrototype() {
             </button>
           )}
           <div style={{ width:1, height:20, background:C.border }}/>
-          <UserBadge/>
+          <UserBadge theme={C}/>
         </div>
       </div>
 
@@ -824,11 +824,11 @@ export default function RinconChatPrototype() {
                 <>
                   {conversations.some(c=>c.has_fabric) && (<>
                     <div style={{ padding:"12px 16px 6px", fontFamily:mono, fontSize:9, color:C.muted, letterSpacing:"0.12em", textTransform:"uppercase" }}>With fabric context</div>
-                    {conversations.filter(c=>c.has_fabric).map(conv=><ConversationItem key={conv.id} conv={conv} active={conv.id===activeConvId} onClick={()=>setActiveConvId(conv.id)}/>)}
+                    {conversations.filter(c=>c.has_fabric).map(conv=><ConversationItem key={conv.id} conv={conv} active={conv.id===activeConvId} onClick={()=>setActiveConvId(conv.id)} theme={C}/>)}
                   </>)}
                   {conversations.some(c=>!c.has_fabric&&!c.is_analysis) && (<>
                     <div style={{ padding:"12px 16px 6px", fontFamily:mono, fontSize:9, color:C.muted, letterSpacing:"0.12em", textTransform:"uppercase" }}>Conversations</div>
-                    {conversations.filter(c=>!c.has_fabric&&!c.is_analysis).map(conv=><ConversationItem key={conv.id} conv={conv} active={conv.id===activeConvId} onClick={()=>setActiveConvId(conv.id)}/>)}
+                    {conversations.filter(c=>!c.has_fabric&&!c.is_analysis).map(conv=><ConversationItem key={conv.id} conv={conv} active={conv.id===activeConvId} onClick={()=>setActiveConvId(conv.id)} theme={C}/>)}
                   </>)}
                 </>
               )}
@@ -870,7 +870,7 @@ export default function RinconChatPrototype() {
                           <span style={{ color:C.amber, fontSize:16 }}>◈</span>
                           <span style={{ fontFamily:mono, fontSize:11, color:C.amber, letterSpacing:"0.08em" }}>Rincon · DC Expert</span>
                         </div>
-                        <h1 style={{ fontSize:28, fontWeight:300, letterSpacing:"-0.03em", lineHeight:1.2, marginBottom:14, color:C.text }}>What does your fabric<br/><span style={{ color:C.amber }}>need to know?</span></h1>
+                        <h1 style={{ fontSize:32, fontWeight:400, letterSpacing:"-0.01em", lineHeight:1.2, marginBottom:14, color:C.text, fontFamily:homeSerif }}>What does your fabric<br/><span style={{ color:C.amber }}>need to know?</span></h1>
                         <p style={{ fontSize:14, color:C.dim, lineHeight:1.8, maxWidth:480 }}>Ask anything about your Cisco DC fabric, or upload a config file to ground the conversation in your actual inventory.</p>
                       </div>
                       <div onClick={()=>fileRef.current?.click()} style={{ border:`1px dashed ${C.amber}40`, padding:"20px 24px", marginBottom:24, cursor:"pointer", transition:"all 0.2s", background:`${C.amber}04`, display:"flex", alignItems:"center", gap:16 }} onMouseEnter={e=>e.currentTarget.style.borderColor=`${C.amber}80`} onMouseLeave={e=>e.currentTarget.style.borderColor=`${C.amber}40`}>
