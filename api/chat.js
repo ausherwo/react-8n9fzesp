@@ -5,8 +5,17 @@
 // reviewer and hand them two extra tools — unauthenticated/non-reviewer traffic is unaffected.
 // v1.7 — streams token deltas to the client (Kelly replies + briefing appear as they generate); errors still returned as JSON before the stream starts
 // v1.8 — reviewer tool-calling: list/review Freddy's pending ledger_facts from inside the chat
+// v1.9 — live web search (Anthropic's server-side web_search tool) on the main Kelly/JC streaming
+// path, so answers can draw on current web content alongside training knowledge and the existing
+// PSIRT integration. Runs server-side inside the same request — no client-side tool loop needed,
+// and the streaming reader already ignores non-text_delta content blocks, so this is additive.
 
 const { isReviewer, memberFromToken, bearerToken, listPendingFacts, pendingSummary, applyReviews } = require('./_lib/ledgerReview');
+
+// Server-side tool — Anthropic runs the search and feeds results back to the model inside
+// the same request, so this needs no client-side tool-result loop (unlike REVIEW_TOOLS below).
+// max_uses caps searches per turn to bound latency/cost on every customer chat turn.
+const WEB_SEARCH_TOOL = { type: "web_search_20250305", name: "web_search", max_uses: 3 };
 
 const REVIEW_TOOLS = [
   {
@@ -204,6 +213,7 @@ module.exports = async function handler(req, res) {
         max_tokens: maxTokens || 1500,
         system: [{ type: "text", text: systemPrompt, cache_control: { type: "ephemeral" } }],
         messages: messages,
+        tools: [WEB_SEARCH_TOOL],
         stream: true,
       }),
     });
@@ -333,6 +343,8 @@ For operational judgment: "My read is..." or "I would..." or "That said..."
 
 Never fabricate CSC IDs. If you do not know the exact ID, say so directly. "I do not have the CSC ID for that one — verify against the PSIRT portal before acting on it."
 
+For live web search: you have real-time web search, separate from the PSIRT check above. Use it for things the PSIRT data does not cover — recent Cisco announcements, current pricing, EoL/EoS dates you are unsure are still current, or anything the engineer asks you to look up. Calibrate it like any other source: "I just checked online — ..." or "Current info says...", not with the certainty you give a verified PSIRT advisory. Never conflate a general web result with the verified PSIRT feed, and never claim the PSIRT check itself ran when it didn't.
+
 ─────────────────────────────────────────────
 LANGUAGE CALIBRATION — MATCH WORDS TO EVIDENCE
 ─────────────────────────────────────────────
@@ -433,6 +445,8 @@ function buildJCPrompt(fabricContext, psirtContext) {
 You know Cisco ACI and NX-OS fabrics in depth: APIC/spine/leaf/border-leaf architecture, upgrade sequencing, PSIRT advisories and CVEs, BGP/VXLAN/EVPN/vPC/ECMP, and end-of-life/end-of-support timelines.
 
 VOICE: short sentences, direct, conversational — not a chatbot, not a brochure. No "Great question!", no padding, no AI disclaimers. If you don't know an exact CSC ID, say so rather than inventing one.
+
+You have real-time web search, separate from the verified PSIRT check below. Use it for recent Cisco news, current pricing, or anything current you're unsure is still accurate. Signal it as a web result ("I just checked online — ..."), not with the certainty of a verified PSIRT advisory, and never conflate the two.
 
 SAFETY — upgrade sequencing is inviolable, never deviate regardless of what the visitor asks:
 ACI: 1) APIC cluster first, wait for Fully Fit. 2) Spines one at a time. 3) Border leafs one at a time, verify BGP/L3Out after each. 4) Leafs last, in maintenance groups, never both members of a vPC pair together.
