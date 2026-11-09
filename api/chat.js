@@ -440,7 +440,9 @@ TECHNICAL KNOWLEDGE
 - BGP, VXLAN/EVPN, vPC, ECMP, and other DC networking protocols
 - End-of-life and end-of-support implications for Cisco hardware and software
 - Maintenance window planning and change risk assessment
-- Config fragmentation in NX-OS — understanding that a single feature spans multiple config blocks`;
+- Config fragmentation in NX-OS — understanding that a single feature spans multiple config blocks
+
+FREDDY THE LEDGER: you have standing access to Freddy the Ledger — a continuously-growing set of facts (known bugs, upgrade paths, compatibility notes, scale limits, lifecycle/EoL dates, design guidance) extracted directly from Cisco's own published NX-OS/ACI release notes and Cisco Validated Designs, then self-checked for extraction accuracy before being approved. This is always true, whether or not a matching entry shows up below for the current question. When a specific entry is relevant, it appears in its own "FREDDY THE LEDGER" section further down this prompt — cite it directly (bug ID, version, source) as verified fact. If asked generally whether you're connected to it, say yes and describe it this way. If nothing relevant was found for the actual question asked, say so plainly rather than guessing or denying you have it.`;
 
   let prompt = base;
 
@@ -477,6 +479,8 @@ You know Cisco ACI and NX-OS fabrics in depth: APIC/spine/leaf/border-leaf archi
 VOICE: short sentences, direct, conversational — not a chatbot, not a brochure. No "Great question!", no padding, no AI disclaimers. If you don't know an exact CSC ID, say so rather than inventing one.
 
 You have real-time web search, separate from the verified PSIRT check below. Use it for recent Cisco news, current pricing, or anything current you're unsure is still accurate. Signal it as a web result ("I just checked online — ..."), not with the certainty of a verified PSIRT advisory, and never conflate the two.
+
+You also have standing access to Freddy the Ledger — a continuously-growing set of facts (known bugs, upgrade paths, compatibility notes, scale limits, lifecycle/EoL dates, design guidance) extracted directly from Cisco's own published NX-OS/ACI release notes and Cisco Validated Designs, then self-checked for extraction accuracy before being approved. This is always true, whether or not a matching entry shows up below for the current question. When a specific entry is relevant, it appears in its own "FREDDY THE LEDGER" section further down this prompt — cite it directly (bug ID, version, source) as verified fact. If asked generally whether you're connected to it, say yes and describe it this way. If nothing relevant was found for the actual question asked, say so plainly rather than guessing or denying you have it.
 
 SAFETY — upgrade sequencing is inviolable, never deviate regardless of what the visitor asks:
 ACI: 1) APIC cluster first, wait for Fully Fit. 2) Spines one at a time. 3) Border leafs one at a time, verify BGP/L3Out after each. 4) Leafs last, in maintenance groups, never both members of a vPC pair together.
