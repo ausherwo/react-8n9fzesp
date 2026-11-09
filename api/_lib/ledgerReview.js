@@ -188,9 +188,15 @@ function extractLedgerQuery(text) {
   const factTypes = FACT_TYPE_HINTS.filter(h => h.pattern.test(lower)).map(h => h.type);
   const versions = [...new Set(text.match(VERSION_PATTERN) || [])];
 
+  // Longer words first, not sentence order: a cap taken in sentence order
+  // systematically favors generic lead-in words ("beyond", "those", "aware")
+  // over the technical nouns that tend to show up later in a real question
+  // ("border", "leaf", "9332c") — which meant the single most relevant fact
+  // could get silently dropped before the search ever ran. Sort by length
+  // (stable, so same-length words keep their original order) before capping.
   const keywords = [...new Set(
     lower.replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter(w => w.length > 3 && !STOPWORDS.has(w))
-  )].slice(0, 6);
+  )].sort((a, b) => b.length - a.length).slice(0, 12);
 
   if (!platform && !factTypes.length && !versions.length && !keywords.length) return null;
   return { platform, factTypes, versions, keywords };
