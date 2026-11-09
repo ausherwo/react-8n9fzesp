@@ -9,8 +9,14 @@
 // path, so answers can draw on current web content alongside training knowledge and the existing
 // PSIRT integration. Runs server-side inside the same request — no client-side tool loop needed,
 // and the streaming reader already ignores non-text_delta content blocks, so this is additive.
+// v2.0 — ground the main chat path in Freddy the Ledger's approved facts. Pulls a handful of
+// likely-relevant rows from ledger_facts (platform/fact_type/version/keyword match against the
+// latest user message) and injects them into the system prompt, same pattern as fabricContext/
+// psirtContext — no tool loop, no change to the streaming response shape. Previously only the
+// reviewer tool-loop ever touched this table; an approved fact had zero effect on what JC/Kelly
+// actually told anyone until now.
 
-const { isReviewer, memberFromToken, bearerToken, listPendingFacts, pendingSummary, applyReviews } = require('./_lib/ledgerReview');
+const { isReviewer, memberFromToken, bearerToken, listPendingFacts, pendingSummary, applyReviews, extractLedgerQuery, searchApprovedFacts, formatLedgerContext } = require('./_lib/ledgerReview');
 
 // Server-side tool — Anthropic runs the search and feeds results back to the model inside
 // the same request, so this needs no client-side tool-result loop (unlike REVIEW_TOOLS below).
@@ -181,9 +187,33 @@ module.exports = async function handler(req, res) {
   try { member = await memberFromToken(bearerToken(req)); } catch { /* unauthenticated traffic is fine here */ }
   const reviewer = isReviewer(member);
 
+  // Ground the reply in Freddy the Ledger's approved facts, if the latest user message
+  // looks like it's asking about something the ledger would know (a platform, fact type,
+  // version, or DC-networking keyword). Failure here must never break the chat turn.
+  let ledgerContext = null;
+  try {
+    const lastUserText = [...messages].reverse().find(m => m.role === "user" && typeof m.content === "string")?.content || "";
+    const ledgerQuery = extractLedgerQuery(lastUserText);
+    if (ledgerQuery) {
+      const facts = await searchApprovedFacts(ledgerQuery);
+      ledgerContext = formatLedgerContext(facts);
+    }
+  } catch (err) {
+    console.error("chat.js ledger context error:", err.message);
+  }
+
   let systemPrompt = system || (persona === "jc"
     ? buildJCPrompt(fabricContext || null, psirtContext || null)
     : buildKellyPrompt(fabricContext || null, psirtContext || null));
+  if (ledgerContext) {
+    systemPrompt += `\n\n─────────────────────────────────────────────
+FREDDY THE LEDGER — verified facts from Cisco's own release notes & CVDs
+─────────────────────────────────────────────
+
+${ledgerContext}
+
+These facts were extracted directly from Cisco's own published NX-OS/ACI release notes and Cisco Validated Designs, then self-checked for extraction accuracy before being approved into this ledger. Treat them as verified, citable facts for this conversation — reference the specific bug ID, version, or limit by name, and cite the source URL when it adds value. If none of these actually answer what was asked, say so rather than forcing a connection — never present an unrelated entry as if it answers the question.`;
+  }
   if (reviewer) systemPrompt += REVIEW_SYSTEM_ADDENDUM;
 
   try {
