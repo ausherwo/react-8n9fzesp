@@ -5,17 +5,52 @@
 // reviewer and hand them two extra tools — unauthenticated/non-reviewer traffic is unaffected.
 // v1.7 — streams token deltas to the client (Kelly replies + briefing appear as they generate); errors still returned as JSON before the stream starts
 // v1.8 — reviewer tool-calling: list/review Freddy's pending ledger_facts from inside the chat
-// v1.9 — live web search (Anthropic's server-side web_search tool) on the main Kelly/JC streaming
-// path, so answers can draw on current web content alongside training knowledge and the existing
-// PSIRT integration. Runs server-side inside the same request — no client-side tool loop needed,
-// and the streaming reader already ignores non-text_delta content blocks, so this is additive.
+// v1.9 — live web search (Anthropic's server-side web_search tool) plus a client-side Cisco
+// EoX lookup tool on the main Kelly/JC streaming path. web_search runs server-side inside
+// Anthropic's infrastructure; the EoX tool is ours to execute (same Cisco auth/PID-mapping/
+// EoX-fetch helpers the inventory-analysis flow already uses, via api/advisories.js), so the
+// streaming call is now wrapped in a turn loop that intercepts client tool_use, executes it,
+// and continues streaming — mirroring runReviewerLoop's pattern but keeping the live token
+// stream intact (the reviewer path resolves fully before replying; this one can't, since that
+// would silently drop the typing effect for every ordinary customer turn, not just tool calls).
 
 const { isReviewer, memberFromToken, bearerToken, listPendingFacts, pendingSummary, applyReviews } = require('./_lib/ledgerReview');
+const { getAccessToken: getCiscoToken, normaliseToPID, fetchEoX } = require('./advisories');
 
 // Server-side tool — Anthropic runs the search and feeds results back to the model inside
-// the same request, so this needs no client-side tool-result loop (unlike REVIEW_TOOLS below).
+// the same request, so this needs no client-side tool-result loop (unlike EOL_TOOL/REVIEW_TOOLS).
 // max_uses caps searches per turn to bound latency/cost on every customer chat turn.
 const WEB_SEARCH_TOOL = { type: "web_search_20250305", name: "web_search", max_uses: 3 };
+
+// Client tool — we execute this ourselves against Cisco's official EoX API (the same one the
+// confirmed-inventory analysis flow already calls), so a bare "when does X go end-of-life"
+// question gets the same authoritative live source instead of a guess from training data.
+const EOL_TOOL = {
+  name: "check_hardware_eol",
+  description: "Look up Cisco's official end-of-life/end-of-support milestones for a specific hardware platform — end of sale, end of software maintenance, end of security support, last date of support — straight from Cisco's EoX API. Use this whenever someone asks about end-of-life, end-of-support, end-of-sale, or similar for a named Cisco switch/platform, even just one device with no inventory pasted. Never state an EoL/EoS date from memory when you can look it up here. If it comes back not found, say so rather than guessing.",
+  input_schema: {
+    type: "object",
+    properties: {
+      platform: {
+        type: "string",
+        description: "The platform/model as the person named it, e.g. \"Nexus 9372PX\", \"N9K-C93180YC-EX\", \"Catalyst 9300\", \"APIC-M3\". PID normalisation happens internally — pass it close to how they said it.",
+      },
+    },
+    required: ["platform"],
+  },
+};
+
+async function executeClientTool(name, input) {
+  if (name === "check_hardware_eol") {
+    const pid = normaliseToPID(input.platform || "");
+    if (!pid) return { error: `Could not map "${input.platform}" to a Cisco product ID — ask for the exact model number.` };
+    const token = await getCiscoToken();
+    const eol = await fetchEoX(token, pid);
+    if (!eol) return { pid, found: false, message: "Cisco's EoX API has no record for this product ID — it may not be formally announced end-of-life, or the model number may be off." };
+    return { pid, found: true, ...eol };
+  }
+  return { error: `unknown tool: ${name}` };
+}
 
 const REVIEW_TOOLS = [
   {
@@ -98,6 +133,134 @@ async function runAnthropicTurn({ apiKey, systemPrompt, messages, tools, maxToke
     throw new Error(message);
   }
   return response.json();
+}
+
+// Issues one streaming request, forwarding text deltas to onTextDelta as they arrive, while
+// reconstructing the full content blocks (text/tool_use/server_tool_use/web_search_tool_result)
+// so the caller can continue a tool-use loop. Anthropic doesn't document a delta event for
+// citations, so a text block's citations (if any) only ever arrive already attached in
+// content_block_start/stop for non-text blocks — nothing here depends on text citations.
+async function streamAnthropicTurn({ apiKey, systemPrompt, messages, tools, maxTokens, onTextDelta }) {
+  const response = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01",
+    },
+    body: JSON.stringify({
+      model: "claude-sonnet-5",
+      max_tokens: maxTokens || 1500,
+      system: [{ type: "text", text: systemPrompt, cache_control: { type: "ephemeral" } }],
+      messages,
+      tools,
+      stream: true,
+    }),
+  });
+  if (!response.ok) {
+    let message = `Anthropic API error (${response.status})`;
+    try { const errJson = await response.json(); message = errJson.error?.message || message; } catch {}
+    const err = new Error(message);
+    err.upstream = true;
+    throw err;
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  const blocks = [];
+  let stopReason = null;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() || "";
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed.startsWith("data:")) continue;
+      const payload = trimmed.slice(5).trim();
+      if (!payload || payload === "[DONE]") continue;
+      let evt;
+      try { evt = JSON.parse(payload); } catch { continue; }
+
+      if (evt.type === "content_block_start") {
+        const block = { ...evt.content_block };
+        if (block.type === "tool_use" || block.type === "server_tool_use") block._inputJson = "";
+        blocks[evt.index] = block;
+      } else if (evt.type === "content_block_delta") {
+        const block = blocks[evt.index];
+        if (!block) continue;
+        if (evt.delta?.type === "text_delta" && evt.delta.text) {
+          block.text = (block.text || "") + evt.delta.text;
+          onTextDelta(evt.delta.text);
+        } else if (evt.delta?.type === "input_json_delta") {
+          block._inputJson = (block._inputJson || "") + (evt.delta.partial_json || "");
+        } else if (evt.delta?.type === "thinking_delta") {
+          // Extended-thinking blocks must round-trip with their full thinking text + signature
+          // when sent back in a later turn, or the API rejects the request outright.
+          block.thinking = (block.thinking || "") + (evt.delta.thinking || "");
+        } else if (evt.delta?.type === "signature_delta") {
+          block.signature = (block.signature || "") + (evt.delta.signature || "");
+        }
+      } else if (evt.type === "content_block_stop") {
+        const block = blocks[evt.index];
+        if (block && block._inputJson !== undefined) {
+          try { block.input = JSON.parse(block._inputJson || "{}"); } catch { block.input = {}; }
+          delete block._inputJson;
+        }
+      } else if (evt.type === "message_delta") {
+        if (evt.delta?.stop_reason) stopReason = evt.delta.stop_reason;
+      } else if (evt.type === "error") {
+        console.error("chat.js stream error event:", evt.error?.message);
+      }
+    }
+  }
+
+  return { content: blocks.filter(Boolean), stopReason };
+}
+
+// Drives the main (non-reviewer) Kelly/JC turn: streams text straight to the client via
+// onTextDelta, and whenever the model calls our client-side EOL_TOOL, executes it and
+// continues streaming the next turn on the same open response — the server-side web_search
+// tool needs no such handling (Anthropic resolves it inline; see WEB_SEARCH_TOOL above), so a
+// turn with only web_search activity streams straight through in a single iteration.
+async function runMainChatLoop({ apiKey, systemPrompt, messages, maxTokens, onTextDelta }) {
+  const working = [...messages];
+  const MAX_TURNS = 6;
+
+  for (let turn = 0; turn < MAX_TURNS; turn++) {
+    const { content, stopReason } = await streamAnthropicTurn({
+      apiKey, systemPrompt, messages: working, tools: [WEB_SEARCH_TOOL, EOL_TOOL], maxTokens, onTextDelta,
+    });
+
+    if (stopReason === "pause_turn") {
+      // A long server-side search turn was paused — resend the assistant message unchanged
+      // (no new user turn) so the API can pick the search back up.
+      working.push({ role: "assistant", content });
+      continue;
+    }
+
+    if (stopReason !== "tool_use") return; // done — all text already streamed via onTextDelta
+
+    working.push({ role: "assistant", content });
+    const toolResults = [];
+    for (const block of content) {
+      if (block.type !== "tool_use") continue; // server_tool_use (web_search) is resolved server-side
+      let output;
+      try {
+        output = await executeClientTool(block.name, block.input || {});
+      } catch (err) {
+        output = { error: err.message };
+      }
+      toolResults.push({ type: "tool_result", tool_use_id: block.id, content: JSON.stringify(output) });
+    }
+    if (toolResults.length === 0) return; // nothing of ours to execute — avoid looping forever
+    working.push({ role: "user", content: toolResults });
+  }
+
+  onTextDelta("\n\n(I had to stop after several tool calls — let me know if you'd like me to keep going.)");
 }
 
 // Runs a tool_use round-trip loop (list/review ledger facts) to completion, then
@@ -201,63 +364,21 @@ module.exports = async function handler(req, res) {
       return res.status(200).send(text);
     }
 
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify({
-        model: "claude-sonnet-5",
-        max_tokens: maxTokens || 1500,
-        system: [{ type: "text", text: systemPrompt, cache_control: { type: "ephemeral" } }],
-        messages: messages,
-        tools: [WEB_SEARCH_TOOL],
-        stream: true,
-      }),
-    });
-
-    // Errors arrive before the stream starts — return them as JSON so the client can read them.
-    if (!response.ok) {
-      let message = `Anthropic API error (${response.status})`;
-      try { const errJson = await response.json(); message = errJson.error?.message || message; } catch {}
-      console.error("chat.js upstream error:", message);
-      return res.status(502).json({ error: "upstream_error", message });
-    }
-
-    // Stream the model's text deltas straight to the client as plain text.
-    res.setHeader("Content-Type", "text/plain; charset=utf-8");
-    res.setHeader("Cache-Control", "no-cache, no-transform");
-    res.setHeader("X-Accel-Buffering", "no");
-    if (typeof res.flushHeaders === "function") res.flushHeaders();
-
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split("\n");
-      buffer = lines.pop() || "";
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed.startsWith("data:")) continue;
-        const payload = trimmed.slice(5).trim();
-        if (!payload || payload === "[DONE]") continue;
-        try {
-          const evt = JSON.parse(payload);
-          if (evt.type === "content_block_delta" && evt.delta?.type === "text_delta" && evt.delta.text) {
-            res.write(evt.delta.text);
-            if (typeof res.flush === "function") res.flush();
-          } else if (evt.type === "error") {
-            console.error("chat.js stream error event:", evt.error?.message);
-          }
-        } catch { /* ignore keepalive / non-JSON lines */ }
+    // Headers go out lazily, on the first actual text write — so an upstream error on the
+    // very first turn (before anything has been streamed) still falls through to the JSON
+    // error response in the catch block below, exactly as before this became a multi-turn loop.
+    function writeText(text) {
+      if (!res.headersSent) {
+        res.setHeader("Content-Type", "text/plain; charset=utf-8");
+        res.setHeader("Cache-Control", "no-cache, no-transform");
+        res.setHeader("X-Accel-Buffering", "no");
+        if (typeof res.flushHeaders === "function") res.flushHeaders();
       }
+      res.write(text);
+      if (typeof res.flush === "function") res.flush();
     }
+
+    await runMainChatLoop({ apiKey, systemPrompt, messages, maxTokens, onTextDelta: writeText });
     return res.end();
 
   } catch (err) {
@@ -343,7 +464,9 @@ For operational judgment: "My read is..." or "I would..." or "That said..."
 
 Never fabricate CSC IDs. If you do not know the exact ID, say so directly. "I do not have the CSC ID for that one — verify against the PSIRT portal before acting on it."
 
-For live web search: you have real-time web search, separate from the PSIRT check above. Use it for things the PSIRT data does not cover — recent Cisco announcements, current pricing, EoL/EoS dates you are unsure are still current, or anything the engineer asks you to look up. Calibrate it like any other source: "I just checked online — ..." or "Current info says...", not with the certainty you give a verified PSIRT advisory. Never conflate a general web result with the verified PSIRT feed, and never claim the PSIRT check itself ran when it didn't.
+For hardware end-of-life/end-of-support: you have a check_hardware_eol tool that queries Cisco's official EoX API directly — a named platform's EoL/EoS milestones are a live lookup, not a memory question. Always call it rather than stating an EoL/EoS date from training data; state what it returns as fact, the same way you treat verified PSIRT data.
+
+For everything else current: you have real-time web search, separate from the PSIRT check above and the EoL tool. Use it for things neither of those cover — recent Cisco announcements, current pricing, or anything else the engineer asks you to look up. Calibrate it like any other source: "I just checked online — ..." or "Current info says...", not with the certainty you give a verified PSIRT advisory or an EoX lookup. Never conflate a general web result with either of the verified feeds, and never claim a check ran when it didn't.
 
 ─────────────────────────────────────────────
 LANGUAGE CALIBRATION — MATCH WORDS TO EVIDENCE
@@ -446,7 +569,9 @@ You know Cisco ACI and NX-OS fabrics in depth: APIC/spine/leaf/border-leaf archi
 
 VOICE: short sentences, direct, conversational — not a chatbot, not a brochure. No "Great question!", no padding, no AI disclaimers. If you don't know an exact CSC ID, say so rather than inventing one.
 
-You have real-time web search, separate from the verified PSIRT check below. Use it for recent Cisco news, current pricing, or anything current you're unsure is still accurate. Signal it as a web result ("I just checked online — ..."), not with the certainty of a verified PSIRT advisory, and never conflate the two.
+For hardware end-of-life/end-of-support dates, use the check_hardware_eol tool — it queries Cisco's official EoX API directly, so treat what it returns as fact rather than guessing from memory.
+
+You also have real-time web search, separate from the verified PSIRT check below and the EoL tool. Use it for recent Cisco news, current pricing, or anything else current you're unsure is still accurate. Signal it as a web result ("I just checked online — ..."), not with the certainty of a verified PSIRT advisory or an EoX lookup, and never conflate the three.
 
 SAFETY — upgrade sequencing is inviolable, never deviate regardless of what the visitor asks:
 ACI: 1) APIC cluster first, wait for Fully Fit. 2) Spines one at a time. 3) Border leafs one at a time, verify BGP/L3Out after each. 4) Leafs last, in maintenance groups, never both members of a vPC pair together.

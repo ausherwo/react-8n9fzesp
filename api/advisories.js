@@ -422,7 +422,7 @@ async function runFabricAnalysis(devices, advisorySummary, aciFabric, ctx, advMa
 // ----
 // MAIN HANDLER
 // ----
-module.exports = async function handler(req, res) {
+async function handler(req, res) {
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
     res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
@@ -581,4 +581,11 @@ module.exports = async function handler(req, res) {
           console.error("advisories.js error:", err.message);
           return res.status(200).json({ advisories: [], eol: null, verified: false, message: err.message });
     }
-};
+}
+
+module.exports = handler;
+// Reused by api/chat.js for the chat-side EoL tool — same Cisco auth/PID-mapping/EoX-fetch
+// logic the inventory-analysis flow already relies on, called in-process (no HTTP round-trip).
+module.exports.getAccessToken = getAccessToken;
+module.exports.normaliseToPID = normaliseToPID;
+module.exports.fetchEoX = fetchEoX;
