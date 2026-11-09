@@ -140,6 +140,116 @@ async function applyReviews(items, reviewerId) {
   return { updated, skipped };
 }
 
+// ---- Grounding the main Kelly/JC chat in approved ledger facts ----
+// Unlike REVIEW_TOOLS above (a client-side tool loop for reviewers only), the main
+// streaming chat path grounds itself by pulling a handful of likely-relevant approved
+// facts server-side, before the request to Anthropic, and injecting them into the
+// system prompt — same pattern as the existing fabricContext/psirtContext blocks, no
+// tool loop and no change to the streaming response shape.
+
+const PLATFORM_HINTS = [
+  { platform: 'aci', pattern: /\b(aci|apic)\b/i },
+  { platform: 'nxos', pattern: /\b(nx-?os|nexus|vxlan|evpn|vpc)\b/i },
+];
+
+const FACT_TYPE_HINTS = [
+  { type: 'bug', pattern: /\b(bug|csc[a-z]{2}\d{4,6}|defect|crash(es|ed|ing)?|blackhole)\b/i },
+  { type: 'upgrade_path', pattern: /\b(upgrad\w*|issu|migrat\w*)\b/i },
+  { type: 'compatibility', pattern: /\b(compat\w*|interop\w*|support(ed)?\s+matrix)\b/i },
+  { type: 'scale_limit', pattern: /\b(scale\w*|scalab\w*|\blimit(s)?\b|maximum|capacity)\b/i },
+  { type: 'lifecycle', pattern: /\b(eol|eos|end[\s-]?of[\s-]?(life|sale|support)|lifecycle|last date of support)\b/i },
+  { type: 'design_guidance', pattern: /\b(design|best practice|recommend\w*|guidance)\b/i },
+];
+
+const VERSION_PATTERN = /\b\d{1,2}\.\d{1,2}(?:\.\d{1,2})?(?:\(\d+[a-z]?\))?\b/gi;
+
+const STOPWORDS = new Set([
+  'the', 'a', 'an', 'and', 'or', 'but', 'is', 'are', 'was', 'were', 'be', 'been',
+  'to', 'of', 'in', 'on', 'for', 'with', 'that', 'this', 'it', 'as', 'at', 'by',
+  'from', 'my', 'our', 'your', 'their', 'i', 'we', 'you', 'they', 'he', 'she',
+  'do', 'does', 'did', 'can', 'could', 'should', 'would', 'will', 'what', 'which',
+  'who', 'when', 'where', 'why', 'how', 'about', 'into', 'than', 'then', 'so',
+  'if', 'not', 'no', 'have', 'has', 'had', 'just', 'like', 'get', 'got', 'need',
+  'want', 'please', 'tell', 'me', 'us', 'there', 'here', 'some', 'any', 'all',
+]);
+
+// Pulls a loose query (platform, candidate fact_types, version prefixes, keywords)
+// out of free-form chat text. Returns null when nothing in the message looks like
+// it's asking about Cisco DC facts at all, so unrelated chat never triggers a query.
+function extractLedgerQuery(text) {
+  if (!text || typeof text !== 'string') return null;
+  const lower = text.toLowerCase();
+
+  let platform = null;
+  for (const h of PLATFORM_HINTS) {
+    if (h.pattern.test(lower)) { platform = h.platform; break; }
+  }
+
+  const factTypes = FACT_TYPE_HINTS.filter(h => h.pattern.test(lower)).map(h => h.type);
+  const versions = [...new Set(text.match(VERSION_PATTERN) || [])];
+
+  const keywords = [...new Set(
+    lower.replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter(w => w.length > 3 && !STOPWORDS.has(w))
+  )].slice(0, 6);
+
+  if (!platform && !factTypes.length && !versions.length && !keywords.length) return null;
+  return { platform, factTypes, versions, keywords };
+}
+
+// Strips the parenthetical maintenance-release suffix (e.g. "16.0(3e)" -> "16.0") so
+// a version mentioned in chat matches any patch of the same major.minor train stored
+// in the ledger, without having to worry about escaping "(" / ")" in a PostgREST filter.
+function versionPrefix(v) {
+  const m = v.match(/^\d{1,2}\.\d{1,2}/);
+  return m ? m[0] : v.replace(/[()]/g, '');
+}
+
+async function searchApprovedFacts({ platform, factTypes, versions, keywords, limit = 8 } = {}) {
+  let query = supabase
+    .from('ledger_facts')
+    .select(`${FACT_FIELDS}, detail`)
+    .eq('review_status', 'approved');
+
+  if (platform) query = query.eq('platform', platform);
+  if (factTypes && factTypes.length) query = query.in('fact_type', factTypes);
+
+  // Version and keyword filters are independent .or() groups, so when both are present
+  // they AND together (version match narrows to the right release; keyword match then
+  // narrows a release's many bugs/facts down to the one(s) actually asked about).
+  if (versions && versions.length) {
+    const prefixes = [...new Set(versions.map(versionPrefix))];
+    query = query.or(prefixes.map(p => `version.ilike.${p}%`).join(','));
+  }
+  if (keywords && keywords.length) {
+    query = query.or(keywords.map(k => `title.ilike.%${k}%`).join(','));
+  }
+
+  const cappedLimit = Math.min(Math.max(Number(limit) || 8, 1), 25);
+  query = query.order('found_at', { ascending: false }).limit(cappedLimit);
+
+  const { data, error } = await query;
+  if (error) throw new Error(error.message);
+  return data || [];
+}
+
+// Renders matched facts as a plain-text block for the system prompt. `detail`'s shape
+// varies by fact_type (bug: symptom/trigger_condition/affected_versions; lifecycle:
+// eol/eos dates; scale_limit: thresholds; ...) so this just lists whatever keys are
+// present rather than assuming a fixed shape.
+function formatLedgerContext(facts) {
+  if (!facts || !facts.length) return null;
+  return facts.map(f => {
+    const detailStr = f.detail && typeof f.detail === 'object'
+      ? Object.entries(f.detail).filter(([, v]) => v !== null && v !== undefined && v !== '').map(([k, v]) => `${k}: ${v}`).join('; ')
+      : '';
+    const lines = [`[${f.fact_type}] ${f.title}`];
+    lines.push(`platform: ${f.platform}${f.version ? `, version: ${f.version}` : ''}`);
+    if (detailStr) lines.push(detailStr);
+    if (f.source_url) lines.push(`source: ${f.source_url}`);
+    return lines.join('\n');
+  }).join('\n\n');
+}
+
 module.exports = {
   supabase,
   isReviewer,
@@ -148,4 +258,7 @@ module.exports = {
   listPendingFacts,
   pendingSummary,
   applyReviews,
+  extractLedgerQuery,
+  searchApprovedFacts,
+  formatLedgerContext,
 };
