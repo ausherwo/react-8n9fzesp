@@ -462,7 +462,7 @@ export default function JCHome() {
           <div style={{ marginTop:28, display:"flex", alignItems:"center", gap:18, fontSize:13, color:C.muted, fontFamily:sans, flexWrap:"wrap", justifyContent:"center" }}>
             <span>Free to start</span>
             <span style={{ width:3, height:3, borderRadius:"50%", background:C.border }}/>
-            <span>Live Cisco PSIRT API</span>
+            <span>Your AI DC engineer copilot</span>
             <span style={{ width:3, height:3, borderRadius:"50%", background:C.border }}/>
             <span>Nothing stored</span>
           </div>

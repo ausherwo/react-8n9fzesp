@@ -23,7 +23,7 @@ export function JCExplainerPage() {
         <div style={{ fontFamily:mono, fontSize:11, color:C.amber, letterSpacing:"0.1em", textTransform:"uppercase", marginBottom:14 }}>// draft — content to be defined</div>
         <h1 style={{ fontSize:32, fontWeight:300, letterSpacing:"-0.02em", marginBottom:20 }}>What is JC?</h1>
         <p style={{ fontSize:15, color:C.dim, lineHeight:1.8, marginBottom:16 }}>
-          JC is netwrkr.ai's data centre copilot — a conversation-first way to understand and act on your Cisco ACI and NX-OS fabric. Ask JC a question, paste a device inventory, and get a risk-ranked analysis right in the chat, backed by live Cisco PSIRT data.
+          JC is your AI data centre engineer copilot — someone to work with on anything related to Cisco ACI and NX-OS fabrics, not a single-purpose tool. Ask JC anything, and when it's useful, paste a device inventory for a risk-ranked analysis right in the chat, backed by live Cisco PSIRT data.
         </p>
         <p style={{ fontSize:15, color:C.dim, lineHeight:1.8, marginBottom:16 }}>
           More detail on how JC works, what it can see, and what's coming next (including Desert Point monitoring and additional tooling) will go here.
