@@ -15,8 +15,20 @@
 // psirtContext — no tool loop, no change to the streaming response shape. Previously only the
 // reviewer tool-loop ever touched this table; an approved fact had zero effect on what JC/Kelly
 // actually told anyone until now.
+// v2.1 — JC persona only: after the streamed answer finishes, checks which of the ledger facts
+// and PSIRT advisories injected into the system prompt actually show up (verbatim id/keywords)
+// in the final answer, and appends a small sidecar frame (CITATION_DELIM + JSON) the frontend
+// strips out and renders as colour-coded source citation pills. Never changes what's streamed
+// as visible text, and never fires for Kelly (which doesn't send persona "jc").
 
-const { isReviewer, memberFromToken, bearerToken, listPendingFacts, pendingSummary, applyReviews, extractLedgerQuery, searchApprovedFacts, formatLedgerContext } = require('./_lib/ledgerReview');
+const { isReviewer, memberFromToken, bearerToken, listPendingFacts, pendingSummary, applyReviews, extractLedgerQuery, searchApprovedFacts, formatLedgerContext, matchLedgerCitations, matchPsirtCitation } = require('./_lib/ledgerReview');
+
+// Sidecar delimiter for source citations on the JC persona's streaming path — see the matching
+// constant/comment in src/chat/ChatPrimitives.js. A control character the model could never
+// produce, so it's safe to append after the plain-text answer without touching the contract
+// for callers that don't know to strip it (Kelly/RinconChatPrototype never requests persona
+// "jc" and so never sees this suffix).
+const CITATION_DELIM = "\u001f__JC_CITATIONS__\u001f";
 
 // Server-side tool — Anthropic runs the search and feeds results back to the model inside
 // the same request, so this needs no client-side tool-result loop (unlike REVIEW_TOOLS below).
@@ -201,14 +213,15 @@ module.exports = async function handler(req, res) {
   // this turn's list — would wrongly conclude it had hallucinated a correct prior answer
   // and "walk it back". Combining turns fixes that at the source.
   let ledgerContext = null;
+  let matchedFacts = [];
   try {
     const recentUserTexts = [...messages].reverse()
       .filter(m => m.role === "user" && typeof m.content === "string")
       .slice(0, 2).map(m => m.content);
     const ledgerQuery = extractLedgerQuery(recentUserTexts.join(" "));
     if (ledgerQuery) {
-      const facts = await searchApprovedFacts(ledgerQuery);
-      ledgerContext = formatLedgerContext(facts);
+      matchedFacts = await searchApprovedFacts(ledgerQuery);
+      ledgerContext = formatLedgerContext(matchedFacts);
     }
   } catch (err) {
     console.error("chat.js ledger context error:", err.message);
@@ -279,6 +292,7 @@ HARD RULE: only state a CSC bug ID, exact version string, or specific numeric li
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let buffer = "";
+    let fullText = "";
 
     while (true) {
       const { done, value } = await reader.read();
@@ -294,12 +308,27 @@ HARD RULE: only state a CSC bug ID, exact version string, or specific numeric li
         try {
           const evt = JSON.parse(payload);
           if (evt.type === "content_block_delta" && evt.delta?.type === "text_delta" && evt.delta.text) {
+            fullText += evt.delta.text;
             res.write(evt.delta.text);
             if (typeof res.flush === "function") res.flush();
           } else if (evt.type === "error") {
             console.error("chat.js stream error event:", evt.error?.message);
           }
         } catch { /* ignore keepalive / non-JSON lines */ }
+      }
+    }
+
+    // JC only — see the CITATION_DELIM comment above. Only cite a source that actually
+    // shows up in the answer, never just one that was queried/injected into the prompt.
+    if (persona === "jc") {
+      try {
+        const citations = [
+          ...matchLedgerCitations(matchedFacts, fullText),
+          ...(matchPsirtCitation(psirtContext, fullText) ? [matchPsirtCitation(psirtContext, fullText)] : []),
+        ];
+        if (citations.length) res.write(CITATION_DELIM + JSON.stringify({ citations }));
+      } catch (err) {
+        console.error("chat.js citation error:", err.message);
       }
     }
     return res.end();

@@ -21,6 +21,7 @@ export const C = {
   red:     "#EF4444",
   orange:  "#F97316",
   yellow:  "#EAB308",
+  teal:    "#4FC3C7",
   text:    "#EDE8DC",
   dim:     "#9C9278",
   muted:   "#524B3A",
@@ -54,6 +55,7 @@ export const LIGHT = {
   red:     "#C0392B",
   orange:  "#C0620B",
   yellow:  "#8B7000",
+  teal:    "#2D6E73",
   text:    "#1A1810",
   dim:     "#4A4438",
   muted:   "#7A7060",
@@ -107,6 +109,74 @@ export function preflightCheck(text) {
 
 export function tierLabel(tier) { return {1:"Controller",2:"Spine / Border Leaf",3:"Leaf",4:"Distribution / Firewall"}[tier] || "Unknown"; }
 export function tierColor(tier, theme = C) { return {1:theme.amber,2:theme.orange,3:theme.green,4:theme.dim}[tier] || theme.muted; }
+
+// ─────────────────────────────────────────────
+// SOURCE CITATIONS — sidecar frame on the /api/chat stream (JC persona only).
+// The main chat path streams Anthropic's text deltas straight through with no
+// tool-calling loop, so there's no structured place to hand back "what actually
+// grounded this answer". Instead api/chat.js appends one extra, non-visible
+// write after the text stream ends: a control-character delimiter the model
+// could never produce, followed by a small JSON blob naming the sources that
+// were actually cited in the answer (never just "were queried"). Must match
+// the CITATION_DELIM constant in api/chat.js exactly.
+// ─────────────────────────────────────────────
+export const CITATION_DELIM = "\u001f__JC_CITATIONS__\u001f";
+
+// Splits an in-progress streamed buffer into the visible answer text and any
+// citations found after the delimiter. Withholds a trailing partial match of
+// the delimiter itself so it never flashes on screen mid-stream.
+export function splitStreamCitations(buffer) {
+  const idx = buffer.indexOf(CITATION_DELIM);
+  if (idx !== -1) {
+    const visible = buffer.slice(0, idx);
+    const rest = buffer.slice(idx + CITATION_DELIM.length);
+    let citations = null;
+    try { citations = JSON.parse(rest).citations || null; } catch { /* JSON not fully arrived yet */ }
+    return { visible, citations };
+  }
+  const maxOverlap = Math.min(CITATION_DELIM.length - 1, buffer.length);
+  for (let len = maxOverlap; len > 0; len--) {
+    if (buffer.slice(-len) === CITATION_DELIM.slice(0, len)) {
+      return { visible: buffer.slice(0, buffer.length - len), citations: null };
+    }
+  }
+  return { visible: buffer, citations: null };
+}
+
+const CITATION_STYLE = {
+  release_notes: { label: "Release Notes" },
+  psirt:         { label: "PSIRT advisory" },
+  cvd:           { label: "Cisco Validated Design" },
+};
+const CITATION_ICON = {
+  release_notes: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="9"/></svg>,
+  psirt:         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 3l8 4v5c0 5-3.5 8-8 9-4.5-1-8-4-8-9V7l8-4z"/></svg>,
+  cvd:           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M9 9v11"/></svg>,
+};
+
+// A small pill per source that actually grounded the answer — colour-coded by
+// source (gold = Release Notes, red = PSIRT, teal = CVD). Renders nothing when
+// there's nothing to cite; never shown for a general-knowledge answer.
+export function CitationPill({ citations, theme = C }) {
+  if (!citations || !citations.length) return null;
+  return (
+    <div style={{ marginTop:12, paddingTop:12, borderTop:`1px solid ${theme.border}`, display:"flex", flexWrap:"wrap", gap:"6px 16px" }}>
+      {citations.map((c, i) => {
+        const color = theme[c.source === "psirt" ? "red" : c.source === "cvd" ? "teal" : "amber"];
+        const label = CITATION_STYLE[c.source]?.label || "Source";
+        return (
+          <div key={i} style={{ display:"flex", alignItems:"center", gap:7, fontSize:12.5, fontWeight:500, color, fontFamily:sans }}>
+            <span style={{ width:14, height:14, flex:"none", display:"inline-flex" }}>{CITATION_ICON[c.source]}</span>
+            <span>
+              {label}
+              {c.ref ? <> &middot; {c.sourceUrl ? <a href={c.sourceUrl} target="_blank" rel="noopener noreferrer" style={{ color, textDecoration:"underline", textUnderlineOffset:2 }}>{c.ref}</a> : c.ref}</> : null}
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 // ─────────────────────────────────────────────
 // MARKDOWN RENDERER
@@ -363,6 +433,7 @@ function PlainMessage({ msg, extraCard, theme }) {
       <div style={{ fontSize:16.5, fontWeight:350, lineHeight:1.7, letterSpacing:"-0.005em", color:theme.text, fontFamily:homeSerif, maxWidth:640 }}>
         {renderMarkdown(msg.content, theme)}
       </div>
+      <CitationPill citations={msg.citations} theme={theme}/>
       {msg.content && <MessageActions content={msg.content} theme={theme}/>}
     </div>
   );
