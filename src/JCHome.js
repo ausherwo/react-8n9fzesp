@@ -14,7 +14,7 @@ import UserBadge from "./UserBadge";
 import {
   LIGHT as C, sans, homeSerif, ACCEPTED_TYPES, MAX_FILE_SIZE,
   preflightCheck, MessageBubble, DragOverlay, TypingDots, SuggestionChips,
-  queryPSIRTForDevices,
+  queryPSIRTForDevices, splitStreamCitations,
 } from "./chat/ChatPrimitives";
 import { DeviceReviewCard, ResultCard } from "./chat/FabricAnalysisCards";
 
@@ -254,13 +254,18 @@ export default function JCHome() {
         const reader = res.body.getReader();
         const decoder = new TextDecoder();
         let full = "";
+        let citations = null;
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
           full += decoder.decode(value, { stream:true });
-          updateMessage(aiMsgId, { content: full });
+          const split = splitStreamCitations(full);
+          if (split.citations) citations = split.citations;
+          updateMessage(aiMsgId, { content: split.visible, citations });
         }
-        persistTurn("ai", full);
+        const { visible, citations: finalCitations } = splitStreamCitations(full);
+        updateMessage(aiMsgId, { content: visible, citations: finalCitations });
+        persistTurn("ai", visible);
       }
     } catch (err) {
       console.error("Chat error:", err);

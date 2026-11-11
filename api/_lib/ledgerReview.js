@@ -256,6 +256,88 @@ function formatLedgerContext(facts) {
   }).join('\n\n');
 }
 
+// ---- Source citations for the JC chat UI ----
+// The system prompt is the only thing that actually conditions the model's answer — there's
+// no tool loop to ask it which facts it used. So "cited" here means: the fact's own identifying
+// text (its CSC bug ID, or else enough of its distinctive title words) shows up verbatim in the
+// model's final answer. That's a deliberately conservative bar — it can under-cite (miss a fact
+// the model paraphrased rather than quoted) but it can't fabricate a citation for a fact the
+// answer never actually touched.
+const CSC_ID_PATTERN = /CSC[a-z]{2}\d{4,6}/i;
+
+function factIdentifier(fact) {
+  const cscMatch = fact.title.match(CSC_ID_PATTERN);
+  if (cscMatch) return { kind: 'id', value: cscMatch[0].toLowerCase() };
+  const words = [...new Set(
+    fact.title.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter(w => w.length >= 5 && !STOPWORDS.has(w))
+  )];
+  return { kind: 'keywords', value: words };
+}
+
+function factIsCited(fact, answerLower) {
+  const ident = factIdentifier(fact);
+  if (ident.kind === 'id') return answerLower.includes(ident.value);
+  if (!ident.value.length) return false;
+  const needed = ident.value.length >= 2 ? 2 : 1;
+  return ident.value.filter(w => answerLower.includes(w)).length >= needed;
+}
+
+// fact_type -> citation colour group. design_guidance is the only type sourced from Cisco
+// Validated Designs (teal); every other type comes from Cisco's published release notes (gold).
+function factColorGroup(factType) {
+  return factType === 'design_guidance' ? 'cvd' : 'release_notes';
+}
+
+function factCitation(fact) {
+  const source = factColorGroup(fact.fact_type);
+  const ref = source === 'release_notes' && fact.version
+    ? `${(fact.platform || '').toUpperCase()} ${fact.version}`
+    : fact.title;
+  return { source, ref, sourceUrl: fact.source_url || null };
+}
+
+// Returns at most one citation per colour group (release_notes, cvd) — `facts` is already
+// ordered newest-first, so the first cited fact in each group wins.
+function matchLedgerCitations(facts, answerText) {
+  if (!facts?.length || !answerText) return [];
+  const lower = answerText.toLowerCase();
+  const seen = new Set();
+  const citations = [];
+  for (const fact of facts) {
+    if (!factIsCited(fact, lower)) continue;
+    const group = factColorGroup(fact.fact_type);
+    if (seen.has(group)) continue;
+    seen.add(group);
+    citations.push(factCitation(fact));
+  }
+  return citations;
+}
+
+// Parses the plain-text PSIRT block built by queryPSIRTForDevices (src/chat/ChatPrimitives.js)
+// back into structured advisories — e.g. "  - [HIGH] cisco-sa-nxos-rbac — Title | Fixed: ...".
+// Must stay in sync with that function's line format.
+const PSIRT_LINE_PATTERN = /^\s*-\s*\[[A-Z]+\]\s+([\w.-]+)\s+—\s+(.+?)(?:\s\|.*)?$/;
+
+function parsePsirtAdvisories(psirtContext) {
+  if (!psirtContext) return [];
+  const advisories = [];
+  for (const line of psirtContext.split('\n')) {
+    const m = line.match(PSIRT_LINE_PATTERN);
+    if (m) advisories.push({ id: m[1], title: m[2].trim() });
+  }
+  return advisories;
+}
+
+// Same conservative bar as ledger facts: only cited if the advisory's own id appears
+// verbatim in the answer. Returns at most one citation (the pill shows one PSIRT source).
+function matchPsirtCitation(psirtContext, answerText) {
+  if (!answerText) return null;
+  const advisories = parsePsirtAdvisories(psirtContext);
+  const lower = answerText.toLowerCase();
+  const hit = advisories.find(a => lower.includes(a.id.toLowerCase()));
+  return hit ? { source: 'psirt', ref: hit.id, sourceUrl: null } : null;
+}
+
 module.exports = {
   supabase,
   isReviewer,
@@ -267,4 +349,6 @@ module.exports = {
   extractLedgerQuery,
   searchApprovedFacts,
   formatLedgerContext,
+  matchLedgerCitations,
+  matchPsirtCitation,
 };
